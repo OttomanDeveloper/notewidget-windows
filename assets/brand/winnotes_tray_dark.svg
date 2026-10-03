@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WinNotes - tray mark, dark taskbar (Windows is using a light theme).
+  Same silhouette as winnotes_tray_light.svg, inverted for legibility.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"
+     viewBox="0 0 1024 1024" role="img"
+     aria-label="WinNotes tray icon">
+  <defs>
+    <clipPath id="trayClipDark">
+      <rect x="0" y="0" width="1024" height="1024" rx="224"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#trayClipDark)">
+    <rect x="0" y="0" width="1024" height="1024" fill="#F3F1EA"/>
+    <rect x="228" y="228" width="568" height="568" rx="132" fill="#2B2450"/>
+    <rect x="352" y="404" width="324" height="86" rx="43" fill="#C9CEDD"/>
+    <rect x="352" y="560" width="216" height="86" rx="43" fill="#C9CEDD"/>
+    <rect x="616" y="560" width="86" height="86" rx="43" fill="#E8551D"/>
+  </g>
+</svg>

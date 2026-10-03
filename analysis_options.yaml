@@ -1,0 +1,16 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    # Native Windows runner sources. They are compiled by CMake, not the Dart
+    # analyzer, and have their own warnings settings.
+    - windows/**
+
+linter:
+  rules:
+    # Disabled deliberately: this project's constructors take public named
+    # parameters and assign them to private fields. The lint's suggested fix,
+    # `required this._shell`, would force every caller to write `_shell:` and
+    # leak private field names into the public API of each controller.
+    prefer_initializing_formals: false
