@@ -2,8 +2,32 @@
 
 ## Unreleased
 
+### Added
+
+- **Lock the widget in place.** New switch in Settings → Widget, on by default.
+  While it is on, dragging the widget does nothing, so a stray drag across the
+  card cannot move a widget that was deliberately placed. Turning it off makes
+  the widget draggable again straight away, with no restart: the widget watches
+  `settings.json`, so the change reaches the window as it is made. Resizing from
+  a corner is unaffected, because locking is about position, not size.
+- **A dedicated Widget settings group.** "Keep the widget above other windows"
+  moves here from Appearance, so the two switches about where the widget sits
+  and whether it gets in the way are described together. `alwaysOnTop` itself is
+  unchanged and still defaults to on.
+
+### Changed
+
+- The widget no longer moves when dragged, unless the lock is turned off. This
+  is a behaviour change for anyone who was relying on the old always-draggable
+  widget; flipping the switch restores it.
+
 ### Fixed
 
+- **The tray menu no longer advertises a shortcut that did nothing.** It
+  labelled Settings as `Ctrl+Alt+S`, which was never registered with Windows —
+  only `Ctrl+Alt+N` is, and that one is changeable and can be switched off. Both
+  entries now print no accelerator at all, because any shortcut printed there
+  would go stale the moment it was changed.
 - **A failed write no longer disables saving for the rest of the session.**
   Replacing a file on Windows fails outright whenever Search Indexer, antivirus
   or a backup tool happens to hold the destination open, which happens routinely

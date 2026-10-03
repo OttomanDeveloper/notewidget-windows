@@ -121,8 +121,12 @@ void TrayIcon::BuildMenu() {
               widget_visible_ ? kCmdHideWidget : kCmdShowWidget,
               widget_visible_ ? L"Hide widget" : L"Show widget");
   AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(menu_, MF_STRING, kCmdOpenEditor, L"Open editor\tCtrl+Alt+N");
-  AppendMenuW(menu_, MF_STRING, kCmdOpenSettings, L"Settings\tCtrl+Alt+S");
+  // No accelerator text here on purpose. Only Ctrl+Alt+N is ever registered, and
+  // that one is changeable and can be switched off, so any shortcut printed here
+  // would go stale the moment it was changed - "Settings\tCtrl+Alt+S" was
+  // printed for years and did nothing at all.
+  AppendMenuW(menu_, MF_STRING, kCmdOpenEditor, L"Open editor");
+  AppendMenuW(menu_, MF_STRING, kCmdOpenSettings, L"Settings");
   AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu_, MF_STRING, kCmdQuit, L"Quit WinNotes");
 }

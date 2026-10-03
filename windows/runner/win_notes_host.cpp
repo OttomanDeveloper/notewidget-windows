@@ -541,6 +541,9 @@ void Host::HandleMethodCall(
       shell_->SetAlwaysOnTop(GetBool(args, "alwaysOnTop", true));
       shell_->SetWidgetOpacity(static_cast<int>(GetInt(args, "opacity", 100)));
       shell_->SetRoundedCorners(GetBool(args, "rounded", true));
+      // Absent means locked. A platform message that predates the setting, or
+      // a malformed one, must not quietly unlock someone's pinned widget.
+      shell_->SetPositionLocked(GetBool(args, "positionLocked", true));
       const bool acrylic = GetBool(args, "acrylic", true) && AcrylicSupported();
       shell_->SetBackdrop(acrylic ? Backdrop::kAcrylic : Backdrop::kPlain);
       const bool visible = GetBool(args, "visible", true);

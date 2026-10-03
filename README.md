@@ -148,8 +148,32 @@ pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Wid
 - **Per-monitor position.** The widget returns to the screen you left it on. If
   that monitor is unplugged, it comes back on the nearest remaining one instead
   of somewhere it can never be clicked again.
+- **The widget is locked where you put it.** Dragging it does nothing until you
+  turn the lock off, so it cannot be knocked out of position by a stray drag.
+  Turning the lock off makes it draggable again immediately — no restart, no
+  dialog. Resizing from a corner works either way, because locking is about
+  position, not size.
 - **Plain-text export and import.** The format is deliberately boring, so a
   backup taken years from now is still readable without this app.
+
+## Widget settings
+
+Two switches, together in Settings → **Widget**, because they are the same
+decision seen from two sides: whether the widget stays out of your way, and
+whether it stays where you put it. Settings opens from the tray icon, or from
+the editor's menu.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Keep the widget above other windows** | On | The widget stays on top of ordinary windows. Turn it off and it behaves like a normal window, so it can be covered. |
+| **Lock the widget in place** | On | Dragging does nothing. Turn it off to move the widget, then turn it back on once it is where you want it. |
+
+The default is locked because the widget usually ends up somewhere chosen on
+purpose, and an accidental drag across the card moves it somewhere worse.
+Resizing from a corner is unaffected.
+
+Both take effect the moment you flip them. The widget watches `settings.json`,
+so a change made here reaches the window without a restart.
 
 ## Where the notes live
 
@@ -234,7 +258,7 @@ assets/brand/                logo sources and derived assets
 docs/images/                 README screenshots
 tool/brand/                  logo generator
 tool/screenshots/            screenshot capture and hero composition
-test/                        109 tests
+test/                        113 tests
 ```
 
 ### How the two windows work
@@ -259,13 +283,20 @@ entry, and single-instance behaviour. `window_manager`-style plugins were not
 used, so the behaviours above are implemented directly against Win32 and can be
 tested by reading the code rather than by trusting a dependency.
 
+The position lock is one of them. Dragging the widget works by having
+`WM_NCHITTEST` answer `HTCAPTION` for the card's body, which hands the drag to
+Windows' own move loop — snap-to-edge and all — instead of reimplementing it.
+Locked, the same message answers `HTCLIENT`, so the pointer reaches Flutter, the
+cards stay tappable, and a drag simply moves nothing. The resize bands keep
+answering `HTLEFT`/`HTTOPLEFT`/and so on either way.
+
 ## Tests
 
 ```
 flutter test
 ```
 
-109 tests covering the parts where being wrong loses data: atomic writes and
+113 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and

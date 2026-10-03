@@ -16,6 +16,7 @@ class WinNotesSettings {
     this.widgetOpacity = 92,
     this.acrylicEnabled = true,
     this.alwaysOnTop = true,
+    this.widgetPositionLocked = true,
     this.autoStart = false,
     this.autoStartDelayMs = 1500,
     HotkeyBinding? editorHotkey,
@@ -37,6 +38,14 @@ class WinNotesSettings {
   bool acrylicEnabled;
   bool alwaysOnTop;
   bool autoStart;
+
+  /// Whether dragging the widget is refused.
+  ///
+  /// On by default because the widget usually ends up somewhere chosen on
+  /// purpose, and an accidental drag across the card would move it somewhere
+  /// worse. Turning it off is what makes the widget moveable again. Resizing
+  /// from a corner is unaffected: locking is about position, not size.
+  bool widgetPositionLocked;
 
   /// Only ever applied to the autostart launch. Launching by hand shows the
   /// widget immediately.
@@ -60,6 +69,7 @@ class WinNotesSettings {
           other.widgetOpacity == widgetOpacity &&
           other.acrylicEnabled == acrylicEnabled &&
           other.alwaysOnTop == alwaysOnTop &&
+          other.widgetPositionLocked == widgetPositionLocked &&
           other.autoStart == autoStart &&
           other.autoStartDelayMs == autoStartDelayMs &&
           other.editorHotkey == editorHotkey &&
@@ -73,6 +83,7 @@ class WinNotesSettings {
         widgetOpacity,
         acrylicEnabled,
         alwaysOnTop,
+        widgetPositionLocked,
         autoStart,
         autoStartDelayMs,
         editorHotkey,
@@ -86,6 +97,7 @@ class WinNotesSettings {
     int? widgetOpacity,
     bool? acrylicEnabled,
     bool? alwaysOnTop,
+    bool? widgetPositionLocked,
     bool? autoStart,
     int? autoStartDelayMs,
     HotkeyBinding? editorHotkey,
@@ -98,6 +110,7 @@ class WinNotesSettings {
         widgetOpacity: widgetOpacity ?? this.widgetOpacity,
         acrylicEnabled: acrylicEnabled ?? this.acrylicEnabled,
         alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
+        widgetPositionLocked: widgetPositionLocked ?? this.widgetPositionLocked,
         autoStart: autoStart ?? this.autoStart,
         autoStartDelayMs: autoStartDelayMs ?? this.autoStartDelayMs,
         editorHotkey: editorHotkey ?? this.editorHotkey,
@@ -112,6 +125,7 @@ class WinNotesSettings {
         'widgetOpacity': widgetOpacity,
         'acrylicEnabled': acrylicEnabled,
         'alwaysOnTop': alwaysOnTop,
+        'widgetPositionLocked': widgetPositionLocked,
         'autoStart': autoStart,
         'autoStartDelayMs': autoStartDelayMs,
         'editorHotkey': editorHotkey.toJson(),
@@ -144,6 +158,8 @@ class WinNotesSettings {
           pick<int>('widgetOpacity', fallback.widgetOpacity).clamp(30, 100),
       acrylicEnabled: pick<bool>('acrylicEnabled', fallback.acrylicEnabled),
       alwaysOnTop: pick<bool>('alwaysOnTop', fallback.alwaysOnTop),
+      widgetPositionLocked:
+          pick<bool>('widgetPositionLocked', fallback.widgetPositionLocked),
       autoStart: pick<bool>('autoStart', fallback.autoStart),
       autoStartDelayMs: delay.clamp(0, 60000),
       editorHotkey: hotkeyJson is Map<String, dynamic>

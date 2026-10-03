@@ -275,6 +275,14 @@ void Window::SetRoundedCorners(bool enabled) {
   RefreshRoundedRegion();
 }
 
+void Window::SetPositionLocked(bool locked) {
+  // Written from the platform thread and read by HitTest on the UI thread, the
+  // same arrangement as rounded_corners_ and opacity_percent_ above. A byte is
+  // read whole, and the worst a stale value can do is let one drag behave
+  // according to the previous setting for a frame.
+  position_locked_ = locked;
+}
+
 void Window::RefreshRoundedRegion() {
   if (window_ == nullptr) return;
   if (rounded_corners_ && IsWidgetRole(params_.role)) {
@@ -393,6 +401,10 @@ LRESULT Window::HitTest(POINT screen_pt) const {
 
   // Drag the card by its body. HCAPTION lets Windows drive the drag loop,
   // including the snap-to-edge behaviour, without us reimplementing it.
+  //
+  // Locked, the body reports HTCLIENT instead so the pointer reaches Flutter and
+  // a drag simply moves nothing. Resizing stays available either way.
+  if (position_locked_) return HTCLIENT;
   return HTCAPTION;
 }
 

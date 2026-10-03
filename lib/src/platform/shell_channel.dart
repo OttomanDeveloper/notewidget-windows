@@ -184,6 +184,11 @@ class ShellChannel {
     required bool acrylic,
     required bool rounded,
     required bool visible,
+
+    /// Whether the widget refuses to be dragged. Sent on every configure rather
+    /// than only when it changes, because this call is already the single place
+    /// that decides how the widget looks and behaves.
+    bool positionLocked = true,
   }) =>
       _fire('widget.configure', {
         'alwaysOnTop': alwaysOnTop,
@@ -191,6 +196,7 @@ class ShellChannel {
         'acrylic': acrylic,
         'rounded': rounded,
         'visible': visible,
+        'positionLocked': positionLocked,
       });
 
   Future<void> setWidgetGeometry(NativeBounds bounds) => _fire('widget.setGeometry', {

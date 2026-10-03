@@ -140,6 +140,7 @@ class WidgetController extends ChangeNotifier {
       // asking for it unconditionally keeps the fallback in one place.
       acrylic: settings.acrylicEnabled,
       rounded: true,
+      positionLocked: settings.widgetPositionLocked,
       visible: visible && settings.widgetOpacity > 0,
     );
   }

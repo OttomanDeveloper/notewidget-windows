@@ -6,10 +6,10 @@ import '../../data/settings.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/settings_controller.dart';
 
-/// Settings, in four flat groups with no nesting.
+/// Settings, in five flat groups with no nesting.
 ///
-/// Appearance, Startup, Hotkey and Storage. Each is a `Card` rather than an
-/// `ExpansionTile`, because a setting hidden behind a click is a setting
+/// Appearance, Widget, Startup, Hotkey and Storage. Each is a `Card` rather than
+/// an `ExpansionTile`, because a setting hidden behind a click is a setting
 /// nobody changes.
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({
@@ -53,6 +53,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         settings: settings,
                         controller: widget.controller,
                         acrylicSupported: widget.controller.acrylicSupported,
+                      ),
+                      const SizedBox(height: 20),
+                      _WidgetGroup(
+                        settings: settings,
+                        controller: widget.controller,
                       ),
                       const SizedBox(height: 20),
                       _StartupGroup(
@@ -271,7 +276,29 @@ class _AppearanceGroup extends StatelessWidget {
                     ),
           ),
         ),
-        const _Separator(),
+      ],
+    );
+  }
+}
+
+/// Everything about how the widget sits on the desktop.
+///
+/// Grouped separately from Appearance because these are the three decisions
+/// about where it goes and whether it gets in the way, rather than how it
+/// looks. A lock and an always-on-top switch sitting together also make the
+/// trade-off obvious: a widget you cannot move is worth more if it is also not
+/// covering your work.
+class _WidgetGroup extends StatelessWidget {
+  const _WidgetGroup({required this.settings, required this.controller});
+
+  final WinNotesSettings settings;
+  final SettingsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Group(
+      title: 'Widget',
+      children: [
         _Row(
           label: 'Keep the widget above other windows',
           description: 'A note that cannot be seen is not a note.',
@@ -279,6 +306,23 @@ class _AppearanceGroup extends StatelessWidget {
             value: settings.alwaysOnTop,
             onChanged: (value) =>
                 controller.update((s) => s.copyWith(alwaysOnTop: value)),
+          ),
+        ),
+        const _Separator(),
+        _Row(
+          label: 'Lock the widget in place',
+          description: settings.widgetPositionLocked
+              ? 'Dragging the widget does nothing, so it cannot be knocked out '
+                  'of position by accident. Turn this off to move it, then '
+                  'lock it again once it is where you want it. Resizing from a '
+                  'corner still works either way.'
+              : 'The widget can be dragged anywhere, and stays where you drop '
+                  'it. Turn this on to stop an accidental drag moving it.',
+          trailing: Switch(
+            value: settings.widgetPositionLocked,
+            onChanged: (value) => controller.update(
+              (s) => s.copyWith(widgetPositionLocked: value),
+            ),
           ),
         ),
       ],

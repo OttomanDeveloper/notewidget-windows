@@ -67,8 +67,9 @@ void main() {
   /// run outside the fake clock.
   Future<wn.WidgetController> makeController(
     WidgetTester tester,
-    List<Note> notes,
-  ) async {
+    List<Note> notes, {
+    Future<void> Function(SettingsController)? tweakSettings,
+  }) async {
     final shell = ShellChannel();
 
     final notesRepo = NotesRepository(
@@ -84,6 +85,9 @@ void main() {
       shell: shell,
     );
     await settings.load(animationsEnabled: true, acrylicSupported: false);
+    // Applied before the widget controller attaches its listener, so the first
+    // configure it sends already reflects the change.
+    await tweakSettings?.call(settings);
 
     final controller = wn.WidgetController(
       shell: shell,
@@ -297,5 +301,51 @@ void main() {
     // The list really did move, rather than Note 29 having been on screen all
     // along.
     expect(find.text('Note 0'), findsNothing);
+  });
+
+  testWidgets('the position lock reaches the runner', (tester) async {
+    // The switch is only worth having if it changes what the native window
+    // does, so this checks the payload the runner actually receives rather than
+    // the Dart field that produced it.
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('dev.winnotes/shell'),
+      (call) async {
+        if (call.method == 'widget.configure') calls.add(call);
+        return null;
+      },
+    );
+
+    final locked = await tester.runAsync(
+      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+    );
+    addRelease(tester, locked!);
+
+    expect(calls, isNotEmpty, reason: 'the widget never configured itself');
+    expect(
+      (calls.first.arguments as Map)['positionLocked'],
+      isTrue,
+      reason: 'a fresh install must not ship a draggable widget',
+    );
+
+    // Turning the lock off has to reach the runner as a live change, not need a
+    // restart.
+    final unlocked = await tester.runAsync(
+      () => makeController(
+        tester,
+        [note('a', 'Groceries', 'milk')],
+        tweakSettings: (s) =>
+            s.update((v) => v.copyWith(widgetPositionLocked: false)),
+      ),
+    );
+    addRelease(tester, unlocked!);
+
+    final configures = calls.where((c) => c.method == 'widget.configure').toList();
+    expect(
+      (configures.last.arguments as Map)['positionLocked'],
+      isFalse,
+      reason: 'unlocking must be pushed, not merely stored',
+    );
   });
 }

@@ -83,6 +83,13 @@ class Window {
   void SetWidgetOpacity(int alpha_0_100);
   void SetRoundedCorners(bool enabled);
 
+  // Widget-only. While locked the body stops reporting HTCAPTION, so a drag
+  // over the card does nothing at all instead of nudging the widget somewhere
+  // new. Resize bands are untouched: locking is about position, and a corner
+  // drag is a deliberate act rather than an accidental one.
+  void SetPositionLocked(bool locked);
+  bool position_locked() const { return position_locked_; }
+
   RECT bounds() const;
   void SetBounds(const RECT& bounds);
   void SetTitle(const std::wstring& title);
@@ -120,6 +127,7 @@ class Window {
   bool visible_ = false;
   bool dragging_ = false;
   bool rounded_corners_ = false;
+  bool position_locked_ = true;  // Locked until Dart says otherwise.
   int corner_radius_ = 12;
   int edge_dock_margin_ = 8;
   int opacity_percent_ = 100;

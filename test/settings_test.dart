@@ -92,6 +92,7 @@ void main() {
         widgetOpacity: 55,
         acrylicEnabled: false,
         alwaysOnTop: false,
+        widgetPositionLocked: false,
         autoStart: true,
         autoStartDelayMs: 4000,
         editorHotkey: HotkeyBinding(modifiers: ['ctrl', 'win'], key: 'Space'),
@@ -102,6 +103,7 @@ void main() {
       expect(restored.widgetOpacity, 55);
       expect(restored.acrylicEnabled, isFalse);
       expect(restored.alwaysOnTop, isFalse);
+      expect(restored.widgetPositionLocked, isFalse);
       expect(restored.autoStart, isTrue);
       expect(restored.autoStartDelayMs, 4000);
       expect(restored.editorHotkey.display, 'Ctrl+Win+Space');
@@ -110,6 +112,29 @@ void main() {
 
     test('an empty document yields the defaults', () {
       expect(WinNotesSettings.fromJson(const {}).themeMode, ThemeMode.system);
+    });
+
+    test('the widget is locked in place by default', () {
+      // The widget usually ends up somewhere chosen on purpose, so an
+      // accidental drag moving it is the worse default.
+      expect(WinNotesSettings.defaults.widgetPositionLocked, isTrue);
+    });
+
+    test('a settings file written before the lock existed comes back locked', () {
+      // Absence has to mean locked. Defaulting the other way would silently
+      // unlock a widget the moment someone downgraded and came back.
+      final legacy = WinNotesSettings.defaults.toJson()..remove('widgetPositionLocked');
+      expect(WinNotesSettings.fromJson(legacy).widgetPositionLocked, isTrue);
+    });
+
+    test('the lock participates in equality', () {
+      // SettingsController compares whole objects to decide whether to write
+      // and re-push to the runner, so a field left out of == would mean the
+      // switch does nothing.
+      final locked = WinNotesSettings.defaults;
+      final unlocked = locked.copyWith(widgetPositionLocked: false);
+      expect(locked, isNot(unlocked));
+      expect(unlocked.copyWith(widgetPositionLocked: true), locked);
     });
 
     test('a hand-edited opacity cannot make the widget invisible', () {
