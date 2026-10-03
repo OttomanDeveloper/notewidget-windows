@@ -54,11 +54,30 @@ class AtomicJsonFile {
   /// mid-sentence loses nothing" promise is about.
   static const Duration _maxWriteDelay = Duration(milliseconds: 1500);
 
+  /// Backoff for a write that could not land.
+  ///
+  /// Replacing a file on Windows fails outright whenever something else holds
+  /// the destination open, and on a live desktop that is routinely Search
+  /// Indexer, antivirus or a backup tool. It clears in milliseconds. Retrying is
+  /// the difference between a slightly late write and a lost note, so a failed
+  /// write keeps its payload and walks up this ladder.
+  ///
+  /// Bounded, because a genuinely unwritable destination - a full disk, a
+  /// read-only folder - would otherwise retry for the rest of the session.
+  static const List<Duration> _writeRetryLadder = <Duration>[
+    Duration(milliseconds: 250),
+    Duration(milliseconds: 500),
+    Duration(milliseconds: 1000),
+    Duration(milliseconds: 2000),
+  ];
+
   Timer? _debounceTimer;
   Timer? _maxTimer;
+  Timer? _retryTimer;
   String? _pending;
   StreamSubscription<FileSystemEvent>? _watchSubscription;
   Timer? _watchDebounce;
+  int _writeFailures = 0;
 
   /// The content this isolate last wrote, or last read.
   ///
@@ -126,6 +145,10 @@ class AtomicJsonFile {
   /// Set when the file could not be read. While this is non-null every write
   /// is a no-op, which is what stops the app from "recovering" by replacing a
   /// file nobody has read yet.
+  ///
+  /// Only a failed *read* sets this. A write that could not land does not: the
+  /// notes are perfectly readable, and blocking on a transient write failure
+  /// would be both a lie to the user and a way to lose the next edit.
   CorruptDataFile? blocked;
 
   void _scheduleWrite() {
@@ -154,6 +177,8 @@ class AtomicJsonFile {
     _debounceTimer = null;
     _maxTimer?.cancel();
     _maxTimer = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
   }
 
   Future<void> _flush() async {
@@ -163,15 +188,24 @@ class AtomicJsonFile {
     if (payload == null) return;
     try {
       await _writeAtomically(payload);
+      _writeFailures = 0;
       _lastKnown = payload;
-    } on FileSystemException catch (error) {
-      // A failed write must be visible, not silently swallowed: the notes on
-      // screen would otherwise disagree with the notes on disk.
-      blocked = CorruptDataFile(
-        path: path,
-        reason: 'The file could not be written (${error.osError?.message ?? 'unknown error'}).',
-        underlying: error,
-      );
+    } on FileSystemException {
+      // A write that could not land is not unreadable data.
+      //
+      // Putting the payload back is the important part: it means the value on
+      // screen is still the value queued for disk, so the next write carries it
+      // to disk rather than the retry finding nothing to do. `_pending ??=`
+      // because a keystroke may have arrived while this write was in flight, and
+      // that newer value is the one that should win.
+      _pending ??= payload;
+      _writeFailures++;
+      if (_writeFailures <= _writeRetryLadder.length) {
+        _retryTimer ??= Timer(_writeRetryLadder[_writeFailures - 1], () {
+          _retryTimer = null;
+          unawaited(_flush());
+        });
+      }
     }
   }
 

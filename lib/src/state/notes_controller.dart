@@ -140,7 +140,7 @@ class NotesController extends ChangeNotifier {
   /// go, and a note that exists on screen but not on disk is worse than no note.
   Note? createNote() {
     if (_corrupt != null) return null;
-    final now = DateTime.now();
+    final now = _nextStamp();
     final note = Note(
       id: _factory.next(),
       title: '',
@@ -154,6 +154,22 @@ class NotesController extends ChangeNotifier {
     _persist();
     notifyListeners();
     return note;
+  }
+
+  /// A timestamp guaranteed to sort newer than every note already held.
+  ///
+  /// The clock is only millisecond-resolution and the ordering tie-breaks by
+  /// id, which is random. Without this, editing a note in the same millisecond
+  /// another note was last touched would leave the edited note second instead of
+  /// first - a coin flip on a promise the whole UI makes, and the reason the
+  /// widget might not show the note you are looking at as its large card.
+  /// Stepping one millisecond past the current newest makes "the note you just
+  /// touched is on top" an invariant instead of a probability.
+  DateTime _nextStamp() {
+    final newest = _notes.isEmpty ? null : _notes.first.updatedAt;
+    final now = DateTime.now();
+    if (newest == null || now.isAfter(newest)) return now;
+    return newest.add(const Duration(milliseconds: 1));
   }
 
   /// Creates one empty note if there are none at all, which is what makes the
@@ -174,7 +190,7 @@ class NotesController extends ChangeNotifier {
 
     note.title = nextTitle;
     note.body = nextBody;
-    note.updatedAt = DateTime.now();
+    note.updatedAt = _nextStamp();
     _notes = NotesRepository.sorted(_notes);
     // The search filter depends on the text, so it has to be reapplied.
     _recomputeVisible();

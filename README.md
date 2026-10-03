@@ -7,6 +7,10 @@
   Windows 11 Pro. Nothing leaves this PC.
 </p>
 
+<p align="center">
+  <img src="docs/images/hero.png" alt="The WinNotes editor window beside the always-on-top widget, both showing the same notes" width="900">
+</p>
+
 ---
 
 WinNotes is a notes widget for Windows 11. It fills the one gap between
@@ -17,6 +21,70 @@ WinNotes is that idea, built for Windows.
 
 There is no account, no sign-up, no server, no cloud and no sync. Every note is
 one plain-text file in your own profile folder.
+
+## Clone it
+
+```
+git clone https://github.com/OttomanDeveloper/notewidget-windows.git
+cd notewidget-windows
+```
+
+Then install the Dart packages:
+
+```
+flutter pub get
+```
+
+## Build it for Windows
+
+You need two things installed:
+
+| Requirement | Notes |
+| --- | --- |
+| [Flutter SDK](https://docs.flutter.dev/get-started/install/windows) (stable) | The project targets Dart `^3.13.4`. Developed against Flutter 3.47. |
+| [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) | The **Desktop development with C++** workload. The runner is native C++, so Flutter's Windows build will not work without it. |
+
+Check both are visible to Flutter:
+
+```
+flutter doctor -v
+```
+
+You want `Flutter` and `Visual Studio - develop Windows apps` to both be green.
+`flutter doctor` is the command that actually fails the build; if it complains
+about the Visual Studio workload, the C++ bits of the toolchain are missing.
+
+Then:
+
+```
+flutter build windows --release
+```
+
+The result is a single folder:
+
+```
+build/windows/x64/runner/Release/
+```
+
+There is no installer and no install step. Copy that folder anywhere on the
+machine and it runs. It needs the whole folder, not just `win_notes.exe` -
+alongside it are the Flutter engine DLLs, `data/`, and the icon files.
+
+Run the tests with:
+
+```
+flutter test
+```
+
+## Run it from source
+
+```
+flutter run -d windows
+```
+
+Both windows appear: the widget on your desktop, the editor as a normal window.
+Press `Ctrl+Alt+N` from any application to bring the editor up without touching
+the tray.
 
 ## Two surfaces
 
@@ -30,24 +98,27 @@ on its own at boot.
 
 Neither is more real than the other. They are two views of the same notes.
 
-## Running it
+<details>
+<summary>Screenshots of each surface on its own</summary>
+
+<p align="center">
+  <img src="docs/images/editor.png" alt="The WinNotes editor: note list on the left, the selected note on the right" width="700">
+</p>
+
+<p align="center">
+  <img src="docs/images/widget.png" alt="The WinNotes widget: the focused note as a large card, the rest compact in one scrolling column" width="280">
+</p>
+
+</details>
+
+Both images are real captures of the app with sample notes, taken with
+`PrintWindow` rather than a screen grab so that nothing from the desktop behind
+them can leak in. Regenerate them with:
 
 ```
-flutter pub get
-flutter run -d windows
+pwsh -File tool/screenshots/capture.ps1 -OutDir docs/images
+pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Widget docs/images/widget.png -OutPath docs/images/hero.png
 ```
-
-Release build:
-
-```
-flutter build windows --release
-```
-
-Output lands in `build/windows/x64/runner/Release/`.
-
-There is no install step. Copying that folder anywhere on the machine is a
-complete installation, and Settings → Startup will point the autostart entry at
-wherever it actually lives.
 
 ## What it does
 
@@ -55,7 +126,12 @@ wherever it actually lives.
   recently edited and search covers titles and bodies, filtering as you type.
 - **Writing is immediate.** There is no save button. Changes are written as they
   are typed, debounced by a fraction of a second so a burst of keystrokes costs
-  one write rather than one per character.
+  one write rather than one per character. A burst that never pauses still lands
+  within 1.5 seconds, so continuous typing cannot outrun the disk forever.
+- **A failed write never costs you a note.** Replacing a file on Windows fails
+  outright if antivirus, Search Indexer or a backup tool happens to hold it open.
+  WinNotes retries with backoff and keeps the value queued. It never mistakes a
+  busy disk for unreadable notes.
 - **The widget comes back by itself** after every restart, via one entry under
   the per-user `Run` key. No administrator rights, and it shows up in Task
   Manager → Startup like any other app.
@@ -96,8 +172,11 @@ replacing it with an empty list, and says so on a screen offering a restore. Eve
 write is blocked while that is true. Notes that were never read are worse than
 notes that take a moment longer to open.
 
-You can open, read, back up, edit or delete any of these in Notepad while the app
-is running.
+Reading these, and copying them somewhere safe, works while the app is running -
+nothing here holds a lock, which is a deliberate choice rather than an accident.
+Hand-editing is where it gets sharp: `notes.json` belongs to the editor, so an
+edit you make in Notepad while the editor is open will be overwritten the next
+time you type. Close the editor first, or use the in-app plain-text export.
 
 ## The logo
 
@@ -150,8 +229,10 @@ lib/
       common/                confirm dialog, undo toast, empty states
 windows/runner/              native host: windows, tray, hotkey, autostart
 assets/brand/                logo sources and derived assets
-tool/brand/                  asset generator
-test/                        100 tests
+docs/images/                 README screenshots
+tool/brand/                  logo generator
+tool/screenshots/            screenshot capture and hero composition
+test/                        109 tests
 ```
 
 ### How the two windows work
@@ -165,11 +246,16 @@ They do not talk to each other directly. They share files: the editor writes
 no cross-isolate merge code, and why it is impossible for the two to disagree
 about a note.
 
-The native layer owns everything Windows-shaped: frameless layered windows, the
-acrylic backdrop, the tray icon, the global hotkey, the registry entry, and
-single-instance behaviour. `window_manager`-style plugins were not used, so the
-behaviours above are implemented directly against Win32 and can be tested by
-reading the code rather than by trusting a dependency.
+The watcher watches the *directory*, not the file. On Windows a file watcher
+holds a handle open on the file itself, which would block the other isolate's
+atomic rename, block your backup tool, and stop you copying your own notes out
+by hand.
+
+The native layer owns everything Windows-shaped: the frameless layered widget
+window, the acrylic backdrop, the tray icon, the global hotkey, the registry
+entry, and single-instance behaviour. `window_manager`-style plugins were not
+used, so the behaviours above are implemented directly against Win32 and can be
+tested by reading the code rather than by trusting a dependency.
 
 ## Tests
 
@@ -177,10 +263,11 @@ reading the code rather than by trusting a dependency.
 flutter test
 ```
 
-100 tests covering the parts where being wrong loses data: atomic writes and
-concurrent readers, the refusal to overwrite unreadable notes, undo ordering,
-search, the plain-text backup format including bodies that contain a divider,
-settings validation and clamping, and the widget's card rendering.
+109 tests covering the parts where being wrong loses data: atomic writes and
+concurrent readers, the refusal to overwrite unreadable notes, retrying a write
+the filesystem would not accept, undo ordering, search, the plain-text backup
+format including bodies that contain a divider, settings validation and
+clamping, and the widget's card rendering.
 
 ## Deliberately not built
 
@@ -189,3 +276,7 @@ dates, no encryption, no network code of any kind.
 
 `PROJECT.md` is the design document, including a section on things that were
 considered and left out, and why.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

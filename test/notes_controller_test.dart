@@ -46,13 +46,36 @@ void main() {
       await c.load();
       final first = c.createNote()!;
       first.body = 'first';
-      await Future<void>.delayed(const Duration(milliseconds: 10));
       final second = c.createNote()!;
       expect(c.notes.first.id, second.id);
 
       // Editing the older note brings it back to the front.
       c.updateNote(first.id, body: 'touched');
       expect(c.notes.first.id, first.id);
+    });
+
+    test('editing wins even when two notes share a timestamp', () async {
+      // No delay anywhere on purpose. The clock has millisecond resolution, so
+      // these three notes are very likely to land in the same one, and the
+      // ordering tie-break is by id - which is random. Before the controller
+      // guaranteed a strictly increasing stamp, this was a coin flip.
+      final c = controller();
+      await c.load();
+      final a = c.createNote()!;
+      final b = c.createNote()!;
+      final d = c.createNote()!;
+
+      var edit = 0;
+
+      for (final target in [a, b, d, a, b, d]) {
+        // Each edit must actually change something: updateNote deliberately
+        // ignores an edit that alters nothing, so a repeated body would leave
+        // the note exactly where it was and prove nothing.
+        edit++;
+        c.updateNote(target.id, body: 'edit $edit');
+        expect(c.notes.first.id, target.id,
+            reason: 'the note just edited must sort first, ties or not');
+      }
     });
 
     test('an edit that changes nothing does not reorder anything', () async {

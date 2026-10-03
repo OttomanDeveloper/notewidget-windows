@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A failed write no longer disables saving for the rest of the session.**
+  Replacing a file on Windows fails outright whenever Search Indexer, antivirus
+  or a backup tool happens to hold the destination open, which happens routinely
+  on a live desktop. That failure was being treated as unreadable data: every
+  subsequent write became a no-op and the app showed the "these notes are
+  corrupt, we will not overwrite them" screen. One moment of antivirus
+  interference could therefore cost every edit for the rest of the session.
+  A write that could not land now keeps its value queued and retries with
+  backoff. Only a genuinely unreadable file stops writes.
+- **Editing a note always moves it to the top of the list.** The clock has
+  millisecond resolution and the ordering tie-breaks by id, which is random, so
+  editing a note in the same millisecond another note was last touched left the
+  edited note second instead of first. Timestamps now step past the current
+  newest, making it an invariant rather than a coin flip. This also stopped the
+  widget from showing the note you were looking at as its large card.
+- **Test flakiness.** Two tests asserted on the exact millisecond a write landed
+  and on ordering that depended on the clock, so they failed intermittently
+  under parallel test runs.
+
 ## 1.0.0
 
 First release. Windows 11 Pro, Flutter, no third-party runtime dependencies.

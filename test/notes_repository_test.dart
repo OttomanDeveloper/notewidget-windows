@@ -35,6 +35,23 @@ void main() {
         updatedAt: DateTime(2026, 1, 1, 12, minute),
       );
 
+  /// Waits for a queued write to reach disk, up to a few seconds.
+  ///
+  /// Polling rather than asserting on the first millisecond is deliberate.
+  /// Replacing a file on Windows is itself allowed to fail transiently - Search
+  /// Indexer or antivirus holding the destination open - and AtomicJsonFile
+  /// retries that, so asserting immediately would be testing the filesystem
+  /// instead of the thing under test. Never calls flushPending, because the
+  /// tests that use this exist to prove the debounce ceiling alone is enough.
+  Future<bool> landed() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    while (DateTime.now().isBefore(deadline)) {
+      if (File(notesPath()).existsSync()) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+    }
+    return File(notesPath()).existsSync();
+  }
+
   group('loading', () {
     test('a missing file is a first run, not an error', () async {
       final result = await repo().load();
@@ -153,6 +170,29 @@ void main() {
   });
 
   group('AtomicJsonFile', () {
+    test('a write that cannot land neither blocks the file nor loses the value',
+        () async {
+      // A directory sitting where the file belongs makes every rename fail,
+      // which is the closest a test can get to antivirus holding the notes open.
+      final path = notesPath();
+      Directory(path).createSync();
+      final file = AtomicJsonFile(path, debounce: const Duration(milliseconds: 20));
+
+      file.write({'a': 1});
+      await file.flushPending();
+
+      expect(file.blocked, isNull,
+          reason: 'a failed write is not unreadable data, so it must not '
+              'trigger the refuse-to-overwrite block');
+
+      // Clear the obstruction. The value queued before the failure must still be
+      // there, otherwise the notes on screen have silently stopped saving.
+      Directory(path).deleteSync();
+      await file.flushPending();
+      expect(jsonDecode(File(path).readAsStringSync()), {'a': 1});
+      await file.dispose();
+    });
+
     test('a burst of writes coalesces into one file change', () async {
       final file = AtomicJsonFile(notesPath(), debounce: const Duration(milliseconds: 80));
       for (var i = 0; i < 50; i++) {
@@ -171,6 +211,10 @@ void main() {
       // writing anything at all. Each write arrives well inside the 250ms
       // debounce, so the trailing edge never fires and only the ceiling can.
       final file = AtomicJsonFile(notesPath());
+      // Registered before the assertions so the retry timer is always cleared,
+      // even when one of them throws and skips the dispose below.
+      addTearDown(file.dispose);
+
       final ceiling = const Duration(milliseconds: 1500);
 
       for (var i = 0; i < 40; i++) {
@@ -179,23 +223,22 @@ void main() {
         // Past the ceiling, the queued write has to have landed without anyone
         // calling flushPending.
         if ((i + 1) * 60 > ceiling.inMilliseconds) {
-          expect(File(notesPath()).existsSync(), isTrue,
+          expect(await landed(), isTrue,
               reason: 'nothing was written after ${(i + 1) * 60}ms of typing');
         }
       }
-      await file.dispose();
     });
 
     test('the ceiling fires even while writes keep arriving', () async {
       final file = AtomicJsonFile(notesPath());
+      addTearDown(file.dispose);
       for (var i = 0; i < 30; i++) {
         file.write({'i': i});
         await Future<void>.delayed(const Duration(milliseconds: 60));
       }
       // 30 * 60ms is 1800ms, comfortably past the 1500ms ceiling, so the file
       // must exist even though no write was ever allowed to settle.
-      expect(File(notesPath()).existsSync(), isTrue);
-      await file.dispose();
+      expect(await landed(), isTrue);
     });
 
     test('writes replace the file rather than appending to it', () async {
