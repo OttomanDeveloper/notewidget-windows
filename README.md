@@ -68,7 +68,9 @@ build/windows/x64/runner/Release/
 
 There is no installer and no install step. Copy that folder anywhere on the
 machine and it runs. It needs the whole folder, not just `win_notes.exe` -
-alongside it are the Flutter engine DLLs, `data/`, and the icon files.
+alongside it are the Flutter engine DLLs and the `data/` directory. The window
+and tray icons are compiled into the executable as resources, so there are no
+loose image files to go missing.
 
 Run the tests with:
 
