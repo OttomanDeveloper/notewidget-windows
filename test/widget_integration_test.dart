@@ -1,0 +1,267 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:win_notes/src/core/atomic_json_file.dart';
+import 'package:win_notes/src/data/note.dart';
+import 'package:win_notes/src/data/notes_repository.dart';
+import 'package:win_notes/src/data/settings_repository.dart';
+import 'package:win_notes/src/platform/shell_channel.dart';
+import 'package:win_notes/src/state/settings_controller.dart';
+import 'package:win_notes/src/state/widget_controller.dart' as wn;
+import 'package:win_notes/src/ui/theme.dart';
+import 'package:win_notes/src/ui/widget/widget_note_card.dart';
+import 'package:win_notes/src/ui/widget/widget_surface.dart';
+
+/// Integration tests for the widget surface itself.
+///
+/// These exist because of a specific past failure. [WidgetSurface] decides
+/// whether the focused card renders large, and the original version answered
+/// that by reading `ScrollPosition.maxScrollExtent` from inside the
+/// `ListView.separated` itemBuilder. That read happens during sliver layout,
+/// before a ScrollPosition has a viewport, so it threw "Null check operator used
+/// on a null value" and replaced the widget with a red error screen over the
+/// desktop.
+///
+/// The unit tests for [WidgetNoteCard] never caught it, because they exercise
+/// the card alone and the crash was in the list above it. These build the real
+/// [WidgetSurface] over a real file-backed controller so the whole subtree is
+/// actually laid out.
+void main() {
+  late Directory temp;
+
+  setUp(() {
+    // Required, not cosmetic. WidgetController.load() awaits its window
+    // configuration call, and a MethodChannel with nothing behind it returns a
+    // Future that never completes - which under flutter_test is not a failure
+    // but a test that hangs forever.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('dev.winnotes/shell'),
+      (call) async => null,
+    );
+    temp = Directory.systemTemp.createTempSync('winnotes_widget_test');
+  });
+
+  tearDown(() {
+    if (temp.existsSync()) temp.deleteSync(recursive: true);
+  });
+
+  Note note(String id, String title, String body, {int minute = 0}) => Note(
+        id: id,
+        title: title,
+        body: body,
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1, 12, minute),
+      );
+
+  /// Builds a controller over real files, the way the widget isolate does.
+  ///
+  /// Must be called inside [WidgetTester.runAsync]: these are real file writes,
+  /// and a widget test's fake clock never advances the real event loop, so
+  /// awaiting them outside it hangs.
+  ///
+  /// [watchExternal] is false because the real directory watchers use real
+  /// timers. The watchers themselves are covered by the repository tests, which
+  /// run outside the fake clock.
+  Future<wn.WidgetController> makeController(
+    WidgetTester tester,
+    List<Note> notes,
+  ) async {
+    final shell = ShellChannel();
+
+    final notesRepo = NotesRepository(
+      AtomicJsonFile('${temp.path}\\notes.json'),
+    );
+    await notesRepo.saveNow(notes);
+
+    final settings = SettingsController(
+      repository: SettingsRepository(
+        AtomicJsonFile('${temp.path}\\settings.json'),
+        shell,
+      ),
+      shell: shell,
+    );
+    await settings.load(animationsEnabled: true, acrylicSupported: false);
+
+    final controller = wn.WidgetController(
+      shell: shell,
+      settings: settings,
+      notesRepo: notesRepo,
+      widgetRepo: WidgetStateRepository(
+        AtomicJsonFile('${temp.path}\\widget_state.json'),
+      ),
+      selectionRepo: SelectionRepository(
+        AtomicJsonFile('${temp.path}\\selection.json'),
+      ),
+      isAutostartLaunch: false,
+      animationsEnabled: true,
+      acrylicSupported: false,
+      isSystemDark: false,
+      watchExternal: false,
+    );
+    await controller.load();
+    return controller;
+  }
+
+  Future<void> pumpSurface(
+    WidgetTester tester,
+    wn.WidgetController controller, {
+    required double width,
+    required double height,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme:
+            buildWinNotesTheme(brightness: Brightness.light, highContrast: false),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: width,
+              height: height,
+              child: WidgetSurface(
+                controller: controller,
+                brightness: Brightness.light,
+                acrylicAvailable: false,
+                onOpenEditor: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('renders a scrolling list of every note without throwing',
+      (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        note('a', 'Groceries', 'Milk, sourdough\nCheck the bike light'),
+        note('b', 'Reading list', 'The Design of Everyday Things', minute: -5),
+        note('c', 'Ideas', 'Widget per monitor?', minute: -12),
+      ]),
+    );
+    addTearDown(controller!.dispose);
+
+    // The regression this guards: building this subtree used to throw during
+    // sliver layout and paint a red error screen over the desktop.
+    await pumpSurface(tester, controller, width: 360, height: 420);
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(WidgetNoteCard), findsNWidgets(3));
+    expect(find.text('Groceries'), findsOneWidget);
+    expect(find.text('Reading list'), findsOneWidget);
+    expect(find.text('Ideas'), findsOneWidget);
+  });
+
+  testWidgets('the most recent note is the focused, large card',
+      (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        note('old', 'Older note', 'written earlier', minute: -30),
+        note('new', 'Newest note', 'written last', minute: 0),
+      ]),
+    );
+    addTearDown(controller!.dispose);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+
+    expect(controller.focusedNote!.id, 'new');
+    final cards =
+        tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
+    expect(cards.first.focused, isTrue);
+    expect(cards.first.roomy, isTrue);
+    expect(cards.first.note.id, 'new');
+    expect(cards.skip(1).every((c) => !c.roomy || !c.focused), isTrue);
+  });
+
+  testWidgets('selecting an older note from the widget makes it focused',
+      (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        note('old', 'Older note', 'written earlier', minute: -30),
+        note('new', 'Newest note', 'written last', minute: 0),
+      ]),
+    );
+    addTearDown(controller!.dispose);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    expect(controller.focusedNote!.id, 'new');
+
+    // Tapping a compact card focuses it, which is the point of showing every
+    // note in the widget rather than just the current one.
+    await tester.tap(find.text('Older note'));
+    await tester.pump();
+
+    expect(controller.focusedNote!.id, 'old');
+    final cards =
+        tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
+    expect(cards.first.note.id, 'old');
+    expect(cards.first.focused, isTrue);
+  });
+
+  testWidgets('falls back to compact cards when the widget is small',
+      (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        note('a', 'Groceries', 'a body long enough to need several lines'),
+      ]),
+    );
+    addTearDown(controller!.dispose);
+
+    // Below the threshold there is no room for a large card.
+    await pumpSurface(tester, controller, width: 150, height: 140);
+
+    expect(tester.takeException(), isNull);
+    final cards =
+        tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
+    expect(cards.single.roomy, isFalse);
+  });
+
+  testWidgets('shows a quiet line rather than crashing when notes vanish',
+      (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [note('a', 'Only note', 'text')]),
+    );
+    addTearDown(controller!.dispose);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    expect(find.byType(WidgetNoteCard), findsOneWidget);
+
+    // The last note is deleted while the widget is on screen.
+    File('${temp.path}\\notes.json').writeAsStringSync(
+      '{"format":"winnotes","version":1,"notes":[]}',
+    );
+    await tester.runAsync(() => controller.load());
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    expect(tester.takeException(), isNull);
+    expect(find.text('No notes'), findsOneWidget);
+  });
+
+  testWidgets('a list too long for the widget scrolls', (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        for (var i = 0; i < 30; i++)
+          note('n$i', 'Note $i', 'body $i', minute: -i),
+      ]),
+    );
+    addTearDown(controller!.dispose);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    expect(tester.takeException(), isNull);
+
+    // The newest is on screen; the oldest is not, because the widget is short.
+    expect(find.text('Note 0'), findsOneWidget);
+    expect(find.text('Note 29'), findsNothing);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Note 29'), findsOneWidget);
+  });
+}

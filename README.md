@@ -1,178 +1,191 @@
-<div align="center">
-  <img src="assets/brand/winnotes_wordmark_800x240.svg" alt="WinNotes" width="420" />
+<p align="center">
+  <img src="assets/brand/winnotes_wordmark_light_800x240.png" alt="WinNotes" width="400">
+</p>
 
-  <p><strong>Desktop notes that stay on your screen and come back on every boot.</strong></p>
-
-  <p>
-    <a href="#what-it-does">What it does</a> •
-    <a href="#why-not-sticky-notes">Why</a> •
-    <a href="#features">Features</a> •
-    <a href="#privacy">Privacy</a> •
-    <a href="#build">Build</a> •
-    <a href="PROJECT.md">Design doc</a>
-  </p>
-</div>
+<p align="center">
+  Desktop notes that stay on the screen and come back by themselves.<br>
+  Windows 11 Pro. Nothing leaves this PC.
+</p>
 
 ---
 
-**WinNotes** is a desktop notes widget for **Windows 11 Pro**. A frameless note
-floats on top of your desktop, and it reappears by itself every time the PC
-boots.
+WinNotes is a notes widget for Windows 11. It fills the one gap between
+Microsoft Sticky Notes and an Android widget: Sticky Notes is a good app trapped
+inside an ordinary window, so it gets covered, gets closed, and never returns on
+its own. On a phone, notes live on the home screen and survive everything.
+WinNotes is that idea, built for Windows.
 
-It fills the one gap between Microsoft Sticky Notes and an Android home-screen
-widget. Sticky Notes is a genuinely good app trapped inside an ordinary window,
-so it gets covered, gets closed, and never comes back on its own. On a phone,
-notes live on the home screen and survive everything. WinNotes is that same idea,
-built for Windows.
+There is no account, no sign-up, no server, no cloud and no sync. Every note is
+one plain-text file in your own profile folder.
 
-Built with **Flutter** and a native **Win32** runner. No account, no server, no
-network code at all.
+## Two surfaces
 
-## What it does
+**The widget** is a frameless window that sits on the desktop, above ordinary
+windows, with no title bar and no taskbar button. Clicking it never steals the
+caret from whatever you are typing in. It survives every restart.
 
-Two surfaces, one set of notes:
+**The editor** is an ordinary window with an ordinary title bar, because it is
+the one surface you are deliberately looking at. You ask for it; it never appears
+on its own at boot.
 
-| Surface | What it is |
-| --- | --- |
-| **The widget** | A frameless, transparent, always-on-top overlay window on the desktop. No title bar, no taskbar button. It never steals focus while you type. |
-| **The editor** | An ordinary window that appears only when you ask for it (`Ctrl+Alt+N` from anywhere, including full-screen apps). List on one side, editor on the other. |
+Neither is more real than the other. They are two views of the same notes.
 
-Notes are plain text with a separate title line, written to disk the moment you
-type. There is no save button, because there is no save step to miss.
-
-## Why not just Sticky Notes?
-
-Sticky Notes already exists, is free, and is good. It cannot do the two things
-WinNotes is built around:
-
-1. **It vanishes when you close it.**
-2. **It never comes back on its own after a reboot.**
-
-WinNotes closes its windows without ending the app, and registers a per-user
-`Run` entry so the widget comes back after every restart. Quitting is explicit
-and lives only in the tray menu, where it asks first.
-
-## Features
-
-- **Always-on-top widget** — frameless and transparent, holds its place above
-  ordinary windows without stealing the caret mid-sentence.
-- **Docks to the nearest screen edge** by default, and stays where you drag it
-  across restarts. Resizable from any corner.
-- **Per-monitor position** — it returns to the monitor you left it on. Unplug
-  that monitor and it moves to the nearest remaining screen instead of
-  disappearing somewhere you can never click it again.
-- **Autostart that you can see** — one entry under the per-user `Run` key. No
-  admin rights, and it shows up in Task Manager → Startup where you can disable
-  it the way you would any other app. The toggle removes the entry rather than
-  leaving it disabled somewhere.
-- **Global hotkey** — `Ctrl+Alt+N` by default, changeable in Settings, and the
-  app tells you if another program already claimed the combination.
-- **Tray menu** — show/hide the widget, open the editor, open Settings, quit.
-  Closing a window never ends the app.
-- **Single instance** — launching it again raises the existing widget instead of
-  stacking a second copy on top.
-- **Search** — matches title and body, filters as you type.
-- **Plain-text export/import** — deliberately boring format so a backup taken
-  years from now is still readable without this app.
-- **Theme follows Windows** — Light, Dark, or System, with an acrylic backdrop
-  behind the widget that picks up your wallpaper and taskbar. Falls back to a
-  plain translucent surface where Windows cannot provide it.
-- **Respects reduced motion** when Windows reports it.
-
-## Privacy
-
-WinNotes has **no network code**. No telemetry, no analytics, no update check, no
-crash upload — which also means nobody to send your data to and nobody to call
-for help.
-
-Every note is a plain-text file on your PC, at `%APPDATA%\WinNotes\notes.json`,
-in your own user profile folder:
+## Running it
 
 ```
-%APPDATA%\WinNotes\
-├── notes.json          ← your notes, one file you can read or delete
-├── settings.json       ← appearance, startup, hotkey, storage location
-├── widget_state.json   ← where the widget was left, and on which monitor
-└── selection.json      ← which note is focused, shared by both surfaces
-```
-
-Notes are written on change with a short debounce, via a write-temp-then-rename,
-so a half-finished write can never leave the notes broken. **If the file is
-unreadable or not valid JSON, the app refuses to start rather than overwriting
-notes it never read** — and offers the file as an import target so you can
-restore a backup by hand.
-
-Losing notes is possible in exactly one way: deleting that folder by hand, the
-same as any local app. Nothing in the app destroys a note without being asked.
-
-## Build
-
-Requires **Flutter** with the **Windows** desktop toolchain and **Visual Studio
-2022** with the *Desktop development with C++* workload.
-
-```bash
-git clone https://github.com/OttomanDeveloper/notewidget-windows
-cd notewidget-windows
 flutter pub get
 flutter run -d windows
 ```
 
 Release build:
 
-```bash
+```
 flutter build windows --release
 ```
 
-The executable lands in `build\windows\x64\runner\Release\win_notes.exe`. To make
-the widget survive a reboot, point the autostart entry at the *installed* copy
-(under `%LOCALAPPDATA%\Programs`), not at the build directory — the in-app
-toggle does this for you once the app is running from an install.
+Output lands in `build/windows/x64/runner/Release/`.
 
-Run the tests with:
+There is no install step. Copying that folder anywhere on the machine is a
+complete installation, and Settings → Startup will point the autostart entry at
+wherever it actually lives.
 
-```bash
-flutter test
+## What it does
+
+- **Notes** are a title and a body. Nothing else, ever. They sort by most
+  recently edited and search covers titles and bodies, filtering as you type.
+- **Writing is immediate.** There is no save button. Changes are written as they
+  are typed, debounced by a fraction of a second so a burst of keystrokes costs
+  one write rather than one per character.
+- **The widget comes back by itself** after every restart, via one entry under
+  the per-user `Run` key. No administrator rights, and it shows up in Task
+  Manager → Startup like any other app.
+- **`Ctrl+Alt+N`** opens the editor from any application, full-screen ones
+  included. Changeable in Settings, and a collision with another app's shortcut
+  is reported rather than silently ignored.
+- **The tray icon is the app's home.** Show or hide the widget, open the editor,
+  quit. Quit is the only thing that ends the app, and it asks first.
+- **Acrylic backdrop**, so the widget picks up the wallpaper the way native
+  Windows 11 surfaces do, falling back to a plain translucent surface where
+  Windows cannot provide it.
+- **Per-monitor position.** The widget returns to the screen you left it on. If
+  that monitor is unplugged, it comes back on the nearest remaining one instead
+  of somewhere it can never be clicked again.
+- **Plain-text export and import.** The format is deliberately boring, so a
+  backup taken years from now is still readable without this app.
+
+## Where the notes live
+
+`%APPDATA%\WinNotes\`
+
+| File | Written by | Purpose |
+| --- | --- | --- |
+| `notes.json` | the editor | Every note. The only file that matters. |
+| `settings.json` | the editor | Appearance, startup, hotkey, storage location. |
+| `widget_state.json` | the widget | Where the widget was left, and on which monitor. |
+| `selection.json` | either | Which note is focused. |
+
+One writer per file. That is the whole concurrency story: there is no merge
+logic anywhere in this project, because there is never a moment when two
+surfaces write the same file.
+
+`notes.json` is written whole, via a temporary file and an atomic replace, so a
+kill mid-sentence cannot leave it half-written.
+
+**If `notes.json` cannot be read, WinNotes refuses to start** rather than
+replacing it with an empty list, and says so on a screen offering a restore. Every
+write is blocked while that is true. Notes that were never read are worse than
+notes that take a moment longer to open.
+
+You can open, read, back up, edit or delete any of these in Notepad while the app
+is running.
+
+## The logo
+
+Deep indigo plate, off-white note card, a coral caret. The caret is the accent
+because it is the part of the mark that means *being written right now*.
+
+| File | Use |
+| --- | --- |
+| `assets/brand/winnotes_mark.svg` | Primary mark. 1024 master grid. |
+| `assets/brand/winnotes_mark_small.svg` | Small-size mark, for 16-32px. |
+| `assets/brand/winnotes_tray_light.ico` | Tray, light taskbar. |
+| `assets/brand/winnotes_tray_dark.ico` | Tray, dark taskbar. |
+| `assets/brand/winnotes_wordmark*.svg` | Lockups, light and dark surfaces. |
+| `assets/brand/winnotes.ico` | App icon, 256 down to 16. |
+
+Regenerate every derived file from the SVG masters:
+
+```
+pwsh -File tool/brand/generate_assets.ps1
 ```
 
-### Project layout
+The script rasterises with headless Chrome and packs the `.ico` files itself.
+It also **verifies every icon frame** by re-reading each embedded PNG's IHDR
+header and comparing its real dimensions against the directory entry, because a
+malformed entry produces a file that looks fine and renders as garbage at one
+specific size.
+
+Two details worth knowing if you edit the artwork:
+
+- **Small sizes are redrawn, not scaled.** `winnotes_mark_small.svg` is a
+  separately drawn, much heavier mark. The full-detail master turns to mush
+  below 32px.
+- **Both wordmarks ship.** The near-white-on-dark lockup is invisible on a white
+  page, so a light-surface variant exists for docs.
+
+## Layout
 
 ```
 lib/
-├── main.dart                 # one entrypoint, both surfaces
-└── src/
-    ├── core/                 # app paths, atomic JSON writes
-    ├── data/                 # Note, repositories, settings, backup format
-    ├── platform/             # Dart side of the runner channel
-    ├── state/                # notes / settings / widget controllers
-    └── ui/                   # editor, widget, settings, theme
-windows/runner/               # native Win32 host: windows, tray, hotkey, acrylic
-tool/brand/                   # icon and wordmark generation
+  main.dart                  entry for both surfaces
+  src/
+    core/                    paths, atomic JSON file with debounce and watch
+    data/                    note model, repositories, backup format
+    platform/                typed wrapper over the runner's method channel
+    state/                   notes, settings and widget controllers
+    ui/
+      editor/                the editor window
+      widget/                the widget window
+      settings/              the settings dialog
+      common/                confirm dialog, undo toast, empty states
+windows/runner/              native host: windows, tray, hotkey, autostart
+assets/brand/                logo sources and derived assets
+tool/brand/                  asset generator
+test/                        100 tests
 ```
 
-The native runner creates **two Windows windows**, each with its own Flutter
-engine and isolate, and both call `main()`. A `--surface` argument decides which
-one is booting, so there is no second entrypoint to keep in sync.
+### How the two windows work
 
-## Not included, on purpose
+Each surface is a separate top-level Win32 window with its own Flutter engine and
+its own Dart isolate. Both call the same `main()`; a `--surface` argument decides
+which one is running.
 
-No due dates, reminders, priorities, or projects. No folders, tags, backlinks,
-markdown, or formatting toolbar. No clipboard watching, no screen annotation, no
-share links. No encryption at rest — notes sit in your own profile folder, which
-Windows already protects with your account password, so a second layer would
-only add a key to store, back up, and lose.
+They do not talk to each other directly. They share files: the editor writes
+`notes.json`, the widget watches it and re-reads on change. That is why there is
+no cross-isolate merge code, and why it is impossible for the two to disagree
+about a note.
 
-If you need notes that hold genuinely sensitive material, encryption becomes the
-first thing to build, and it should be built properly rather than bolted on.
+The native layer owns everything Windows-shaped: frameless layered windows, the
+acrylic backdrop, the tray icon, the global hotkey, the registry entry, and
+single-instance behaviour. `window_manager`-style plugins were not used, so the
+behaviours above are implemented directly against Win32 and can be tested by
+reading the code rather than by trusting a dependency.
 
-See [PROJECT.md](PROJECT.md) for the full design rationale, the open decisions,
-and what is planned next (multiple widgets at once, desktop layer mode via
-`SetParent`, note pinning, Markdown export).
+## Tests
 
-## Status
+```
+flutter test
+```
 
-Early and actively developed. The feature set described in `PROJECT.md` is the
-target; see the git history and open issues for where it actually is.
+100 tests covering the parts where being wrong loses data: atomic writes and
+concurrent readers, the refusal to overwrite unreadable notes, undo ordering,
+search, the plain-text backup format including bodies that contain a divider,
+settings validation and clamping, and the widget's card rendering.
 
-## License
+## Deliberately not built
 
-MIT — see [LICENSE](LICENSE).
+No accounts, no sync, no Markdown, no folders, no tags, no reminders, no due
+dates, no encryption, no network code of any kind.
+
+`PROJECT.md` is the design document, including a section on things that were
+considered and left out, and why.

@@ -1,52 +1,43 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+# WinNotes
+# Notes and settings live here. Never commit them; they are the user's own.
+*.db
+*.sqlite
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Build output
+build/
 .dart_tool/
-.flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
-/coverage/
+*.lock
+!pubspec.lock
 
-# Symbolication related
-app.*.symbols
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
 
-# Obfuscation related
-app.*.map.json
+# Windows build artefacts
+windows/flutter/ephemeral/
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugins.cmake
+windows/flutter/generated_platform_sensitive_plugin.h
+windows/flutter/.last_build_id
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# Generated. Rebuilt by `pwsh -File tool/brand/generate_assets.ps1`,
+# which is the only thing that should write these.
+assets/brand/*.png
+assets/brand/*.ico
 
-# Widget Preview related
-.widget_preview/
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Never commit real note data, in case notes.json is ever opened in the tree
-notes.json
-*.backup.txt
+# Logs and temporary files
+*.log
+*.bak
+*.tmp

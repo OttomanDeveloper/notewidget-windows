@@ -25,13 +25,19 @@ class WidgetController extends ChangeNotifier {
     required this.animationsEnabled,
     required this.acrylicSupported,
     required this.isSystemDark,
+    bool watchExternal = true,
   })  : _shell = shell,
         _settings = settings,
         _notesRepo = notesRepo,
         _widgetRepo = widgetRepo,
         _selectionRepo = selectionRepo {
-    _selectionRepo.watch(_onSelectionChangedExternally);
-    _notesRepo.watch(_onNotesChangedExternally);
+    // Always true in the app: the widget surface has no other way to learn that
+    // the editor changed something. Tests turn it off because the directory
+    // watchers use real timers that flutter_test's fake clock never advances.
+    if (watchExternal) {
+      _selectionRepo.watch(_onSelectionChangedExternally);
+      _notesRepo.watch(_onNotesChangedExternally);
+    }
     settings.addListener(_onSettingsChanged);
   }
 

@@ -51,12 +51,16 @@ Now each feature with a little more detail.
 - Notes sort by the most recently edited, always, with no sorting options to get wrong.
 - Search matches both title and body, and the note list filters as the user types. There is no search history and no saved query.
 - A note with an empty body still exists and still counts as a note. Deleting the last character of a body is not the same as deleting the note.
-- Deleting a note asks for confirmation, every time, because the widget is a place people forget things exist. There is no Recently Deleted, no undo window, and no trash.
+- Deleting a note asks for confirmation, every time, because the widget is a place people forget things exist. There is no Recently Deleted and no trash, but there is a short undo window afterwards.
+- Undo is time-boxed at a few seconds and is never persisted. It puts the note back in its original position in the most-recently-edited order, not at the top of the list. Only one deletion is undoable at a time, because holding two would make the undo control ambiguous. A second deletion replaces the first rather than queueing behind it.
 - A note deleted while the widget is on screen disappears from it immediately, rather than lingering until a refresh.
 
 ## The widget
 
 - The widget is a frameless, transparent window sitting on top of the desktop. It has no title bar, no border, and no taskbar button, so nothing about it looks like a window unless the user is deliberately dragging it.
+- The widget shows every note in one scrolling column, not just one. The note that is selected in the editor, or the most recent one if nothing is picked, is the focused card and is rendered large; every other note is a compact card above or below it. This is the answer to the question about mixed note sizes: there is exactly one large card and every other card is small, so sizes never have to be reconciled. Clicking a card focuses it.
+- If the widget is too small for the large card to show anything readable, every card renders compact. The decision comes from the window's own size rather than from scroll metrics, which cannot be read while a sliver is being laid out.
+- An empty widget is never shown. Once the last note with text is deleted, the widget hides itself rather than leaving a blank card on the desktop.
 - It is always visible. That is the whole feature, so it holds its position above ordinary windows rather than getting buried behind whatever is in front of it.
 - It never takes focus on its own. Clicking it while typing in another program does not steal the caret away mid-sentence, which is what makes it usable as a permanent fixture.
 - The user drags it anywhere, and it stays where it is left, across restarts.
@@ -139,10 +143,20 @@ Ideas not yet built. Once one is built, it moves into the section that owns it.
 
 ## Decisions Pending
 
-- **Plain text only, or Markdown with a preview:** included above as plain text, because the widget has room for exactly one rendering and plain text is the one that looks right there. Markdown with a live preview in the editor would still leave the widget guessing. Worth confirming whether people actually want formatting before any of it is built.
 - **Encryption at rest:** not included. Notes sit in the user's own profile folder, which Windows already protects with the account password, so a second encryption layer would add a key to store, back up, and lose. The cost is that anyone who can read the profile folder can read the notes in plain text. If notes are expected to hold genuinely sensitive material, this becomes the first thing to build and it should be built properly rather than bolted on.
 - **Deleting a note with no undo:** included above as confirmation and nothing more. A widget is somewhere people leave things without thinking, so some notes will be deleted by accident. A Recently Deleted list would fight the plainness the app is built around, but the alternative is genuinely unrecoverable, so it is worth deciding on purpose rather than by default.
-- **One widget showing one note:** included above, with the note chosen by recency. It keeps the window handling simple and the widget small. Showing several notes in one widget is the obvious alternative and is a design problem rather than a technical one, since it decides what happens when they are different sizes.
+- **One widget showing one note, or all of them:** resolved in favour of showing all of them, with one focused card rendered large and the rest compact. Showing every note means the widget is useful without opening the editor at all, which is the whole premise; the cost is that the widget cannot be shrunk to nothing, because a list of notes needs somewhere to put them. The mixed-size problem is solved by there being exactly one large card, so there is never a case where two notes compete for different sizes.
+- **Plain text only, or Markdown with a preview:** resolved as plain text only. The widget renders plain text, and a Markdown editor would leave the widget still guessing how to render it. Markdown export remains listed under Later, since the plain-text export is already most of the way there.
+- **Deleting a note with no undo:** resolved as confirmation plus a short undo window rather than either extreme. No trash, because a Recently Deleted list would fight the plainness the app is built around, but also no permanent unrecoverability, because a widget is exactly where people leave things without thinking.
 - **Desktop layer versus always on top:** always on top is included, because a note the user cannot see is not a note. The desktop layer is listed under Later. A middle option, staying above other windows but below full-screen apps, may well turn out to be the better default, and it has not been tested against how Windows handles full-screen games.
 - **Single instance behaviour:** included above as raising the existing widget. Launching a second copy with its own notes was considered and rejected, since two apps writing the same file would eventually lose one set of changes, and a second widget showing stale notes would be worse than no second widget.
 - **Whether the widget should remember a per-monitor position or a single position:** per-monitor is included, since a widget that returns to the same screen after a reboot is the behaviour that makes it feel like a fixture. A single saved position across all monitors is simpler and less surprising when monitors come and go. Worth confirming which one people actually want before it hardens.
+
+## Built
+
+The design above is implemented. `README.md` covers how to run it and where the files live; `CHANGELOG.md` lists what shipped.
+
+Two structural decisions were made while building that the notes above do not spell out, because they are consequences rather than choices:
+
+- **Each surface is its own Flutter isolate, and they share state through files.** One writer per file: the editor writes `notes.json` and `settings.json`, the widget writes `widget_state.json`, and `selection.json` is the only one either side touches. This removes the need for any cross-isolate merge logic, which is where multi-window Flutter apps usually get complicated, and it means the widget cannot ever disagree with the editor about a note.
+- **The native layer owns every Windows-specific behaviour directly, with no third-party packages.** Frameless layered windows, the acrylic backdrop, the tray icon, the global hotkey, the registry entry and single-instance handling are all written against Win32 in `windows/runner/`, rather than assembled from window-management plugins. The cost is more code in the runner; the benefit is that behaviours like "a hotkey collision is reported rather than silently ignored" are verifiable by reading the code instead of by trusting a dependency.
