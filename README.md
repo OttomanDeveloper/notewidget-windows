@@ -22,20 +22,49 @@ WinNotes is that idea, built for Windows.
 There is no account, no sign-up, no server, no cloud and no sync. Every note is
 one plain-text file in your own profile folder.
 
-## Clone it
+## Download and install
+
+Grab the latest release from
+**[the Releases page](https://github.com/OttomanDeveloper/notewidget-windows/releases)**.
+Every release has two downloads:
+
+| Download | What it is |
+| --- | --- |
+| `WinNotes-<version>-windows-x64.zip` | Portable. Unzip anywhere and run `win_notes.exe`. No installer, no registry entries, nothing to clean up. |
+| `WinNotes-<version>-setup.exe` | Installs per-user into `%LOCALAPPDATA%\Programs\WinNotes`, adds a Start menu entry, and optionally a startup entry and desktop shortcut. |
+
+The installer asks for **no administrator rights**, because the app never needs
+any: its notes live in your own profile folder and its startup entry is under
+your own account.
+
+Both are **not code-signed**, so Windows SmartScreen will show
+*"Windows protected your PC"* on first run. Choose **More info → Run anyway**.
+This is the normal consequence of an unsigned open-source build; it is not a
+virus warning specific to this project. If you would rather not click through
+it, build it yourself from the source below.
+
+### Uninstalling
+
+Use the uninstaller in the Start menu group, or uninstall from
+**Settings → Apps**. It removes the program and the startup entry.
+
+**Your notes are never deleted.** They live in `%APPDATA%\WinNotes` and belong to
+you, not to the installation. Delete that folder yourself if you want them gone.
+
+### Upgrading
+
+Install the new version over the old one. Your notes and settings are untouched,
+because they are in `%APPDATA%` and not in the program folder.
+
+## Build it from source
+
+Clone it:
 
 ```
 git clone https://github.com/OttomanDeveloper/notewidget-windows.git
 cd notewidget-windows
-```
-
-Then install the Dart packages:
-
-```
 flutter pub get
 ```
-
-## Build it for Windows
 
 You need two things installed:
 
@@ -254,10 +283,13 @@ lib/
       settings/              the settings dialog
       common/                confirm dialog, undo toast, empty states
 windows/runner/              native host: windows, tray, hotkey, autostart
+installer/winnotes.iss       setup.exe definition
 assets/brand/                logo sources and derived assets
 docs/images/                 README screenshots
 tool/brand/                  logo generator
+tool/release/                packaging: builds, verifies, zips, compiles setup.exe
 tool/screenshots/            screenshot capture and hero composition
+.github/workflows/           CI on every push, release on a version tag
 test/                        113 tests
 ```
 
@@ -309,6 +341,33 @@ dates, no encryption, no network code of any kind.
 
 `PROJECT.md` is the design document, including a section on things that were
 considered and left out, and why.
+
+## Reporting a bug
+
+Use the **Report a bug** button on the
+[issues page](https://github.com/OttomanDeveloper/notewidget-windows/issues).
+The form asks for the version and what you were doing, which is nearly always
+what is needed to reproduce a problem.
+
+Two things worth knowing before you file one:
+
+- **Try a fresh profile first.** Close WinNotes, rename `%APPDATA%\WinNotes` to
+  `WinNotes.old`, and launch again. That single step tells us whether it is a
+  data problem or a code problem, and it is the most useful thing you can do
+  before reporting.
+- **`notes.json` is worth pasting** once you have removed anything you would not
+  want published. It is plain JSON, it reproduces the exact state the app was
+  in, and issues are public the moment you submit.
+
+**[ISSUE_REPORTING.md](ISSUE_REPORTING.md)** covers all of it in detail, including
+what to leave out of a screenshot and how to report a security problem privately
+instead of in public.
+
+## Contributing
+
+Patches are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the build
+setup, the two design rules most mistakes break (one writer per file, and the
+surfaces never talking directly), and how releases are cut.
 
 ## Licence
 

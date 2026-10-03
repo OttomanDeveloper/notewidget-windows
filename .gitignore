@@ -5,6 +5,7 @@
 
 # Build output
 build/
+dist/
 .dart_tool/
 .packages
 .pub-cache/

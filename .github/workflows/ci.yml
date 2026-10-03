@@ -1,0 +1,41 @@
+name: CI
+
+# Every push and every pull request. The point is to catch a broken build before
+# it can be tagged, since the tag is what publishes to the Releases page.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Analyse and test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyse
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build
+        # Compiles the native runner too, which is where most Windows-specific
+        # breakage shows up. The Dart tests never link C++.
+        run: flutter build windows --release

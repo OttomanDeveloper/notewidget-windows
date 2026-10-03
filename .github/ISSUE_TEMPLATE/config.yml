@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a bug
+    url: https://github.com/OttomanDeveloper/notewidget-windows/issues/new?template=bug_report.yml
+    about: Use the form. It asks for the version and the notes file, which are almost always what is needed to reproduce a problem.
+  - name: How to report an issue, in detail
+    url: https://github.com/OttomanDeveloper/notewidget-windows/blob/main/ISSUE_REPORTING.md
+    about: What to include, what to check first, and why your notes.json is safe to share after a moment's thought.
+  - name: Security vulnerability
+    url: https://github.com/OttomanDeveloper/notewidget-windows/security/advisories/new
+    about: Report privately, so a fix can be prepared before it becomes public. Do not open a public issue.

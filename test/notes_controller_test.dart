@@ -9,17 +9,37 @@ import 'package:win_notes/src/state/notes_controller.dart';
 void main() {
   late Directory temp;
 
+  // Every controller this file builds, so tearDown can drain them.
+  final built = <NotesController>[];
+
   setUp(() {
     temp = Directory.systemTemp.createTempSync('winnotes_ctrl_test');
+    built.clear();
   });
 
-  tearDown(() => temp.deleteSync(recursive: true));
+  // Controllers are registered rather than disposed per test because a queued
+  // write outlives the test that made it, and AtomicJsonFile creates its parent
+  // directory before every write. Deleting the temp directory first therefore
+  // raced the pending write, which recreated the directory and left it behind -
+  // hundreds of them, in the developer's %TEMP%, with every test still green.
+  tearDown(() async {
+    for (final c in built) {
+      await c.flush();
+      c.dispose();
+    }
+    built.clear();
+    if (temp.existsSync()) temp.deleteSync(recursive: true);
+  });
 
-  NotesController controller() => NotesController(
-        repository: NotesRepository(
-          AtomicJsonFile('${temp.path}\\notes.json'),
-        ),
-      );
+  NotesController controller() {
+    final c = NotesController(
+      repository: NotesRepository(
+        AtomicJsonFile('${temp.path}\\notes.json'),
+      ),
+    );
+    built.add(c);
+    return c;
+  }
 
   group('creating and editing', () {
     test('the first launch has a note ready to type into', () async {

@@ -1,0 +1,98 @@
+name: Bug report
+description: Something WinNotes did not do
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >
+        What you did, and what you expected instead. "I clicked New note and no
+        note appeared" is far easier to act on than "it is broken".
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, starting from a fresh launch if you can.
+      placeholder: |
+        1. Launch WinNotes
+        2. Click New note
+        3. Type something
+        4. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: WinNotes version
+      description: From Settings, or the file properties of win_notes.exe.
+      placeholder: 1.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11 Pro (24H2 or later)
+        - Windows 11 Pro (21H2 to 23H2)
+        - Windows 11 Home
+        - Windows 10
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which part of the app
+      options:
+        - The widget (the panel on the desktop)
+        - The editor window
+        - Settings
+        - The tray icon
+        - Startup or autostart
+        - Installation or uninstallation
+        - Something else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: corrupt
+    attributes:
+      label: Did any screen say the notes could not be read?
+      description: >
+        That refusal screen is a serious failure mode. It should be reported every
+        time it appears.
+      options:
+        - "No"
+        - "Yes, WinNotes refused to start"
+        - "Yes, it offered a restore instead"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes-json
+    attributes:
+      label: Contents of notes.json
+      description: >
+        The contents of %APPDATA%\WinNotes\notes.json, if it is readable. This is
+        the most useful thing in a bug report because it reproduces the exact
+        state the app was in. Remove anything you would not want published -
+        issues are public the moment you submit, and this project has no account
+        system.
+      render: json
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >
+        Screenshots are welcome, cropped to the widget or editor. A full-desktop
+        screenshot usually contains other people's window titles.
+      render: text

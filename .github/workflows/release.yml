@@ -1,0 +1,67 @@
+name: Release
+
+# Tag-driven, deliberately. Nothing is published from a branch, so what is on
+# the Releases page is always exactly what a tag points at.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Only what creating a release needs. A release workflow that can write to the
+# repository at large is a much better prize for a leaked token.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Inno Setup
+        # Needed for the setup.exe. The packaging script falls back to the
+        # portable ZIP alone if it is missing, so this is belt and braces.
+        run: choco install innosetup -y --no-progress
+
+      - name: Check the tag matches the version in pubspec.yaml
+        shell: pwsh
+        run: |
+          # The exe's version resource and the artifact filenames both come from
+          # pubspec.yaml. Without this check a tag called v1.2.0 could publish a
+          # binary that calls itself 1.1.0, and nobody would notice until a bug
+          # report named the wrong version.
+          $pubspec = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+') |
+            Select-Object -First 1).Matches[0].Groups[1].Value -replace '\+.*$', ''
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          if ($pubspec -ne $tag) {
+            Write-Host "pubspec.yaml says '$pubspec' but the tag says '$tag'"
+            Write-Host 'Set version: in pubspec.yaml to the tag, or tag the commit that already has it.'
+            exit 1
+          }
+          Write-Host "tag v$tag matches pubspec.yaml"
+
+      - name: Build the artifacts
+        # Runs the tests and the analyzer, launches the staged build to prove it
+        # starts, and verifies the ZIP actually contains the engine. Refuses to
+        # finish on any of those.
+        run: pwsh -File tool/release/package.ps1
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*-setup.exe
+          # Notes come from the merged pull requests, so the release page has a
+          # changelog without anyone maintaining one by hand.
+          generate_release_notes: true
+          fail_on_unmatched_files: true

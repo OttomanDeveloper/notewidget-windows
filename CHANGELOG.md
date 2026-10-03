@@ -1,9 +1,26 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 ### Added
 
+- **Downloadable releases.** Every tagged version publishes a portable ZIP and a
+  per-user `setup.exe` to the Releases page. Pushing a `v*` tag is all it takes:
+  the workflow checks the tag against `pubspec.yaml`, runs the tests, builds,
+  launches the staged build to prove it starts, verifies the ZIP really contains
+  the Flutter engine, and compiles the installer. If any of that fails, nothing
+  is published.
+- **The installer asks for no administrator rights.** It installs into
+  `%LOCALAPPDATA%\Programs\WinNotes` rather than Program Files, because the app
+  keeps its notes in `%APPDATA%` and its startup entry under `HKCU`, and its
+  whole promise is that it needs no elevation. Uninstalling removes the program
+  and the startup entry, and never touches your notes.
+- **A structured bug report form**, and [ISSUE_REPORTING.md] explaining what to
+  include — particularly why trying a fresh `%APPDATA%\WinNotes` first, and why
+  pasting `notes.json` after checking it, is worth more than anything else in a
+  report.
+- **[CONTRIBUTING.md]**, covering the build setup, the two design rules most
+  mistakes break, and how a release is cut.
 - **Lock the widget in place.** New switch in Settings → Widget, on by default.
   While it is on, dragging the widget does nothing, so a stray drag across the
   card cannot move a widget that was deliberately placed. Turning it off makes
@@ -20,9 +37,18 @@
 - The widget no longer moves when dragged, unless the lock is turned off. This
   is a behaviour change for anyone who was relying on the old always-draggable
   widget; flipping the switch restores it.
+- The version reported by the executable was `0.1.0` while the changelog claimed
+  `1.0.0`. `pubspec.yaml` is now the single source of truth, and the release
+  workflow fails if the tag disagrees with it.
 
 ### Fixed
 
+- **The test suite left a temporary directory behind on most runs.**
+  `AtomicJsonFile` creates its parent directory before every write, so a write
+  still queued when `tearDown` deleted the temp folder would recreate it a moment
+  later. Every test stayed green and about 18 folders accumulated per run, in
+  the developer's `%TEMP%` and on every CI run. Controllers are now drained
+  before the directory is removed.
 - **The tray menu no longer advertises a shortcut that did nothing.** It
   labelled Settings as `Ctrl+Alt+S`, which was never registered with Windows —
   only `Ctrl+Alt+N` is, and that one is changeable and can be switched off. Both
