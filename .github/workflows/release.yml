@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -39,15 +39,20 @@ jobs:
           # pubspec.yaml. Without this check a tag called v1.2.0 could publish a
           # binary that calls itself 1.1.0, and nobody would notice until a bug
           # report named the wrong version.
-          $pubspec = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(\S+') |
-            Select-Object -First 1).Matches[0].Groups[1].Value -replace '\+.*$', ''
+          #
+          # Kept as flat one-liners on purpose. A parenthesised pipeline split
+          # across lines after a pipe does not parse, and the first version of
+          # this step failed on exactly that.
+          $line = Select-String -Path pubspec.yaml -Pattern '^version:' | Select-Object -First 1
+          if ($null -eq $line) { Write-Host 'no version: line in pubspec.yaml'; exit 1 }
+          $version = ($line.Line -split ':', 2)[1].Trim() -replace '\+.*$', ''
           $tag = $env:GITHUB_REF_NAME -replace '^v', ''
-          if ($pubspec -ne $tag) {
-            Write-Host "pubspec.yaml says '$pubspec' but the tag says '$tag'"
+          if ($version -ne $tag) {
+            Write-Host "pubspec.yaml says '$version' but the tag says '$tag'"
             Write-Host 'Set version: in pubspec.yaml to the tag, or tag the commit that already has it.'
             exit 1
           }
-          Write-Host "tag v$tag matches pubspec.yaml"
+          Write-Host "tag v$tag matches pubspec.yaml ($version)"
 
       - name: Build the artifacts
         # Runs the tests and the analyzer, launches the staged build to prove it
@@ -56,7 +61,7 @@ jobs:
         run: pwsh -File tool/release/package.ps1
 
       - name: Publish the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*.zip
