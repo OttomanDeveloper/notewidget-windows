@@ -172,6 +172,9 @@ class WidgetController extends ChangeNotifier {
   void rememberScroll(double offset) {
     if ((offset - _state.scrollOffset).abs() < 0.5) return;
     _state = _state.copyWith(scrollOffset: offset);
+    // Writes the whole state including the note selection, so a tap that
+    // changes the selection and a scroll that changes the offset can queue on
+    // top of each other. The debounced writer collapses them.
     _widgetRepo.save(_state);
   }
 
@@ -208,6 +211,26 @@ class WidgetController extends ChangeNotifier {
   }
 
   Future<void> flush() => _widgetRepo.flush();
+
+  bool _released = false;
+
+  /// Tears down the file handles this controller owns.
+  ///
+  /// Async, and called explicitly from the surface rather than from [dispose],
+  /// because flushing has to survive the object being collected: a write queued
+  /// by the last scroll before a window closed still has to reach disk.
+  ///
+  /// Idempotent, so a surface can call it from its own teardown without having
+  /// to know whether something else already did.
+  Future<void> release() async {
+    if (_released) return;
+    _released = true;
+    _geometrySaveTimer?.cancel();
+    _settings.removeListener(_onSettingsChanged);
+    await _widgetRepo.dispose();
+    await _selectionRepo.dispose();
+    await _notesRepo.dispose();
+  }
 
   @override
   void dispose() {

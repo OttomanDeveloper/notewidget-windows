@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -55,10 +57,16 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     // The rail fades in while scrolling and back out once it stops, so it does
     // not permanently eat into a card that is only a few lines tall.
     _thumbOpacity.value = 1;
-    Future<void>.delayed(const Duration(milliseconds: 900), () {
+    // Held as a cancellable Timer rather than a bare Future.delayed: a pending
+    // delay survives dispose, and a widget test fails outright on any timer
+    // still outstanding when it finishes.
+    _railFadeTimer?.cancel();
+    _railFadeTimer = Timer(const Duration(milliseconds: 900), () {
       if (mounted && !_scrolling) _thumbOpacity.value = 0;
     });
   }
+
+  Timer? _railFadeTimer;
 
   bool _scrolling = false;
 
@@ -93,6 +101,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
 
   @override
   void dispose() {
+    _railFadeTimer?.cancel();
     _scroll
       ..removeListener(_onScroll)
       ..dispose();

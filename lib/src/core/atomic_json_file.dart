@@ -129,13 +129,22 @@ class AtomicJsonFile {
   CorruptDataFile? blocked;
 
   void _scheduleWrite() {
+    // Two edges, deliberately not resettable by each other.
+    //
+    // The debounce timer slides with every keystroke. The ceiling timer does
+    // not: resetting it on each write is what turns it into a second debounce
+    // with a longer delay, and continuous typing would then never write at all.
+    // It is set only when nothing is pending.
     _debounceTimer?.cancel();
     _debounceTimer = Timer(debounce, () {
       _maxTimer?.cancel();
+      _maxTimer = null;
       unawaited(_flush());
     });
     _maxTimer ??= Timer(_maxWriteDelay, () {
       _debounceTimer?.cancel();
+      _debounceTimer = null;
+      _maxTimer = null;
       unawaited(_flush());
     });
   }
@@ -280,7 +289,16 @@ class AtomicJsonFile {
   /// Pushes anything still queued to disk. Called when quitting.
   Future<void> flushPending() => _flush();
 
-  Future<void> dispose() async {
+  /// Drops the debounce timers without writing. Used when a surface is going
+  /// away and the queued write belongs to state that is being discarded, such
+  /// as an intermediate scroll position.
+  void cancelPendingWrites() => _cancelTimers();
+
+  /// Flushes anything queued, then releases the watcher. Ordering matters: the
+  /// write has to land before the file is closed, or the last edit before a
+  /// window closes would be lost.
+  Future<void> dispose({bool flush = true}) async {
+    if (flush) await _flush();
     _cancelTimers();
     _watchDebounce?.cancel();
     await _watchSubscription?.cancel();

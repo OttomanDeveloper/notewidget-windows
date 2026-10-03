@@ -168,14 +168,32 @@ void main() {
     test('a continuous burst still reaches disk before the process dies',
         () async {
       // The ceiling is what stops someone typing a long sentence from never
-      // writing anything at all.
+      // writing anything at all. Each write arrives well inside the 250ms
+      // debounce, so the trailing edge never fires and only the ceiling can.
       final file = AtomicJsonFile(notesPath());
+      final ceiling = const Duration(milliseconds: 1500);
+
       for (var i = 0; i < 40; i++) {
         file.write({'i': i});
         await Future<void>.delayed(const Duration(milliseconds: 60));
+        // Past the ceiling, the queued write has to have landed without anyone
+        // calling flushPending.
+        if ((i + 1) * 60 > ceiling.inMilliseconds) {
+          expect(File(notesPath()).existsSync(), isTrue,
+              reason: 'nothing was written after ${(i + 1) * 60}ms of typing');
+        }
       }
-      // 40 * 60ms is well past the 250ms debounce, so this must have flushed
-      // without anyone calling flushPending.
+      await file.dispose();
+    });
+
+    test('the ceiling fires even while writes keep arriving', () async {
+      final file = AtomicJsonFile(notesPath());
+      for (var i = 0; i < 30; i++) {
+        file.write({'i': i});
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+      }
+      // 30 * 60ms is 1800ms, comfortably past the 1500ms ceiling, so the file
+      // must exist even though no write was ever allowed to settle.
       expect(File(notesPath()).existsSync(), isTrue);
       await file.dispose();
     });

@@ -105,6 +105,18 @@ void main() {
     return controller;
   }
 
+  /// Releases a controller's file handles under the real clock.
+  ///
+  /// Registered as a tearDown rather than left to [wn.WidgetController.dispose],
+  /// because flushing is async and dispose cannot await. Safe to call twice: a
+  /// test that already released inside its own runAsync block gets a no-op.
+  void addRelease(WidgetTester tester, wn.WidgetController controller) {
+    addTearDown(() async {
+      await tester.runAsync(controller.release);
+      controller.dispose();
+    });
+  }
+
   Future<void> pumpSurface(
     WidgetTester tester,
     wn.WidgetController controller, {
@@ -144,7 +156,7 @@ void main() {
         note('c', 'Ideas', 'Widget per monitor?', minute: -12),
       ]),
     );
-    addTearDown(controller!.dispose);
+    addRelease(tester, controller!);
 
     // The regression this guards: building this subtree used to throw during
     // sliver layout and paint a red error screen over the desktop.
@@ -165,7 +177,7 @@ void main() {
         note('new', 'Newest note', 'written last', minute: 0),
       ]),
     );
-    addTearDown(controller!.dispose);
+    addRelease(tester, controller!);
 
     await pumpSurface(tester, controller, width: 360, height: 420);
 
@@ -186,7 +198,7 @@ void main() {
         note('new', 'Newest note', 'written last', minute: 0),
       ]),
     );
-    addTearDown(controller!.dispose);
+    addRelease(tester, controller!);
 
     await pumpSurface(tester, controller, width: 360, height: 420);
     expect(controller.focusedNote!.id, 'new');
@@ -195,6 +207,12 @@ void main() {
     // note in the widget rather than just the current one.
     await tester.tap(find.text('Older note'));
     await tester.pump();
+
+    // The tap writes selection.json through the debounced writer, so the pending
+    // 250ms timer has to be let run. Without this the test ends with a pending
+    // timer and fails for a reason that has nothing to do with the assertion
+    // below it.
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(controller.focusedNote!.id, 'old');
     final cards =
@@ -210,7 +228,7 @@ void main() {
         note('a', 'Groceries', 'a body long enough to need several lines'),
       ]),
     );
-    addTearDown(controller!.dispose);
+    addRelease(tester, controller!);
 
     // Below the threshold there is no room for a large card.
     await pumpSurface(tester, controller, width: 150, height: 140);
@@ -226,7 +244,7 @@ void main() {
     final controller = await tester.runAsync(
       () => makeController(tester, [note('a', 'Only note', 'text')]),
     );
-    addTearDown(controller!.dispose);
+    addRelease(tester, controller!);
 
     await pumpSurface(tester, controller, width: 360, height: 420);
     expect(find.byType(WidgetNoteCard), findsOneWidget);
@@ -249,7 +267,7 @@ void main() {
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
-    addTearDown(controller!.dispose);
+    addRelease(tester, controller!);
 
     await pumpSurface(tester, controller, width: 360, height: 420);
     expect(tester.takeException(), isNull);
@@ -258,10 +276,26 @@ void main() {
     expect(find.text('Note 0'), findsOneWidget);
     expect(find.text('Note 29'), findsNothing);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    // Scroll to the end. Dragging a fixed distance would depend on the content
+    // height, which changes with every title length, so this targets the maximum
+    // extent instead and then lets a second pump build the children it exposes.
+    // Scrolling flushes on the platform thread, and the writes are file I/O that
+    // cannot run under this test's fake clock. Everything from here to the end
+    // of the test happens inside one real-async block so those writes can
+    // actually complete; pumping inside it would use the fake clock again.
+    final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+    await tester.runAsync(() async {
+      scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+      // Past both the 250ms trailing debounce and the 1500ms write ceiling.
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      await controller.release();
+    });
     await tester.pump();
 
     expect(tester.takeException(), isNull);
     expect(find.text('Note 29'), findsOneWidget);
+    // The list really did move, rather than Note 29 having been on screen all
+    // along.
+    expect(find.text('Note 0'), findsNothing);
   });
 }
