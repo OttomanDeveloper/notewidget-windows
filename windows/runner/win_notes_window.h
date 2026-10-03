@@ -127,7 +127,7 @@ class Window {
   bool visible_ = false;
   bool dragging_ = false;
   bool rounded_corners_ = false;
-  bool position_locked_ = true;  // Locked until Dart says otherwise.
+  bool position_locked_ = false;  // Draggable until Dart says otherwise.
   int corner_radius_ = 12;
   int edge_dock_margin_ = 8;
   int opacity_percent_ = 100;

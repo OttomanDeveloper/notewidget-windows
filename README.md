@@ -177,11 +177,10 @@ pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Wid
 - **Per-monitor position.** The widget returns to the screen you left it on. If
   that monitor is unplugged, it comes back on the nearest remaining one instead
   of somewhere it can never be clicked again.
-- **The widget is locked where you put it.** Dragging it does nothing until you
-  turn the lock off, so it cannot be knocked out of position by a stray drag.
-  Turning the lock off makes it draggable again immediately — no restart, no
-  dialog. Resizing from a corner works either way, because locking is about
-  position, not size.
+- **Drag the widget anywhere.** Grab it and move it; it comes back where you left
+  it, on whichever monitor that was. If you would rather pin it, Settings has a
+  lock — and a locked widget says so when you try to drag it, rather than
+  silently doing nothing.
 - **Plain-text export and import.** The format is deliberately boring, so a
   backup taken years from now is still readable without this app.
 
@@ -195,11 +194,15 @@ the editor's menu.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | **Keep the widget above other windows** | On | The widget stays on top of ordinary windows. Turn it off and it behaves like a normal window, so it can be covered. |
-| **Lock the widget in place** | On | Dragging does nothing. Turn it off to move the widget, then turn it back on once it is where you want it. |
+| **Lock the widget in place** | Off | Dragging does nothing, so the widget stays exactly where you put it. If you drag a locked widget it tells you it is locked and where to change that, rather than ignoring you. Resizing from a corner still works either way. |
 
-The default is locked because the widget usually ends up somewhere chosen on
-purpose, and an accidental drag across the card moves it somewhere worse.
-Resizing from a corner is unaffected.
+Dragging works out of the box. The lock is there for when you have parked the
+widget somewhere deliberate and would rather it stayed.
+
+This started out the other way round — locked by default — and was reverted. Not
+being able to move the widget at all turned out to be a much bigger annoyance
+than the occasional accidental drag it prevented, and the only way out was a
+switch in Settings that nobody would think to look for.
 
 Both take effect the moment you flip them. The widget watches `settings.json`,
 so a change made here reaches the window without a restart.
@@ -290,7 +293,7 @@ tool/brand/                  logo generator
 tool/release/                packaging: builds, verifies, zips, compiles setup.exe
 tool/screenshots/            screenshot capture and hero composition
 .github/workflows/           CI on every push, release on a version tag
-test/                        113 tests
+test/                        115 tests
 ```
 
 ### How the two windows work
@@ -319,7 +322,7 @@ The position lock is one of them. Dragging the widget works by having
 `WM_NCHITTEST` answer `HTCAPTION` for the card's body, which hands the drag to
 Windows' own move loop — snap-to-edge and all — instead of reimplementing it.
 Locked, the same message answers `HTCLIENT`, so the pointer reaches Flutter, the
-cards stay tappable, and a drag simply moves nothing. The resize bands keep
+cards stay tappable, and a drag moves nothing. The resize bands keep
 answering `HTLEFT`/`HTTOPLEFT`/and so on either way.
 
 ## Tests
@@ -328,7 +331,7 @@ answering `HTLEFT`/`HTTOPLEFT`/and so on either way.
 flutter test
 ```
 
-113 tests covering the parts where being wrong loses data: atomic writes and
+115 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and

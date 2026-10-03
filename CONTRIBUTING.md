@@ -24,7 +24,7 @@ desktop and the editor as an ordinary window.
 ## Before you change anything
 
 ```
-flutter test           # 113 tests, must be green
+flutter test           # 115 tests, must be green
 flutter analyze
 ```
 

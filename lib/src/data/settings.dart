@@ -16,7 +16,7 @@ class WinNotesSettings {
     this.widgetOpacity = 92,
     this.acrylicEnabled = true,
     this.alwaysOnTop = true,
-    this.widgetPositionLocked = true,
+    this.widgetPositionLocked = false,
     this.autoStart = false,
     this.autoStartDelayMs = 1500,
     HotkeyBinding? editorHotkey,
@@ -41,10 +41,18 @@ class WinNotesSettings {
 
   /// Whether dragging the widget is refused.
   ///
-  /// On by default because the widget usually ends up somewhere chosen on
-  /// purpose, and an accidental drag across the card would move it somewhere
-  /// worse. Turning it off is what makes the widget moveable again. Resizing
-  /// from a corner is unaffected: locking is about position, not size.
+  /// Off by default. Locking was tried on first, on the reasoning that a widget
+  /// placed on purpose should not be moved by a stray drag. That turned out to
+  /// be the wrong trade: being unable to move the widget at all was a far
+  /// bigger annoyance than the accidental drags it prevented, and the only way
+  /// out was a switch buried in Settings that nobody would think to look for.
+  ///
+  /// So dragging works out of the box and the lock is opt-in, for when the
+  /// widget is somewhere you want it to stay. When it is locked, the widget
+  /// says so on the first attempt rather than silently doing nothing.
+  ///
+  /// Resizing from a corner is unaffected either way: this is about position,
+  /// not size.
   bool widgetPositionLocked;
 
   /// Only ever applied to the autostart launch. Launching by hand shows the

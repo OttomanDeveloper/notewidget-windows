@@ -1,6 +1,17 @@
 # Changelog
 
-## 1.1.0
+## Unreleased
+
+### Fixed
+
+- **The widget can be dragged again.** 1.1.0 shipped the position lock switched
+  on by default, which meant the widget could not be moved at all unless you
+  found a switch in Settings. Dragging now works out of the box and the lock is
+  opt-in, for when the widget is parked somewhere you want it to stay.
+- **A locked widget now says so.** Dragging one used to do nothing whatsoever,
+  with nothing on screen to suggest the lock was the reason. It now shows a short
+  hint naming both the state and where to change it, and only after someone has
+  actually tried to drag, so it never nags anyone who has not.
 
 ### Added
 
@@ -34,9 +45,9 @@
 
 ### Changed
 
-- The widget no longer moves when dragged, unless the lock is turned off. This
-  is a behaviour change for anyone who was relying on the old always-draggable
-  widget; flipping the switch restores it.
+- The widget is draggable by default again. 1.1.0 made "Lock the widget in
+  place" default to on, which removed dragging altogether rather than merely
+  guarding against accidental drags.
 - The version reported by the executable was `0.1.0` while the changelog claimed
   `1.0.0`. `pubspec.yaml` is now the single source of truth, and the release
   workflow fails if the tag disagrees with it.

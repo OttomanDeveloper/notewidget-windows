@@ -114,27 +114,31 @@ void main() {
       expect(WinNotesSettings.fromJson(const {}).themeMode, ThemeMode.system);
     });
 
-    test('the widget is locked in place by default', () {
-      // The widget usually ends up somewhere chosen on purpose, so an
-      // accidental drag moving it is the worse default.
-      expect(WinNotesSettings.defaults.widgetPositionLocked, isTrue);
+    test('the widget is draggable by default', () {
+      // Locking was tried first and reverted. Being unable to move the widget
+      // at all was a bigger annoyance than the accidental drags it prevented,
+      // and the only way out was a switch in Settings nobody would find.
+      expect(WinNotesSettings.defaults.widgetPositionLocked, isFalse);
     });
 
-    test('a settings file written before the lock existed comes back locked', () {
-      // Absence has to mean locked. Defaulting the other way would silently
-      // unlock a widget the moment someone downgraded and came back.
-      final legacy = WinNotesSettings.defaults.toJson()..remove('widgetPositionLocked');
-      expect(WinNotesSettings.fromJson(legacy).widgetPositionLocked, isTrue);
+    test('a settings file written before the lock existed comes back draggable',
+        () {
+      // Absence must not silently pin someone's widget, which is the same trap
+      // in the opposite direction.
+      final legacy = WinNotesSettings.defaults.toJson()
+        ..remove('widgetPositionLocked');
+      expect(WinNotesSettings.fromJson(legacy).widgetPositionLocked, isFalse);
     });
 
     test('the lock participates in equality', () {
       // SettingsController compares whole objects to decide whether to write
       // and re-push to the runner, so a field left out of == would mean the
-      // switch does nothing.
-      final locked = WinNotesSettings.defaults;
-      final unlocked = locked.copyWith(widgetPositionLocked: false);
+      // switch does nothing. Stated in both directions rather than leaning on
+      // the default, so flipping the default cannot quietly break this.
+      final unlocked = WinNotesSettings.defaults;
+      final locked = unlocked.copyWith(widgetPositionLocked: true);
       expect(locked, isNot(unlocked));
-      expect(unlocked.copyWith(widgetPositionLocked: true), locked);
+      expect(locked.copyWith(widgetPositionLocked: false), unlocked);
     });
 
     test('a hand-edited opacity cannot make the widget invisible', () {

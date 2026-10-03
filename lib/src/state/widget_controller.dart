@@ -64,6 +64,12 @@ class WidgetController extends ChangeNotifier {
   bool get widgetVisible => _widgetVisible;
   WidgetWindowState get state => _state;
 
+  /// Whether dragging the widget is currently refused.
+  ///
+  /// Read by the surface so it can tell someone who drags a locked widget why
+  /// nothing happened, instead of leaving them to wonder.
+  bool get positionLocked => _settings.settings.widgetPositionLocked;
+
   /// The note rendered large. Everything else in the widget is a compact card.
   Note? get focusedNote {
     if (_selectedId != null) {

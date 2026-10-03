@@ -325,8 +325,8 @@ void main() {
     expect(calls, isNotEmpty, reason: 'the widget never configured itself');
     expect(
       (calls.first.arguments as Map)['positionLocked'],
-      isTrue,
-      reason: 'a fresh install must not ship a draggable widget',
+      isFalse,
+      reason: 'a fresh install must not ship a widget that cannot be moved',
     );
 
     // Turning the lock off has to reach the runner as a live change, not need a
@@ -347,5 +347,60 @@ void main() {
       isFalse,
       reason: 'unlocking must be pushed, not merely stored',
     );
+  });
+
+  testWidgets('a refused drag explains itself instead of doing nothing',
+      (tester) async {
+    // The bug this guards: locked, the native window reports HTCLIENT, the drag
+    // never starts, and nothing at all happens. Someone dragging a locked
+    // widget has no way to tell the lock is why.
+    final controller = await tester.runAsync(
+      () => makeController(
+        tester,
+        [note('a', 'Groceries', 'milk')],
+        tweakSettings: (s) =>
+            s.update((v) => v.copyWith(widgetPositionLocked: true)),
+      ),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    expect(find.textContaining('Locked in place'), findsNothing,
+        reason: 'the hint must not appear before anyone has tried to drag');
+
+    final gesture = await tester.startGesture(const Offset(180, 120));
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      find.textContaining('Locked in place'),
+      findsOneWidget,
+      reason: 'a refused drag has to say so, and say where to change it',
+    );
+    expect(find.textContaining('Settings'), findsOneWidget,
+        reason: 'naming the place to change it is the point');
+
+    // And it goes away again rather than sitting there for good.
+    await tester.pump(const Duration(milliseconds: 2800));
+    expect(find.textContaining('Locked in place'), findsNothing);
+  });
+
+  testWidgets('an unlocked widget does not nag about dragging', (tester) async {
+    final controller = await tester.runAsync(
+      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    final gesture = await tester.startGesture(const Offset(180, 120));
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.textContaining('Locked in place'), findsNothing,
+        reason: 'dragging works by default, so there is nothing to explain');
   });
 }
