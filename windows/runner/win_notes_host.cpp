@@ -558,6 +558,39 @@ void Host::HandleMethodCall(
     return;
   }
 
+  if (method == "widget.setComposeMode") {
+    // Lets the widget hold the keyboard while someone is writing a note in it,
+    // and only then. Applied to the window the caller belongs to rather than
+    // hardcoded to the widget, so the editor cannot be talked into dropping
+    // WS_EX_NOACTIVATE - it does not have it, but the asymmetry is not worth
+    // having to reason about.
+    Window* target = WindowFor(RoleFrom(args));
+    if (target != nullptr) {
+      target->PostSetComposeMode(GetBool(args, "active", false));
+    }
+    result->Success(flutter::EncodableValue());
+    return;
+  }
+
+  if (method == "note.create") {
+    // Routed to the editor when there is one, for the same reason as toggling a
+    // task: the editor owns notes.json and is the only writer that can be trusted
+    // with the file. The widget checks for an editor first and only calls this
+    // when it is not the one writing.
+    if (editor_ != nullptr && editor_->handle() != nullptr) {
+      SendTo(SurfaceRole::kEditor, "event.createNote",
+             std::make_unique<flutter::EncodableValue>(
+                 flutter::EncodableValue(flutter::EncodableMap{
+                     {flutter::EncodableValue("title"),
+                      flutter::EncodableValue(GetString(args, "title"))},
+                     {flutter::EncodableValue("body"),
+                      flutter::EncodableValue(GetString(args, "body"))},
+                 })));
+    }
+    result->Success(flutter::EncodableValue());
+    return;
+  }
+
   if (method == "editor.running") {
     // Whether an editor window exists, which is the same question as "does
     // anything own notes.json right now". The widget surface asks before it

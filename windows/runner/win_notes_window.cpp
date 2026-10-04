@@ -37,6 +37,7 @@ constexpr UINT kWmSetBounds = WM_APP + 4;
 constexpr UINT kWmToggleVisible = WM_APP + 5;
 constexpr UINT kWmBeginMove = WM_APP + 6;
 constexpr UINT kWmBeginResize = WM_APP + 7;
+constexpr UINT kWmComposeMode = WM_APP + 8;
 
 // Edges for kWmBeginResize. Plain integers rather than HT* values: HTLEFT and
 // friends collide with the hit-test codes, and this is a different vocabulary
@@ -300,6 +301,55 @@ void Window::SetPositionLocked(bool locked) {
   position_locked_ = locked;
 }
 
+void Window::PostSetComposeMode(bool active) {
+  if (window_ != nullptr) PostMessageW(window_, kWmComposeMode, active ? 1 : 0, 0);
+}
+
+// Drops or restores WS_EX_NOACTIVATE, and moves the keyboard with it.
+//
+// Two details are load-bearing. The previous foreground window is remembered on
+// the way in, because an always-on-top widget that takes the caret and never
+// gives it back is the single most irritating thing a desktop widget can do -
+// and the person who just typed a note is usually in the middle of something
+// else. And the style change is applied with SetWindowPos rather than left to
+// SetWindowLongPtr alone, because an extended style is not live until the window
+// is told to recalculate.
+void Window::ApplyComposeMode(bool active) {
+  if (window_ == nullptr || compose_mode_ == active) return;
+  compose_mode_ = active;
+
+  LONG_PTR ex = GetWindowLongPtrW(window_, GWL_EXSTYLE);
+  if (active) {
+    compose_previous_focus_ = GetForegroundWindow();
+    if (compose_previous_focus_ == window_) compose_previous_focus_ = nullptr;
+    ex &= ~static_cast<LONG_PTR>(WS_EX_NOACTIVATE);
+    // WS_EX_LAYERED windows need the frame recalculated for the new activation
+    // behaviour to take effect, or clicks keep being swallowed as non-client.
+    SetWindowLongPtrW(window_, GWL_EXSTYLE, ex);
+    SetWindowPos(window_, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
+    SetForegroundWindow(window_);
+    SetActiveWindow(window_);
+    SetFocus(window_);
+    return;
+  }
+
+  ex |= static_cast<LONG_PTR>(WS_EX_NOACTIVATE);
+  SetWindowLongPtrW(window_, GWL_EXSTYLE, ex);
+  SetWindowPos(window_, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+  // Hand the keyboard back. Only if it is still ours: if the user has already
+  // alt-tabbed somewhere deliberate, yanking them back would be worse than
+  // leaving them where they chose to be.
+  HWND previous = compose_previous_focus_;
+  compose_previous_focus_ = nullptr;
+  if (previous != nullptr && IsWindow(previous) &&
+      GetForegroundWindow() == window_) {
+    SetForegroundWindow(previous);
+  }
+}
+
 // --- Move and resize loops ---------------------------------------------------
 
 namespace {
@@ -517,6 +567,12 @@ LRESULT Window::HandleMessage(HWND window, UINT message, WPARAM wparam,
       if (widget) {
         // Belt and braces with WS_EX_NOACTIVATE: never take focus from the app
         // the user is typing in.
+        //
+        // The exception is compose mode. This handler would otherwise keep
+        // refusing activation at the exact moment the widget is meant to be a
+        // text field, which is the same bug as not dropping WS_EX_NOACTIVATE at
+        // all, one layer down and harder to see.
+        if (compose_mode_) break;
         return MA_NOACTIVATE;
       }
       break;
@@ -528,6 +584,11 @@ LRESULT Window::HandleMessage(HWND window, UINT message, WPARAM wparam,
       // borderless popup does not have, would. Left in place so an unexpected
       // hit falls through to the default handler rather than being swallowed.
       break;
+    }
+
+    case kWmComposeMode: {
+      ApplyComposeMode(wparam != 0);
+      return 0;
     }
 
     case kWmBeginMove: {

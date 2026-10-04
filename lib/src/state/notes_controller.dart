@@ -267,6 +267,33 @@ class NotesController extends ChangeNotifier {  NotesController({
     return newest.add(const Duration(milliseconds: 1));
   }
 
+  /// Adds a note with text already in it, without changing the selection.
+  ///
+  /// Used for a note written in the widget. It deliberately does *not* select
+  /// what it makes: the person is looking at the widget, not the editor, and
+  /// moving the editor's cursor out from under them would be a worse surprise
+  /// than the note appearing quietly at the top of the list. It also does not go
+  /// through [createNote], which exists to hand back a note you are about to type
+  /// into, and whose whole point is taking the selection.
+  void addNote({required String title, required String body}) {
+    if (_corrupt != null) return;
+    if (title.trim().isEmpty && body.trim().isEmpty) return;
+    final now = _nextStamp();
+    _notes = NotesRepository.sorted([
+      ..._notes,
+      Note(
+        id: _factory.next(),
+        title: title,
+        body: body,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]);
+    _recomputeVisible();
+    _persist();
+    notifyListeners();
+  }
+
   /// Creates one empty note if there are none at all, which is what makes the
   /// first launch open with the cursor already in a note.
   void ensureAtLeastOneNote() {

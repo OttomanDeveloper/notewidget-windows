@@ -201,6 +201,21 @@ class ShellChannel {
         'positionLocked': positionLocked,
       });
 
+  /// Lets the widget hold the keyboard while a note is being written in it.
+  ///
+  /// The widget is normally `WS_EX_NOACTIVATE` so that clicking it never pulls
+  /// the caret out of whatever is being typed into - which is also why it cannot
+  /// contain a text field at all. This drops that for exactly as long as the
+  /// composer is open, and the runner hands the keyboard back to the window that
+  /// had it when `active` goes false again.
+  Future<void> setWidgetComposeMode(bool active) =>
+      _fire('widget.setComposeMode', {'active': active, 'role': 'widget'});
+
+  /// Asks the editor isolate to add a note, which is the only writer of
+  /// notes.json. Only called when [isEditorRunning] is false.
+  Future<void> requestCreateNote({required String title, required String body}) =>
+      _fire('note.create', {'title': title, 'body': body});
+
   /// Whether an editor window exists, and therefore whether it owns notes.json.
   ///
   /// Asked at the moment it is needed rather than cached from launch info,
@@ -444,6 +459,7 @@ class ShellEvent {
         'event.visibility' => ShellEventKind.visibility,
         'event.geometry' => ShellEventKind.geometry,
         'event.toggleCompleted' => ShellEventKind.toggleCompleted,
+        'event.createNote' => ShellEventKind.createNote,
         _ => ShellEventKind.unknown,
       };
 
@@ -457,6 +473,7 @@ enum ShellEventKind {
   visibility,
   geometry,
   toggleCompleted,
+  createNote,
   unknown,
 }
 
@@ -478,5 +495,17 @@ extension ShellEventData on ShellEvent {
     if (args is! Map) return null;
     final id = args['id'];
     return id is String && id.isNotEmpty ? id : null;
+  }
+
+  /// Title and body from an `event.createNote`.
+  ({String title, String body})? get newNote {
+    final args = arguments;
+    if (args is! Map) return null;
+    final title = args['title'];
+    final body = args['body'];
+    return (
+      title: title is String ? title : '',
+      body: body is String ? body : '',
+    );
   }
 }

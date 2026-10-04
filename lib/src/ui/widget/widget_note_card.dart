@@ -153,7 +153,13 @@ class WidgetNoteCard extends StatelessWidget {
                             completed: done,
                           ),
                         ),
-                      ] else if (renderLarge) ...[
+                      ] else if (renderLarge && note.title.trim().isEmpty) ...[
+                        // Only for a note with nothing in it at all. A note with
+                        // a title and no body already has its content on screen
+                        // in the line above, and telling someone "No text yet"
+                        // about a note they have just written is just wrong -
+                        // which is how a note added from the widget always looks,
+                        // since one line of typing becomes the title.
                         const SizedBox(height: 8),
                         Text(
                           'No text yet',

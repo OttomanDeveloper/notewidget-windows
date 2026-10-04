@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/settings_repository.dart';
 import '../../platform/shell_channel.dart';
@@ -116,6 +117,12 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
 
   void _onPointerDown(PointerDownEvent event) {
     _syncGrabBand(_lastContext);
+    // While the composer is open, the pointer belongs to the text field. The
+    // grab band runs along the very bottom of the widget, which is exactly where
+    // the field sits, so without this a click near its edge would resize the
+    // window instead of placing the caret - and dragging the widget while
+    // halfway through typing a note is nobody's intention.
+    if (_composing) return;
     final size = _surfaceSize;
     final edge = size == null
         ? _Edge.none
@@ -261,10 +268,74 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   bool _lockedHint = false;
   Timer? _hintTimer;
 
+  /// The add-a-note field, and whether it is open.
+  ///
+  /// Open means the widget is holding the keyboard, which is a real thing to be
+  /// responsible for: the runner drops the window's WS_EX_NOACTIVATE so the text
+  /// field can work at all, and puts it back the moment this goes false. Every
+  /// path out of here - saved, cancelled, disposed - has to close it, or the
+  /// widget keeps the caret for the rest of the session.
+  final TextEditingController _compose = TextEditingController();
+  final FocusNode _composeFocus = FocusNode();
+  bool _composing = false;
+  bool _hovering = false;
+
+  void _setHovering(bool value) {
+    if (_hovering == value) return;
+    setState(() => _hovering = value);
+  }
+
+  void _openComposer() {
+    if (_composing) return;
+    setState(() => _composing = true);
+    unawaited(widget.controller.setComposeMode(true));
+    // After the frame, so the window has actually taken the keyboard before
+    // Flutter is asked to put the caret in the field.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _composing) _composeFocus.requestFocus();
+    });
+  }
+
+  void _closeComposer() {
+    if (!_composing) return;
+    setState(() => _composing = false);
+    _compose.clear();
+    _composeFocus.unfocus();
+    unawaited(widget.controller.setComposeMode(false));
+  }
+
+  Future<void> _submitComposer() async {
+    final raw = _compose.text.trim();
+    if (raw.isEmpty) {
+      _closeComposer();
+      return;
+    }
+    // First line is the title, the rest is the body. It is the same shape the
+    // widget already displays - a line, then a preview - so a note jotted here
+    // looks like a note written in the editor, with no second box to fill in.
+    final split = raw.indexOf('\n');
+    final title = split < 0 ? raw : raw.substring(0, split).trim();
+    final body = split < 0 ? '' : raw.substring(split + 1).trim();
+    // Close first, so the keyboard goes back before the write is even attempted.
+    // Waiting on the round trip would leave the caret parked in the widget while
+    // nothing is happening, which is the thing this whole design is avoiding.
+    _closeComposer();
+    await widget.controller.addNote(title: title, body: body);
+  }
+
+  Future<void> setComposeMode(bool active) =>
+      widget.controller.setComposeMode(active);
+
   @override
   void dispose() {
     _railFadeTimer?.cancel();
     _hintTimer?.cancel();
+    _compose.dispose();
+    _composeFocus.dispose();
+    // Closing rather than disposing leaves the window as it found it. A widget
+    // that kept WS_EX_NOACTIVATE dropped would hold the caret with no field
+    // visible to type into.
+    if (_composing) unawaited(widget.controller.setComposeMode(false));
     _scroll
       ..removeListener(_onScroll)
       ..dispose();
@@ -303,6 +374,8 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
                     onPointerCancel: _onPointerCancel,
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
+                      onEnter: (_) => _setHovering(true),
+                      onExit: (_) => _setHovering(false),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           // Remembered so a pointer-down can tell which edge it
@@ -374,6 +447,22 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
                     child: _LockedHint(visible: _lockedHint, dark: dark),
                   ),
                 ),
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: 8,
+                  child: _Composer(
+                    open: _composing,
+                    revealed: _hovering || _composing,
+                    controller: _compose,
+                    focusNode: _composeFocus,
+                    dark: dark,
+                    accent: accent,
+                    onOpen: _openComposer,
+                    onClose: _closeComposer,
+                    onSubmit: _submitComposer,
+                  ),
+                ),
               ],
             ),
           ),
@@ -383,9 +472,187 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   }
 }
 
+/// The add-a-note affordance, and the field it turns into.
+///
+/// One slot, two states, rather than a button that reveals a panel somewhere
+/// else. The thing you click is the thing that appears where you clicked, so
+/// there is nothing to hunt for and nothing new to remember - and because it
+/// lives in the bottom strip it never disturbs the cards, which is what the
+/// widget is for.
+///
+/// Collapsed it is a circle that is nearly invisible until the pointer is over
+/// the widget. Faint rather than absent, because a control that only exists on
+/// hover is a control half the people who could use it will never find - and an
+/// always-visible button in the corner of every note list is worse.
+///
+/// Open, the widget is a text field, which means it is holding your keyboard.
+/// It gives it straight back when the note is saved or cancelled, and the runner
+/// returns focus to whatever had it rather than leaving the caret in a corner of
+/// the desktop.
+class _Composer extends StatelessWidget {
+  const _Composer({
+    required this.open,
+    required this.revealed,
+    required this.controller,
+    required this.focusNode,
+    required this.dark,
+    required this.accent,
+    required this.onOpen,
+    required this.onClose,
+    required this.onSubmit,
+  });
+
+  final bool open;
+  final bool revealed;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool dark;
+  final Color accent;
+  final VoidCallback onOpen;
+  final VoidCallback onClose;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SizeTransition(
+          sizeFactor: animation,
+          // Grows downwards from the bottom edge, so the field appears to come
+          // out of where the button was rather than sliding in from nowhere.
+          alignment: Alignment.bottomCenter,
+          child: child,
+        ),
+      ),
+      // Escape, because a text field that cannot be dismissed with the keyboard
+      // traps the keyboard - and this one is holding it. Clicking away does not
+      // help: the widget has focus precisely so that typing works, so the click
+      // that dismisses it has to be inside the widget too.
+      child: CallbackShortcuts(
+        bindings: open
+            ? <ShortcutActivator, VoidCallback>{
+                const SingleActivator(LogicalKeyboardKey.escape): onClose,
+              }
+            : const <ShortcutActivator, VoidCallback>{},
+        child: open ? _field(context, theme, muted) : _button(context, muted),
+      ),
+    );
+  }
+
+  Widget _button(BuildContext context, Color muted) {
+    return Align(
+      alignment: Alignment.bottomRight,
+      child: AnimatedOpacity(
+        // Never fully gone: see the class comment.
+        opacity: revealed ? 1 : 0.28,
+        duration: const Duration(milliseconds: 140),
+        child: Semantics(
+          button: true,
+          label: 'Add a note',
+          child: Tooltip(
+            message: 'Add a note',
+            // The SizedBox is outside the Material on purpose. A Material with a
+            // clip shape expands to fill whatever it is given, so the circle
+            // would silently become the full width of the widget and swallow
+            // taps meant for the cards above it.
+            child: SizedBox(
+              width: 30,
+              height: 30,
+              child: Material(
+                color: Colors.transparent,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  // Keyed rather than found by label: the Semantics above and
+                  // the Tooltip's own both answer to "Add a note", so a
+                  // label-based finder is ambiguous about which box it means -
+                  // and the ambiguity is invisible until the tap misses.
+                  key: addNoteButtonKey,
+                  onTap: onOpen,
+                  customBorder: const CircleBorder(),
+                  child: Icon(Icons.add, size: 17, color: muted),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(BuildContext context, ThemeData theme, Color muted) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: widgetBodyColor(dark ? Brightness.dark : Brightness.light)
+              .withValues(alpha: dark ? 0.10 : 0.07),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: accent.withValues(alpha: 0.55)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 4, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: addNoteFieldKey,
+                  controller: controller,
+                  focusNode: focusNode,
+                  // One line, and Enter saves. A note with several lines is a
+                  // note being written, not a note being jotted down, and that
+                  // is what the editor is for.
+                  maxLines: 1,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => onSubmit(),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: widgetBodyColor(
+                      dark ? Brightness.dark : Brightness.light,
+                    ),
+                    height: 1.2,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Add a note',
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 15),
+                tooltip: 'Cancel',
+                onPressed: onClose,
+                visualDensity: VisualDensity.compact,
+                color: muted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Keys for the add-a-note controls, so they can be driven without guessing at
+/// which of two same-labelled semantics nodes is meant.
+///
+/// Public because a widget test is a consumer of this widget, and a finder that
+/// has to reverse-engineer the layout to aim at a 30-pixel circle in the corner
+/// is a finder that will silently start hitting the wrong thing.
+const Key addNoteButtonKey = ValueKey('winnotes.widget.addNote');
+const Key addNoteFieldKey = ValueKey('winnotes.widget.addNoteField');
+
 /// Which edge or corner a resize gesture grabbed.
 enum _Edge { none, left, right, top, bottom, topLeft, topRight, bottomLeft, bottomRight }
-
 ResizeEdge _toResizeEdge(_Edge edge) => switch (edge) {
       _Edge.left => ResizeEdge.left,
       _Edge.right => ResizeEdge.right,

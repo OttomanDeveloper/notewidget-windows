@@ -75,9 +75,22 @@ void main() {
       expect(large.style!.fontSize, greaterThan(small.style!.fontSize!));
     });
 
-    testWidgets('says so when a note has no body yet', (tester) async {
-      await pump(tester, theNote: note('Fresh', ''), focused: true, roomy: true);
+    testWidgets('says so when a note has nothing in it at all', (tester) async {
+      // Not merely "no body". A note with a title and no body has its content on
+      // screen in the line above, and telling someone "No text yet" about it is
+      // wrong - which is the shape every note added from the widget's composer
+      // takes, since one line of typing becomes the title.
+      await pump(tester, theNote: note('', ''), focused: true, roomy: true);
       expect(find.text('No text yet'), findsOneWidget);
+      expect(find.text('Untitled note'), findsOneWidget);
+    });
+
+    testWidgets('says nothing about the body when there is a title',
+        (tester) async {
+      await pump(tester, theNote: note('milk', ''), focused: true, roomy: true);
+      expect(find.text('milk'), findsOneWidget);
+      expect(find.text('No text yet'), findsNothing,
+          reason: 'the note has a title; that is its content');
     });
 
     testWidgets('falls back to a placeholder when untitled', (tester) async {

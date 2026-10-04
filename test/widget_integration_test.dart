@@ -728,6 +728,188 @@ void main() {
           reason: 'the line through the text is the whole signal');
     });
   });
+
+  group('the add-a-note composer', () {
+    /// Records compose-mode and note-creation calls.
+    List<MethodCall> recordComposer({bool editorRunning = true}) {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dev.winnotes/shell'),
+        (call) async {
+          if (call.method == 'editor.running') return editorRunning;
+          if (call.method == 'widget.setComposeMode' ||
+              call.method == 'note.create') {
+            calls.add(call);
+          }
+          return null;
+        },
+      );
+      return calls;
+    }
+
+    testWidgets('the field is not there until you ask for it', (tester) async {
+      // "Otherwise not" is the point. A text field sitting permanently at the
+      // bottom of every widget would cost 36 pixels of a 420px window and read as
+      // an input the widget wants something from.
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+
+      expect(find.byKey(addNoteFieldKey), findsNothing);
+      expect(find.byKey(addNoteButtonKey), findsOneWidget,
+          reason: 'the affordance that opens it does exist');
+    });
+
+    testWidgets('opening it asks the runner for the keyboard, closing gives it back',
+        (tester) async {
+      // The whole feature rests on this. The widget is WS_EX_NOACTIVATE so that
+      // clicking it never steals the caret, which is also why it cannot hold a
+      // text field at all - so it borrows the keyboard for exactly as long as the
+      // composer is open. An always-on-top widget that kept the caret would be
+      // the most irritating thing on the desktop.
+      final calls = recordComposer();
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+
+      await tester.tap(find.byKey(addNoteButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(addNoteFieldKey), findsOneWidget);
+      expect(
+        calls.where((c) => c.method == 'widget.setComposeMode'
+            && (c.arguments as Map)['active'] == true),
+        hasLength(1),
+      );
+
+      await tester.tap(find.byTooltip('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(addNoteFieldKey), findsNothing);
+      expect(
+        calls.where((c) => c.method == 'widget.setComposeMode'
+            && (c.arguments as Map)['active'] == false),
+        hasLength(1),
+      );
+    });
+
+    testWidgets('a jotted line becomes a note, routed to the editor',
+        (tester) async {
+      final calls = recordComposer();
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+      await tester.tap(find.byKey(addNoteButtonKey));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(addNoteFieldKey), 'Call the dentist');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      final created =
+          calls.where((c) => c.method == 'note.create').toList();
+      expect(created, hasLength(1));
+      final args = created.single.arguments as Map;
+      expect(args['title'], 'Call the dentist');
+      expect(args['body'], '');
+      // Closed before the write, so the keyboard is on its way back to the user's
+      // app rather than sitting in the widget while the round trip happens.
+      expect(find.byKey(addNoteFieldKey), findsNothing);
+    });
+
+    testWidgets('with no editor, the widget writes the note itself',
+        (tester) async {
+      final calls = recordComposer(editorRunning: false);
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+      await tester.tap(find.byKey(addNoteButtonKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(addNoteFieldKey), 'Water the plants');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(calls.where((c) => c.method == 'note.create'), isEmpty,
+          reason: 'nobody to route to');
+      expect(controller.notes.map((n) => n.title), contains('Water the plants'));
+
+      // Writing here goes through the debounced queue like every other write, and
+      // a widget test's fake clock never advances the real event loop - so the
+      // flush has to happen under the real one or the pending timer fails the
+      // test on the way out.
+      await tester.runAsync(() async {
+        await controller.flush();
+        await controller.release();
+      });
+
+      expect(File('${temp.path}\\notes.json').readAsStringSync(),
+          contains('Water the plants'),
+          reason: 'and it has to reach disk, not just the widget');
+    });
+
+    testWidgets('saving nothing just closes it', (tester) async {
+      // Enter on an empty field must not make an empty note. Deleting the last
+      // character of a note is not the same as making one.
+      final calls = recordComposer();
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+      await tester.tap(find.byKey(addNoteButtonKey));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(addNoteFieldKey), '   ');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(calls.where((c) => c.method == 'note.create'), isEmpty);
+      expect(find.byKey(addNoteFieldKey), findsNothing);
+      expect(controller.notes, hasLength(1));
+    });
+
+    testWidgets('the widget cannot be dragged while composing', (tester) async {
+      // The grab band runs along the bottom of the widget, which is exactly where
+      // the field sits. Without this, clicking near the field's edge would resize
+      // the window instead of placing the caret.
+      final calls = recordComposer();
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+      await tester.tap(find.byKey(addNoteButtonKey));
+      await tester.pumpAndSettle();
+
+      // Bottom edge, mid-width: squarely inside the resize band.
+      final gesture = await tester.startGesture(const Offset(180, 416));
+      for (var i = 0; i < 4; i++) {
+        await gesture.moveBy(const Offset(0, -12));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(calls.where((c) => c.method == 'widget.beginResize'), isEmpty);
+      expect(calls.where((c) => c.method == 'widget.beginMove'), isEmpty);
+      expect(find.byKey(addNoteFieldKey), findsOneWidget,
+          reason: 'the composer should still be open, not disturbed');
+    });
+  });
 }
 
 /// Counts the rendered texts on a card that are struck through.

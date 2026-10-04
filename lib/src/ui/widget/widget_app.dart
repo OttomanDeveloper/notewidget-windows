@@ -131,6 +131,9 @@ class _WidgetAppState extends State<WidgetApp> with WidgetsBindingObserver {
         // routing exists to prevent. Notes reach this surface through the
         // directory watcher instead.
         break;
+      case ShellEventKind.createNote:
+        // Same reasoning: the widget asks, the editor writes.
+        break;
       case ShellEventKind.unknown:
         break;
     }

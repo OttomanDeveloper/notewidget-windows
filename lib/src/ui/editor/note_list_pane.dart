@@ -295,20 +295,23 @@ class _NoteListItem extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      _preview(note),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: markCompleted(
-                        theme.textTheme.bodySmall?.copyWith(
-                          color: done
-                              ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
-                              : scheme.onSurfaceVariant,
-                          height: 1.35,
+                    // Skipped entirely when there is no body, rather than
+                    // rendered as an empty line. See _preview.
+                    if (note.body.trim().isNotEmpty)
+                      Text(
+                        _preview(note),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: markCompleted(
+                          theme.textTheme.bodySmall?.copyWith(
+                            color: done
+                                ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
+                                : scheme.onSurfaceVariant,
+                            height: 1.35,
+                          ),
+                          completed: done,
                         ),
-                        completed: done,
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -321,9 +324,15 @@ class _NoteListItem extends StatelessWidget {
 
   /// Falls back to the title when there is no body yet, so a note that has only
   /// been named still shows something useful in the preview slot.
+  ///
+  /// "No text yet" is reserved for a note with nothing in it at all. A note with
+  /// a title and no body has its content right there on the line above, so
+  /// claiming otherwise is just wrong - and a note added from the widget's
+  /// composer is always in that shape.
   static String _preview(Note note) {
     final body = note.body.trim();
     if (body.isNotEmpty) return body.replaceAll('\n', ' ');
+    if (note.title.trim().isNotEmpty) return '';
     return 'No text yet';
   }
 }

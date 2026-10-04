@@ -90,6 +90,20 @@ class Window {
   void SetPositionLocked(bool locked);
   bool position_locked() const { return position_locked_; }
 
+  // Lets the widget take the keyboard, for as long as composing a note needs it.
+  //
+  // The widget is WS_EX_NOACTIVATE so that clicking it never pulls the caret out
+  // of whatever is being typed into - which is also why it cannot contain a text
+  // field at all. Rather than give that up for good, the flag is dropped only
+  // while someone is actually writing a note, and put straight back afterwards,
+  // along with the keyboard: the window that had focus before gets it back.
+  //
+  // That is the whole trick behind "add a note from the widget". A widget that
+  // stole focus permanently would be unusable on a desktop, and one that could
+  // never take it could not be typed into.
+  void PostSetComposeMode(bool active);
+  bool compose_mode() const { return compose_mode_; }
+
   // Starts a native move or resize loop against the current cursor.
   //
   // Flutter hands Dart only view-relative pointer positions, and a window that
@@ -161,6 +175,11 @@ class Window {
   bool pending_anchor_valid_ = false;
   double pending_anchor_x_ = 0.0;
   double pending_anchor_y_ = 0.0;
+
+  // Compose mode, and the window whose keyboard we are holding.
+  bool compose_mode_ = false;
+  HWND compose_previous_focus_ = nullptr;
+  void ApplyComposeMode(bool active);
 
   std::unique_ptr<flutter::FlutterViewController> controller_;
 };

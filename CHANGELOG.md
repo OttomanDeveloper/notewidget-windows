@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### Added
+
+- **Add a note from the widget.** A small circle in the bottom-right corner,
+  nearly invisible until you move the pointer over the widget, turns into a text
+  field in the same spot. Type, press Enter, and the note is there. Escape or the
+  cross closes it without saving. One slot that changes rather than a button
+  that reveals a panel somewhere else, so there is nothing to hunt for and
+  nothing new to remember — and because it lives in the bottom strip it never
+  disturbs the cards, which is what the widget is for. Faint rather than absent
+  when you are not hovering, because a control that only exists on hover is one
+  half the people who could use it will never find.
+- **The widget can be typed into, which it could not before.** The widget window
+  is `WS_EX_NOACTIVATE` so that clicking it never pulls the caret out of whatever
+  you are typing into — and that is also why it could never contain a text
+  field. Rather than give that up for good, the flag is dropped for exactly as
+  long as the composer is open and put straight back afterwards, along with the
+  keyboard: the window that had focus before gets it back. An always-on-top
+  widget that stole focus permanently would be unusable, and one that could never
+  take it could not be typed into. `WM_MOUSEACTIVATE` had to stop refusing
+  activation too, which was the same problem one layer down.
+- **Escape closes the composer.** A text field that cannot be dismissed from the
+  keyboard traps the keyboard, and this one is holding it. Clicking away does not
+  help, because the widget has focus precisely so that typing works.
+
+### Changed
+
+- **A note written in the widget's composer does not become a second thing to
+  fill in.** The first line becomes the title and the rest the body, which is the
+  shape the widget already displays — a line, then a preview — so a note jotted
+  on the desktop looks like a note written in the editor. It lands at the top of
+  the list, being the most recent thing in it, but it does not steal the editor's
+  selection: you are looking at the widget, and moving the editor's cursor out
+  from under you would be a worse surprise than the note appearing quietly.
+- **A note with a title and no body no longer says "No text yet".** Its content
+  is on screen in the line above, so claiming otherwise is just wrong — and it is
+  the shape every note added from the widget's composer takes, since one line of
+  typing becomes the title. "No text yet" is now reserved for a note with nothing
+  in it at all.
+- The widget cannot be dragged or resized while the composer is open. The grab
+  band runs along the very bottom of the widget, which is where the field sits, so
+  a click near its edge would otherwise resize the window instead of placing the
+  caret.
+
 ### Fixed
 
 - **Antivirus can no longer stop the app from starting.** This was the worst bug

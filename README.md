@@ -186,6 +186,11 @@ pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Wid
 - **Per-monitor position.** The widget returns to the screen you left it on. If
   that monitor is unplugged, it comes back on the nearest remaining one instead
   of somewhere it can never be clicked again.
+- **Add a note without leaving what you were doing.** A small circle in the
+  widget's bottom-right corner — nearly invisible until you move the pointer over
+  it — becomes a text field in the same spot. Type, press Enter, done. Escape
+  throws it away. One line becomes the note's title and the rest its body, so it
+  looks like a note you wrote in the editor.
 - **Drag the widget anywhere.** Grab it and move it; it comes back where you left
   it, on whichever monitor that was. If you would rather pin it, Settings has a
   lock — and a locked widget says so when you try to drag it, rather than
@@ -321,16 +326,16 @@ lib/
       editor/                the editor window
       widget/                the widget window
       settings/              the settings dialog
-      common/                confirm dialog, undo toast, empty states
+      common/                confirm dialog, undo toast, done toggle, empty states
 windows/runner/              native host: windows, tray, hotkey, autostart
 installer/winnotes.iss       setup.exe definition
 assets/brand/                logo sources and derived assets
 docs/images/                 README screenshots
 tool/brand/                  logo generator
 tool/release/                packaging: builds, verifies, zips, compiles setup.exe
-tool/screenshots/            screenshot capture and hero composition
+tool/screenshots/            screenshot capture, hero composition, input probe
 .github/workflows/           CI on every push, release on a version tag
-test/                        115 tests
+test/                        163 tests
 ```
 
 ### How the two windows work
@@ -380,13 +385,25 @@ drag started. It is told only after the pointer has already travelled past the
 threshold, so anchoring on the cursor at that moment quietly discards everything
 moved in the first hop.
 
+Typing in the widget runs into the mirror image of that, and is worth reading
+about because the constraint is counter-intuitive. The widget is
+`WS_EX_NOACTIVATE` so clicking it never pulls the caret out of whatever you are
+typing into — which is also, and not incidentally, why it could never contain a
+text field. The composer drops the flag while it is open and puts it straight
+back when it closes, remembering which window had the keyboard and handing it
+back there. `WM_MOUSEACTIVATE` refuses activation as well, and had to stop
+doing so too, which is the same problem one layer down. Nothing here is permanent
+because nothing permanent would be acceptable: a widget that could hold the caret
+would be the most irritating thing on the desktop, and one that could not take
+it could not be typed into.
+
 ## Tests
 
 ```
 flutter test
 ```
 
-156 tests covering the parts where being wrong loses data: atomic writes and
+163 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and

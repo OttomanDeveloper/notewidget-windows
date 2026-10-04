@@ -107,6 +107,10 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
         // directory watcher it already uses.
         final id = event.noteId;
         if (id != null) _notes.toggleCompleted(id);
+      case ShellEventKind.createNote:
+        // A note written in the widget, for the same reason as above.
+        final incoming = event.newNote;
+        if (incoming != null) _notes.addNote(title: incoming.title, body: incoming.body);
       case ShellEventKind.geometry:
       case ShellEventKind.visibility:
       case ShellEventKind.unknown:

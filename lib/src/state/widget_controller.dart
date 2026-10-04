@@ -54,6 +54,7 @@ class WidgetController extends ChangeNotifier {
   final bool isSystemDark;
 
   List<Note> _notes = const [];
+  final NoteIdFactory _ids = NoteIdFactory();
   String? _selectedId;
   WidgetWindowState _state = WidgetWindowState.empty;
   bool _widgetVisible = true;
@@ -250,6 +251,45 @@ class WidgetController extends ChangeNotifier {
     _notesRepo.save(_notes);
   }
 
+  /// Adds a note written in the widget's own composer.
+  ///
+  /// The same writer question as [toggleCompleted], and the same answer: ask the
+  /// runner who owns notes.json rather than writing it here, because the editor
+  /// holds keystrokes in memory for a quarter of a second and a write from this
+  /// side in that window would lose them. With no editor open there is nothing to
+  /// lose and nothing buffered, so this surface writes.
+  ///
+  /// The note lands at the top of the list, because it is the most recent thing
+  /// in it, but it does not become the focused card - that is the editor's
+  /// selection to make, and taking it from here would move the editor's cursor
+  /// every time someone added a note from the desktop.
+  Future<bool> addNote({required String title, required String body}) async {
+    if (title.trim().isEmpty && body.trim().isEmpty) return false;
+
+    if (await _shell.isEditorRunning()) {
+      await _shell.requestCreateNote(title: title, body: body);
+      return true;
+    }
+
+    final now = DateTime.now();
+    _notes = NotesRepository.sorted([
+      ..._notes,
+      Note(
+        // The same factory the editor uses, rather than something invented here:
+        // ids only have to be unique within one profile folder, and this is the
+        // code that already guarantees that.
+        id: _ids.next(),
+        title: title,
+        body: body,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]);
+    notifyListeners();
+    _notesRepo.save(_notes);
+    return true;
+  }
+
   Future<void> setWidgetVisible(bool visible) async {
     _widgetVisible = visible;
     notifyListeners();
@@ -288,6 +328,9 @@ class WidgetController extends ChangeNotifier {
   /// can still be found and read at.
   Future<void> beginResize(ResizeEdge edge, Offset anchor) =>
       _shell.beginWidgetResize(edge, anchor);
+
+  /// Lets the widget hold the keyboard while a note is written in it.
+  Future<void> setComposeMode(bool active) => _shell.setWidgetComposeMode(active);
 
   /// Pushes everything this surface has queued to disk before the process goes
   /// away.
