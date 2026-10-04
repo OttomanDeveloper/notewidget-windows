@@ -4,6 +4,88 @@
 
 ### Added
 
+- **Markdown, per note.** A small switch beside the title turns it on for the
+  note you are editing, and the body becomes a source field on the left with a
+  rendered preview on the right - or one at a time when the window is too narrow
+  for both. Headings, lists including task lists, quotes, code blocks, bold,
+  italic, strikethrough, links, and tables. The widget renders the same thing,
+  compressed to fit a card.
+
+  **Per note rather than a global setting,** because the two kinds of note sit
+  side by side in one library and neither should be forced to be the other: a
+  to-do list and a formatted note is the normal case. **Off by default,** so an
+  existing note does not start rendering its asterisks differently the day the
+  app updated. The flag is `markdown` on the note and is omitted from
+  `notes.json` while it is off, on the same rule as `completedAt` - a profile
+  that never used the feature stays byte-identical to one written before it
+  existed. Only a literal `true` turns it on, so a hand-edited `"markdown":
+  "yes"` cannot produce a note the renderer has never been asked to handle.
+
+  **The stored text is never rewritten.** Rendering derives widgets from the
+  source and writes nothing back, so the plain-text export still exports exactly
+  what you typed, search still matches the source, and turning the switch off
+  gives your asterisks and hashes back exactly as they were. A note is still a
+  title and a body in `notes.json`, not a document tree.
+
+  **One renderer, two budgets.** `PROJECT.md` resolved "plain text only, or
+  Markdown with a preview" in favour of plain text, on the reasoning that "a
+  Markdown editor would leave the widget still guessing how to render it". That
+  was right about the problem and wrong about the size of the answer: the widget
+  does not guess if it is given a renderer with a stated budget. At card density
+  headings compress to within 5% of body text, code clamps to three lines and
+  says how many were hidden, and a table becomes its text - because a grid in a
+  360 px card is a grid of unreadable slivers and its content is the point. Both
+  surfaces are the same walk of the same tree with a smaller budget, so they
+  cannot drift apart.
+
+  **Two things it deliberately will not do.** A `- [x]` draws a box that looks
+  like the completion circle and is not one: completion is per *note* here and a
+  Markdown task list is per *line*, and two answers to "is this done" is worse
+  than one that only looks like the other. And a link is styled but cannot be
+  clicked, because `PROJECT.md` says this app does not touch the internet at
+  all - the href stays in the source, so nothing is lost, and the widget has
+  nowhere to send you.
+
+  **One dependency, and it is the parser.** `package:markdown` - a conforming
+  CommonMark implementation. `AGENTS.md` §0.4 has been amended from "zero
+  dependencies" to an enumerated list, with the reasoning: the rule was never
+  "depend on nothing", it was "do not buy a platform capability instead of
+  owning it", and parsing to a standard is the opposite case - writing a
+  CommonMark implementation would have been *less* ownership, not more. The
+  renderer, both density budgets, the palette styling and every decision about
+  what is and is not rendered stayed in this repo. The rule is now a guard:
+  `dependency_guard_test` fails on a package that is not on the list, and on a
+  list that has quietly grown into "anything goes".
+
+  Three defects found by looking at it running rather than by reading it:
+
+  - **`**bold**` was not actually bold inside a heading.** The renderer attached
+    styles to block elements and left leaf runs to inherit - which meant they
+    inherited the *body* style, so emphasis inside anything that changed size
+    rendered at body size and body weight. Found by a test that resolves style
+    inheritance while walking spans, which is the only way to ask the question
+    correctly.
+  - **Tables rendered nothing.** The rows are one level down, inside `thead` and
+    `tbody`, and looking only at direct children found no rows at all - which
+    reads as "the parser does not do tables" rather than as a bug here.
+  - **A twenty-paragraph note overflowed the card by 365 pixels.** `maxLines`
+    bounds the lines inside one `Text` and says nothing about how many blocks a
+    note has. Clamped by height now, with the content laid out unbounded inside
+    an `OverflowBox`, because a `ConstrainedBox` still lets the `Column` report
+    an overflow it is merely clipping. The cut is faded rather than hard-edged:
+    it cannot be made to land on a line boundary, since block gaps do not sit on
+    the line grid, and a half-visible line behind a sharp edge reads as a
+    rendering fault.
+
+  And two decisions that only a screenshot could settle. A table flattened for a
+  card became `SurfaceDensityWidgetcompressed` - `textContent` concatenates cells
+  with nothing between them, which is *less* than the note said, and losing the
+  grid is not worth losing the separators. And the compact card flattens
+  headings to body size while the large card keeps the real scale: a card shows
+  the note's title directly above the body, so a `# Heading` in the body is a
+  repeat, and at 1.3x it was eating a third of a two-line card and pushing the
+  content off the end.
+
 - **Add a note from the widget.** A small circle in the bottom-right corner,
   nearly invisible until you move the pointer over the widget, turns into a text
   field in the same spot. Type, press Enter, and the note is there. Escape or the
@@ -78,7 +160,7 @@
   resolves to the default rather than refusing to start, and is left in the file
   rather than silently rewritten.
 
-- **The pattern docs are now enforced, not just written.** 31 architecture
+- **The pattern docs are now enforced, not just written.** 37 architecture
   guards in `test/architecture/`, run by `flutter test` like everything else:
 
   - `layer_test` — `dart:io` confined to `core/` and `data/`; only `platform/`
@@ -93,9 +175,11 @@
     comes from the gesture anchor and not `GetCursorPos`; `WS_EX_NOACTIVATE` is
     restored; focus goes back to the window it was taken from;
     `WM_MOUSEACTIVATE` defers to compose mode.
-  - `docs_test` — every rule in §3 of a pattern doc has a row in its test table,
+  - `docs_test` - every rule in §3 of a pattern doc has a row in its test table,
     every test it cites still exists, every guard it cites exists, and
     `AGENTS.md` does not claim a fixed rule is still broken.
+  - `dependency_guard_test` - a runtime dependency that is not on the list in
+    `AGENTS.md` §0.4.
 
   These cover the rules whose failure is **silent**. `HTCAPTION` over the widget
   body looks reasonable in a diff, and it is the reason the widget could not be

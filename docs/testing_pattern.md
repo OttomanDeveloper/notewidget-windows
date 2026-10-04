@@ -37,8 +37,17 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**271 tests: 175 about behaviour, 31 about the rules themselves, 65 about
+**319 tests: 217 about behaviour, 37 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
+
+The 42 in `markdown_test` are the densest in the suite, because the renderer has
+more ways to be quietly wrong than the rest of the app put together: an
+unrecognised node that drops a paragraph, a leaf span that loses its inherited
+style, a table whose rows are one level down, a clamp that does not clamp. Four
+of those were real defects, and **three of them were found by a screenshot rather
+than by a test** — emphasis that looked like asterisks, a heading that looked
+twice its size, a cut that landed mid-glyph. A test can assert that a span exists
+and still leave the note unreadable.
 
 The 65 in `palette_test` are mostly generated: one group per palette, asserting
 the contrast guarantee holds for it. That is deliberate — a curated palette is
@@ -166,6 +175,16 @@ pay again.
 - **`KEYEVENTF_UNICODE` arrives garbled in Flutter.** Flutter derives the
   character from the keyboard layout, so `Type("Book the MOT")` lands as
   `"b/+ 85 mot"`. Use virtual-key codes, which is what a physical keyboard does.
+- **The widget window is translucent, so a screen grab lies.** `CopyFromScreen`
+  on the widget's rectangle captures whatever is *behind* it — including the
+  editor window, whose preview pane renders the same note at a *different
+  density*. The result reads as a widget bug: a heading measured at nearly twice
+  its real size, which was the editor's `headingScale: 1.9` showing through.
+  Use `PrintWindow` on the widget's own HWND, which captures its Flutter
+  content. Corollary: **do not conclude anything about emphasis or strikethrough
+  from a small screenshot.** Weight, slant and a 1px rule all read as extra
+  punctuation at card size. Zoom the crop 4× with nearest-neighbour, or assert
+  on the span in a test.
 - **Never gate the ZIP on `WinNotes.exe`** — the executable is `win_notes.exe`.
 - **The build fails with LNK1104 if the app is running** from
   `build\...\Release\win_notes.exe`. Stop it first.
@@ -174,6 +193,34 @@ pay again.
 
 ## 4. Widget-test traps specific to this codebase
 
+- **Real `dart:io` inside `testWidgets` hangs forever.** A widget test's fake
+  clock never drives the real event loop. Two faces of the same thing: awaiting
+  a disk read never completes, and a debounced write fires its timer but never
+  finishes the write — so `flushPending()` finds nothing pending and no file
+  appears, which looks exactly like the setting not being saved. Wrap setup in
+  `tester.runAsync`; test debounces in a plain `test()` with real elapsed time.
+- **A pending fake timer fails the test even though `tearDown` would have
+  cleaned up.** The pending-timer check runs *before* `tearDown`, so a debounce
+  armed by the last action has to be cancelled inside the test body
+  (`AtomicJsonFile.cancelPendingWrites`).
+- **A guard that can only be tested by breaking the thing it guards does not
+  get tested.** `dependency_guard_test` proves its scanner bites by feeding it a
+  pubspec that is not the real one. Write scanners to take text, not a
+  `SourceTree`, for exactly this reason.
+- **Span styles inherit, so leaf runs usually carry none.** A test that reads
+  `span.style?.fontWeight` directly sees `null` for text the user can plainly
+  see is bold, and then "passes" by finding nothing. Resolve inheritance while
+  walking — which is also how this caught a real bug where `**bold**` inside a
+  heading rendered at body size.
+- **`maxLines` does not bound block count.** One `Text` with `maxLines: 2` is
+  fine; twenty `Text`s each obeying it overflow by 365 pixels. Clamp rendered
+  Markdown by height with an `OverflowBox`, because a `ConstrainedBox` still
+  lets the `Column` report the overflow it is merely clipping.
+- **The Markdown parser consumes the syntax you are looking for.** `- [ ]`
+  becomes an `<input type="checkbox">` element and the brackets are gone from
+  the text; the emphasis tags are `strong`/`em`/`del`, never `b`/`i`/`s`; table
+  rows live inside `thead`/`tbody`, not directly under `table`. Dump the AST
+  before writing an assertion about what a construct parses to.
 - **`Material` with a clip shape expands to fill its constraints.** A `SizedBox`
   *inside* it does not constrain it. This made the add-note circle the full
   width of the widget. Found by a geometry probe, not by reading the code.

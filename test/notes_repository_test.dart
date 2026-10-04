@@ -7,6 +7,8 @@ import 'package:win_notes/src/core/atomic_json_file.dart';
 import 'package:win_notes/src/data/note.dart';
 import 'package:win_notes/src/data/notes_repository.dart';
 
+import 'helpers/file_io.dart';
+
 void main() {
   late Directory temp;
 
@@ -15,7 +17,10 @@ void main() {
   });
 
   tearDown(() {
-    if (temp.existsSync()) temp.deleteSync(recursive: true);
+    // Retried rather than deleted outright: several of these tests leave a
+    // watch, a lock or an in-flight debounced write behind, and whether the last
+    // handle is closed by the time the body returns is a race. See the helper.
+    deleteTempDir(temp);
   });
 
   String notesPath() => '${temp.path}\\notes.json';

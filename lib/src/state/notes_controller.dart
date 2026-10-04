@@ -340,6 +340,32 @@ class NotesController extends ChangeNotifier {  NotesController({
     notifyListeners();
   }
 
+  /// Turns Markdown rendering on or off for one note.
+  ///
+  /// The one property of a note that is not part of its text, which is why it
+  /// is not just a field the UI writes: it decides how the stored source is
+  /// *presented*, so turning it off must not touch the source. Someone who
+  /// writes Markdown, decides they did not want it, and turns it back on later
+  /// has to get their asterisks and their hashes back exactly as they typed
+  /// them.
+  ///
+  /// Bumps `updatedAt`, unlike [toggleCompleted]. That one deliberately does
+  /// not, because finishing a task is not an edit and a list that reshuffles
+  /// every time you tick something is unusable. Switching a note into Markdown
+  /// *is* an edit - it changes how the note reads - so it earns its place at the
+  /// top of the list like any other change.
+  void setMarkdown(String id, bool enabled) {
+    if (_corrupt != null) return;
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index < 0) return;
+    final note = _notes[index];
+    if (note.markdown == enabled) return;
+    note.markdown = enabled;
+    note.updatedAt = DateTime.now();
+    _persist();
+    notifyListeners();
+  }
+
   /// Deletes a note and holds it for undo.
   ///
   /// The caller is responsible for having asked for confirmation first; this

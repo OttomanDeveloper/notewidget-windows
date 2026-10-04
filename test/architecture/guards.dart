@@ -207,6 +207,88 @@ List<String> findCaptionHits(SourceTree tree) {
   return violations;
 }
 
+/// SDK packages, which are named in `dependencies` but are not dependencies.
+///
+/// `flutter:` is listed there because that is where it belongs; counting it as a
+/// third-party package would make the count wrong in a way that hides the real
+/// one.
+const Set<String> sdkPackages = <String>{'flutter'};
+
+/// The third-party runtime packages this app is allowed to depend on.
+///
+/// `AGENTS.md` §0.4. One entry, and it is a list rather than a boolean because
+/// the rule is not "no dependencies" — it is "every dependency is a decision
+/// somebody made on purpose". Adding to this set is the visible form of that
+/// decision, and `docs/storage_pattern.md` §7 is where the reasoning lives.
+const Set<String> approvedDependencies = <String>{
+  // The CommonMark parser. Added 2026-10-04 with the reversal of "no Markdown".
+  // Everything the package does *not* do - the renderer, the two density
+  // budgets, the palette styling, what is deliberately not rendered - is in
+  // `lib/src/ui/common/markdown_text.dart` and is owned here.
+  'markdown',
+};
+
+/// Every package named under the top-level `dependencies:` block of a pubspec.
+///
+/// Takes the file's text rather than a [SourceTree] so the rule can be checked
+/// against a pubspec that is not the real one. That is what makes the
+/// corresponding test able to prove the scanner still bites: a guard whose only
+/// input is the live repository cannot be shown to reject a violation without
+/// making the violation real first.
+///
+/// `dev_dependencies` are deliberately not read. A test-only package cannot
+/// reach the shipped app, and `flutter_lints` has been there the whole time.
+Set<String> declaredRuntimeDependencies(String pubspec) {
+  // Collected first, because the entry level is the *shallowest* indentation in
+  // the block rather than a fixed number of spaces. Assuming two spaces would
+  // read a four-space pubspec as having no dependencies at all, which is the
+  // failure mode that reads as enforcement: a guard that finds nothing because
+  // it looked in the wrong place.
+  final lines = <String>[];
+  var inBlock = false;
+
+  for (final line in pubspec.split('\n')) {
+    if (RegExp(r'^dependencies:\s*$').hasMatch(line)) {
+      inBlock = true;
+      continue;
+    }
+    if (!inBlock) continue;
+
+    // A blank line is not the end of the block - pubspecs are usually written
+    // with one before the next top-level key.
+    if (line.trim().isEmpty) continue;
+    if (!RegExp(r'^\s').hasMatch(line)) break;
+    lines.add(line);
+  }
+
+  if (lines.isEmpty) return <String>{};
+
+  final entryIndent = lines
+      .map((line) => RegExp(r'^\s*').firstMatch(line)!.group(0)!.length)
+      .reduce((a, b) => a < b ? a : b);
+
+  final names = <String>{};
+  for (final line in lines) {
+    final indent = RegExp(r'^\s*').firstMatch(line)!.group(0)!.length;
+    if (indent != entryIndent) continue;
+    final entry = RegExp(r'^\s+([A-Za-z_][A-Za-z0-9_]*):').firstMatch(line);
+    if (entry != null) names.add(entry.group(1)!);
+  }
+
+  return names.difference(sdkPackages);
+}
+
+/// Dependencies that are not on the approved list.
+///
+/// `AGENTS.md` §0.4.
+List<String> unapprovedDependencies(
+  String pubspec, {
+  Set<String> approved = approvedDependencies,
+}) {
+  final declared = declaredRuntimeDependencies(pubspec);
+  return declared.difference(approved).toList()..sort();
+}
+
 /// Headings of the numbered rules in a pattern doc.
 ///
 /// `multiLine: true` rather than an inline `(?m)`: Dart's RegExp is ECMAScript,

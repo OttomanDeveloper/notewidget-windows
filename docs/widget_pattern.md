@@ -260,9 +260,94 @@ the unrooted first-launch bug in `AGENTS.md` §4.
 every geometry change so a resize gesture cannot produce a window too small to
 read or to find.
 
+### 3.14 One renderer, two budgets
+
+`lib/src/ui/common/markdown_text.dart` renders Markdown for **both** surfaces,
+and the only thing that differs between them is the density: a table of type
+sizes and spacing, `MarkdownDensity.widget` or `MarkdownDensity.editor`.
+
+This is the whole answer to the objection that ended "no Markdown" — *a Markdown
+editor would leave the widget still guessing how to render it*. It does not guess
+because it is not a different code path with a different implementation. It is
+the same walk of the same AST with a smaller budget, which means the widget and
+the preview cannot disagree about what a note says, and a change to what counts
+as supported lands on both at once.
+
+At widget density the renderer compresses rather than omits: code blocks clamp to
+three lines and say how many were hidden, and a table becomes one line per row
+with its cells still separated by `|`. A grid in a 360 px card is a grid of
+unreadable sliders, but flattening it with `textContent` would give
+`SurfaceDensityWidgetcompressed`, which is less than the note said — and "never
+less than what it says" (§3.15) is the rule the grid loses to.
+
+**One thing is not a density.** The compact card and the large card share
+`MarkdownDensity.widget` and differ in budget, so `headingScale` is a parameter
+rather than part of the density. A card shows the note's title directly above the
+body, so a body opening with `# Release` is repeating itself; at 1.3× that repeat
+consumed a third of the compact card's two lines and pushed the content off the
+end. The compact card therefore asks for 1.0 — bold, same size, one line, and the
+line it costs is a line of content. The large card keeps the real scale, because
+it has seven lines and is the surface you actually read a note on.
+
+Density is about the room available, not a belief that headings are unimportant.
+Both halves are pinned, because "headings are big everywhere" and "headings are
+flat everywhere" are equally wrong.
+
+The parse is memoised on the source string, 48 entries deep. The widget list
+re-renders on every scroll tick and the preview on every keystroke, so parsing
+per card per frame is work with no result; the bound is there because an editing
+session touches many distinct bodies and a cache that only grows is a leak
+wearing a library's clothes.
+
+### 3.15 A rendered note is never less than what it says
+
+Anything the renderer does not recognise degrades to its **text content**. It
+does not drop the node and it does not throw. A note must never render as less
+than was typed, because a renderer that silently loses content is worse than one
+that renders syntax literally — you can see `**`, you cannot see a paragraph
+that vanished.
+
+Two specific refusals, both deliberate:
+
+- **Links are styled but not clickable.** `PROJECT.md` says the app does not
+  touch the internet at all. A widget with nowhere to send someone has no
+  business drawing something that looks tappable, and the href stays in the
+  source, so nothing is lost.
+- **A `- [x]` draws a box and does nothing when clicked.** Completion is per
+  *note* — the circle, and `Ctrl+D` — while a Markdown task list is per *line*,
+  and two answers to "is this done" is worse than one that only looks like the
+  other.
+
+Raw HTML is text. `encodeHtml: false` keeps `<b>` and `<script>` as the
+characters they are, so a note cannot try to be markup.
+
+### 3.16 A rendered body is clamped by height, not by line count
+
+`maxLines` bounds the lines inside one `Text`. It says nothing about how many
+blocks a note has, so a note of twenty one-line paragraphs sailed straight past
+a `maxLines: 2` and overflowed the card by 365 pixels.
+
+The clamp is a height, with the content laid out unbounded inside an
+`OverflowBox` and the parent's edge clipping it. A `ConstrainedBox` alone does
+not work: the `Column` still reports the overflow even though the paint is
+clipped.
+
+The cut is **faded**, not hard-edged. It cannot be made to land on a line
+boundary — block gaps and a heading's own padding do not sit on the line grid —
+and a half-visible line behind a sharp edge reads as a rendering fault rather
+than as "there is more". Content shorter than the box ends above the fade and is
+untouched, because the child is top-aligned.
+
 ---
 
 ## 4. The traps
+
+- **Do not give the widget its own Markdown path.** Two implementations is one
+  too many, and the disagreement between them is invisible until someone
+  notices the widget and the editor showing different notes (§3.14).
+- **Do not make task-list boxes interactive.** They look like the completion
+  circle and they are not it (§3.15).
+- **Do not clamp a rendered body with `maxLines`** (§3.16).
 
 - **Do not reintroduce `HTCAPTION`.** It fails twice (§3.1) and it would break
   card taps even if it worked.
@@ -328,7 +413,11 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.11 | "No text yet" only when empty | `widget_surface_test` → *says so when a note has nothing in it at all*, *says nothing about the body when there is a title* |
 | 3.11 | Card sizing and previews | `widget_surface_test` → *is larger than a compact card*, *renders every card compact*, *shows a preview even with no body*, *collapses line breaks so previews stay one paragraph*, *falls back to a placeholder when untitled* |
 | 3.12 | Hides when nothing has text | `widget_integration_test` → *no note with text means the widget is not shown*, *one note with text is enough to show it* |
-| 3.13 | Sizes clamped in the runner | **manual** — a 900 px haul against the 200×140 floor |
+| 3.13 | Sizes clamped in the runner | **manual** - a 900 px haul against the 200×140 floor |
+| 3.14 | One renderer, two budgets | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane offers a switch instead of two cramped columns* |
+| 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing* |
+| 3.16 | Clamped by height | `markdown_test` → *a compact card still clamps to its line budget* |
+| - | Markdown on a card | `markdown_test` → *a plain note is untouched by any of this*, *a markdown note renders rather than showing its source*, *a markdown title honours inline formatting*, *a finished markdown card is struck through* |
 | — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |

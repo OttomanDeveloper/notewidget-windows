@@ -13,6 +13,7 @@ class Note {
     required this.createdAt,
     required this.updatedAt,
     this.completedAt,
+    this.markdown = false,
   });
 
   final String id;
@@ -29,6 +30,25 @@ class Note {
   DateTime? completedAt;
 
   bool get isCompleted => completedAt != null;
+
+  /// Whether this note's title and body are Markdown rather than plain text.
+  ///
+  /// Per note, not per app, because the two kinds of note are genuinely
+  /// different things: a to-do list and a formatted note sit side by side in
+  /// the same library without either wanting to be the other. And off by default,
+  /// because `PROJECT.md` resolved "plain text only, or Markdown with a
+  /// preview" in favour of plain text and an existing note should not start
+  /// rendering its asterisks differently the day the app updated.
+  ///
+  /// The body is never rewritten either way. This decides how the stored source
+  /// is *presented*; the source is what gets saved, exported and searched, so a
+  /// note can be switched off again and come back exactly as typed.
+  ///
+  /// A `- [x]` inside a Markdown body is rendered as a box and is not a control.
+  /// Completion is per note — the circle and `Ctrl+D` — while a Markdown task
+  /// list is per line, and two sources of truth for "is this done" is worse than
+  /// one that only looks like the other. See `docs/storage_pattern.md`.
+  bool markdown;
 
   /// A note exists even with nothing in it. Deleting the last character of a
   /// body is not the same as deleting the note, so emptiness is never a reason
@@ -60,8 +80,10 @@ class Note {
         updatedAt: updatedAt,
         // Carried by copy because undo restores a note wholesale. A restored
         // note that silently lost its finished state would be a bug report
-        // nobody could explain.
+        // nobody could explain. The same applies to markdown, which is just as
+        // much a property of the note as whether it is a task.
         completedAt: completedAt,
+        markdown: markdown,
       );
 
   Map<String, dynamic> toJson() => {
@@ -74,6 +96,10 @@ class Note {
         // of ordinary notes stays exactly as it was before this field existed.
         if (completedAt != null)
           'completedAt': completedAt!.toUtc().toIso8601String(),
+        // Same rule, same reason. False is the default, so writing it would put
+        // a field in every existing note's JSON to record the absence of a
+        // feature.
+        if (markdown) 'markdown': true,
       };
 
   static Note fromJson(Map<String, dynamic> json) {
@@ -91,6 +117,10 @@ class Note {
       // for an open note. Both mean the same thing, which is the point of making
       // it nullable rather than defaulting it to a sentinel date.
       completedAt: _parseOptionalTime(json['completedAt']),
+      // Same shape of answer: absent means plain text. Anything that is not
+      // literally true is false, so a hand-edited `"markdown": "yes"` cannot
+      // turn a note into something the renderer has never been asked to handle.
+      markdown: json['markdown'] == true,
     );
   }
 

@@ -16,10 +16,19 @@ and pointers, not essays. Detail lives in `docs/*.md`.
    and ask the owner.
 3. **Never delete or overwrite a data file the app could not read.** Renaming
    with a timestamp is the correct move. See `docs/storage_pattern.md` §3.11.
-4. **Zero runtime dependencies.** `pubspec.yaml` has `flutter` and nothing else,
-   and that is a decision rather than an accident. Windows behaviour is
-   hand-written in `windows/runner/`. Do not add a package to get a window
-   effect.
+4. **Dependencies are enumerated, not open-ended.** `pubspec.yaml` carries
+   `flutter` and exactly one package: `markdown`, the CommonMark parser, added
+   on 2026-10-04 when the owner reversed "no Markdown". Windows behaviour is
+   still hand-written in `windows/runner/` — do not add a package to get a
+   window effect. **Why one is allowed:** the rule was never "never depend on
+   anything", it was "do not buy a platform capability instead of owning it",
+   and a conforming Markdown parser is the opposite case: writing a CommonMark
+   implementation is a project in itself and hand-rolling one would have been
+   *less* ownership, not more. **What stayed in this repo** is everything the
+   dependency does not do — the renderer, the density budgets, the palette
+   styling, and every decision about what is and is not rendered. Adding a
+   second package needs the owner to say so, because the argument that carried
+   the first one does not carry automatically.
 5. **Palette ids are frozen.** The ids in `lib/src/ui/palette.dart` live in
    people's `settings.json`. Renaming one silently resets anyone who chose it;
    add palettes instead. The default is index zero, not a named constant, for
@@ -46,7 +55,7 @@ Verified against Flutter 3.47.5 stable, Dart SDK `^3.13.4`.
 | `PROJECT.md` | What the product is, and is not. The authority. |
 | `docs/storage_pattern.md` | One writer per file, atomic replace, debounce + ceiling, retry ladders, transient vs damaged, `.bak`, recovery that never destroys. |
 | `docs/widget_pattern.md` | `HTCLIENT` everywhere, Dart-decides/runner-performs, screen-space drags, scroll-vs-drag by extent, borrowing the keyboard, card sizing. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 271 tests, and the seven traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 319 tests, and the nine traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged. |
 
@@ -74,7 +83,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` — 31 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 37 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -82,6 +91,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 | `storage_guard_test` | the watcher attached to the file instead of the directory; the export not going through the atomic writer; `.bak` taken after the replace instead of before |
 | `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode |
 | `docs_test` | a rule in §3 of a pattern doc with no row in its test table; a cited test that no longer exists; a cited guard that does not exist; this file claiming a fixed rule is still broken |
+| `dependency_guard_test` | a runtime dependency in `pubspec.yaml` that is not on the enumerated list in §0.4; an approved list that has quietly grown into "anything goes" |
 
 The guard has **no allowlist**, on purpose. If a write genuinely cannot go
 through `data/`, the fix is to edit the scanner where the diff shows it.
@@ -116,6 +126,12 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    path the person chose, so a rolling previous version beside it is noise they
    never asked for. `notes.json` is rewritten constantly, which is why it does
    get one. Pinned by a test so the asymmetry is a decision rather than a drift.
+6. **A Markdown `- [x]` draws a box that looks like the completion circle and
+   is not one.** Tapping it does nothing, deliberately: completion is per *note*
+   and a Markdown task list is per *line*, so wiring the boxes up would give the
+   app two answers to "is this done". The cost is a visible control that is
+   inert, which is the thing §4 is for recording. `docs/widget_pattern.md` §3.15
+   says why, and `markdown_test` pins that nothing in the render is tappable.
 
 ---
 
@@ -135,7 +151,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 271 passing
+flutter test             # 319 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md` that says **why**, not just

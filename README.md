@@ -165,6 +165,26 @@ pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Wid
   check runs in the test suite.
 - **Notes** are a title and a body. Nothing else, ever. They sort by most
   recently edited and search covers titles and bodies, filtering as you type.
+- **Markdown, per note.** A small switch beside the title turns it on for the
+  note you are editing, and the body becomes a source field with a rendered
+  preview beside it - or one at a time when the window is too narrow for both.
+  Headings, lists including task lists, quotes, code blocks, bold, italic,
+  strikethrough, links, and tables. The widget renders the same thing, compressed
+  to fit a card.
+
+  It is a switch rather than a global setting because a to-do list and a
+  formatted note belong in the same library and neither should have to be the
+  other, and it is **off by default** so an existing note does not start looking
+  different the day you update. **What you typed is never rewritten** - the
+  export still exports it, search still finds it, and turning the switch off
+  gives your asterisks back exactly as they were.
+
+  Two things it will not do, both on purpose. A `- [x]` draws a box that looks
+  like the done-circle and is not one: being done is a property of the whole
+  note here, and two answers to that question is worse than one that only looks
+  like the other. And a link is styled but not clickable - this app does not
+  touch the internet at all, so the address stays in your text where you can
+  copy it.
 - **Writing is immediate.** There is no save button. Changes are written as they
   are typed, debounced by a fraction of a second so a burst of keystrokes costs
   one write rather than one per character. A burst that never pauses still lands
@@ -450,8 +470,8 @@ shipped by the time anyone noticed.
 
 ## Deliberately not built
 
-No accounts, no sync, no Markdown, no folders, no tags, no reminders, no due
-dates, no encryption, no network code of any kind.
+No accounts, no sync, no folders, no tags, no reminders, no due dates, no
+encryption, no network code of any kind.
 
 `PROJECT.md` is the design document, including a section on things that were
 considered and left out, and why.

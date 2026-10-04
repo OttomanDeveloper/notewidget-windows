@@ -237,6 +237,41 @@ candidate backup* — skips individual unreadable notes instead of condemning th
 file. Refusing the whole backup would throw away notes that are perfectly fine,
 which is the opposite of what someone recovering from corruption needs.
 
+### 3.14 `markdown` decides presentation and touches nothing else
+
+`Note.markdown` is a boolean, defaulting to false, **omitted from `toJson` when
+false** on the same rule as `completedAt` (§3.12): a file written before the
+field existed, and a file of ordinary notes written after it, are byte-identical
+to what they were. Absent means plain text. Only a literal `true` in the JSON
+turns it on, so a hand-edited `"markdown": "yes"` cannot produce a note the
+renderer has never been asked to handle.
+
+The rule that matters is that it is **presentation, not content**. Turning it on
+or off must leave `title` and `body` byte-for-byte identical. Rendering derives
+a widget tree from the stored source and never writes back; the plain-text
+export emits the source verbatim; search matches the source. So someone can
+write Markdown, change their mind, and get their asterisks and hashes back
+exactly as typed.
+
+That is also what keeps the format what it has always been: a note is a title
+and a body in `notes.json`, not a document tree. Nothing is serialised in a form
+the app would have to read back differently.
+
+### 3.15 Switching a note into Markdown *does* bump `updatedAt`
+
+The deliberate opposite of §3.12, and the reason the two rules sit next to each
+other.
+
+Finishing a task does not reorder the list, because finishing is not an edit.
+Switching a note into Markdown **is** an edit: it changes what the note says to
+everybody who looks at it, including the widget, so it earns its place at the
+top of the recency order like any other change.
+
+Setting the flag to the value it already has must be a no-op on both the
+timestamp and the write. Otherwise tapping the switch twice in a row would move
+a note to the top of the list for no reason, which is the exact failure §3.12
+exists to prevent, reintroduced through a different door.
+
 ---
 
 ## 4. The traps
@@ -350,6 +385,8 @@ cited test stops existing.
 | 3.11 | Start fresh renames | `notes_controller_test` → *starting fresh keeps the unreadable file*, *a second incident does not overwrite the first one*, *starting fresh writes a valid file, so it does not refuse again* |
 | 3.12 | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list*, *undo brings a finished note back finished* |
 | 3.13 | `loadFrom` is forgiving | `notes_repository_test` → *loadFrom keeps the notes it can read when one entry is broken*, *loadFrom returns empty rather than claiming damage on a non-backup* |
+| 3.14 | `markdown` is presentation only | `markdown_test` → *is omitted from the file when off, so old notes stay untouched*, *absent means off*, *only a literal true turns it on*, *copy carries it, because undo restores a note wholesale*, *the body is never rewritten by turning it on or off*, *the source keeps the syntax while it is being typed* |
+| 3.15 | …but switching it on does reorder | `markdown_test` → *turning it on bumps updatedAt, unlike finishing a task*, *setting it to what it already is does nothing*, *turning it on changes the note and persists*, *a note that is not there is ignored* |
 | — | A missing file is a first run | `notes_repository_test` → *a missing file is a first run, not an error*, *a file with only whitespace is treated as empty* |
 | — | Format tag enforced | `notes_repository_test` → *valid JSON that is not a WinNotes document is also refused*, *a notes entry that is not a list is refused*, *a note entry that is not an object is refused*, *a note missing its id is refused rather than skipped* |
 | — | Sort and its tiebreak | `notes_repository_test` → *most recently edited comes first*, *equal timestamps still produce a stable order* |

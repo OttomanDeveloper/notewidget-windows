@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/note.dart';
 import '../common/completion_toggle.dart';
+import '../common/markdown_text.dart';
 import '../theme.dart';
 
 /// One note in the widget.
@@ -36,6 +37,17 @@ class WidgetNoteCard extends StatelessWidget {
   final VoidCallback onToggleCompleted;
 
   final Color accent;
+
+  /// How much vertical room a rendered Markdown body gets on the card.
+  ///
+  /// Sized from the widget density line box rather than written as a magic
+  /// number, so changing the density in `markdown_text.dart` moves this with it
+  /// instead of leaving the card clipping at a height that no longer means
+  /// anything. Two lines on a compact card and seven on a large one - the same
+  /// budget the plain-text preview has always had.
+  static const double _bodyLine = 13 * 1.35;
+  static const double _compactBodyHeight = _bodyLine * 2;
+  static const double _largeBodyHeight = _bodyLine * 7;
   final bool dark;
 
   /// Whether the widget is big enough for the focused card to get the large
@@ -113,22 +125,46 @@ class WidgetNoteCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: Text(
-                              note.displayTitle,
-                              maxLines: renderLarge ? 2 : 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: markCompleted(
-                                TextStyle(
-                                  fontSize: renderLarge ? 18 : 13,
-                                  height: 1.25,
-                                  fontWeight:
-                                      renderLarge ? FontWeight.w600 : FontWeight.w500,
-                                  letterSpacing: renderLarge ? -0.2 : 0,
-                                  color: titleColor,
-                                ),
-                                completed: done,
-                              ),
-                            ),
+                            child: note.markdown
+                                // The title is one line by definition, so a `#`
+                                // in one is a mistake rather than a heading. The
+                                // inline formatting is not: `**` and backticks
+                                // in a title are someone being emphatic, and a
+                                // card is the wrong place to argue with them.
+                                ? MarkdownText.inline(
+                                    note.title,
+                                    color: titleColor,
+                                    accent: accent,
+                                    style: markCompleted(
+                                      TextStyle(
+                                        fontSize: renderLarge ? 18 : 13,
+                                        height: 1.25,
+                                        fontWeight: renderLarge
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                        letterSpacing: renderLarge ? -0.2 : 0,
+                                        color: titleColor,
+                                      ),
+                                      completed: done,
+                                    )!,
+                                    maxLines: renderLarge ? 2 : 1,
+                                  )
+                                : Text(
+                                    note.displayTitle,
+                                    maxLines: renderLarge ? 2 : 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: markCompleted(
+                                      TextStyle(
+                                        fontSize: renderLarge ? 18 : 13,
+                                        height: 1.25,
+                                        fontWeight:
+                                            renderLarge ? FontWeight.w600 : FontWeight.w500,
+                                        letterSpacing: renderLarge ? -0.2 : 0,
+                                        color: titleColor,
+                                      ),
+                                      completed: done,
+                                    ),
+                                  ),
                           ),
                           if (renderLarge && _hasBody(note))
                             Padding(
@@ -140,19 +176,64 @@ class WidgetNoteCard extends StatelessWidget {
                       ),
                       if (_hasBody(note)) ...[
                         SizedBox(height: renderLarge ? 8 : 3),
-                        Text(
-                          _preview(note, renderLarge),
-                          maxLines: renderLarge ? 6 : 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: markCompleted(
-                            TextStyle(
-                              fontSize: renderLarge ? 14 : 12,
-                              height: renderLarge ? 1.5 : 1.35,
+                        if (note.markdown)
+                          // A rendered body rather than a preview string.
+                          //
+                          // Clamped by height on the large card rather than by
+                          // line count, because block structure means six
+                          // rendered lines are not six source lines - a heading
+                          // eats three of them. Widget density is what keeps
+                          // this readable; see MarkdownDensity.
+                          DefaultTextStyle(
+                            // Carries the strikethrough. A rendered note is many
+                            // spans and none of them is "the text", so the line
+                            // cannot be drawn on any one of them. RichText merges
+                            // this in instead, which is the only reason it lives
+                            // here rather than on a TextStyle nobody reads.
+                            style: markCompleted(const TextStyle(),
+                                    completed: done) ??
+                                const TextStyle(),
+                            child: MarkdownText(
+                              source: note.body,
                               color: previewColor,
+                              accent: accent,
+                              mutedColor: mutedColor,
+                              density: MarkdownDensity.widget,
+                              // Clamped by height, not by line count. `maxLines`
+                              // bounds the lines inside one Text, so twenty
+                              // one-line paragraphs sailed straight past it and
+                              // overflowed the card. A height bound is the only
+                              // thing that bounds a note made of blocks.
+                              //
+                              // It lands on a line boundary rather than through
+                              // the middle of one, so the cut reads as "there is
+                              // more" instead of as a rendering fault.
+                              maxHeight:
+                                  renderLarge ? _largeBodyHeight : _compactBodyHeight,
+                              // Only the compact card flattens headings. The
+                              // large card has seven lines and is the surface
+                              // you actually read a note on, so it keeps a real
+                              // heading scale; the compact one has two lines and
+                              // already shows the note's title directly above,
+                              // where a 1.3x `# Title` in the body is a repeat
+                              // that costs a third of the card.
+                              headingScale: renderLarge ? null : 1.0,
                             ),
-                            completed: done,
+                          )
+                        else
+                          Text(
+                            _preview(note, renderLarge),
+                            maxLines: renderLarge ? 6 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: markCompleted(
+                              TextStyle(
+                                fontSize: renderLarge ? 14 : 12,
+                                height: renderLarge ? 1.5 : 1.35,
+                                color: previewColor,
+                              ),
+                              completed: done,
+                            ),
                           ),
-                        ),
                       ] else if (renderLarge && note.title.trim().isEmpty) ...[
                         // Only for a note with nothing in it at all. A note with
                         // a title and no body already has its content on screen
