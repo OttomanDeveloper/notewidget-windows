@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,8 +7,7 @@ import 'package:win_notes/src/data/note.dart';
 import 'package:win_notes/src/data/notes_repository.dart';
 import 'package:win_notes/src/state/notes_controller.dart';
 
-void main() {
-  late Directory temp;
+void main() {  late Directory temp;
 
   // Every controller this file builds, so tearDown can drain them.
   final built = <NotesController>[];
@@ -311,6 +311,198 @@ void main() {
     });
   });
 
+  group('recovering from an unreadable notes file', () {
+    test('a file that cannot be opened is reported as transient, not damaged',
+        () async {
+      // The bug this guards, and it was found by holding the file open the way
+      // antivirus does and watching a valid 968-byte document get declared
+      // corrupt. The write path had a retry ladder for exactly this; the read
+      // path had none, so a scanner passing over the file could stop the app
+      // from starting until it was restarted - while telling the user their
+      // notes were damaged, which they were not.
+      final c = controller();
+      File('${temp.path}\\notes.json')
+          .writeAsStringSync('{"format":"winnotes","version":1,"notes":[]}');
+      final lock = _ExclusiveLock.acquire('${temp.path}\\notes.json');
+      addTearDown(lock.release);
+
+      await c.load();
+      expect(c.corrupt, isNotNull);
+      expect(c.corrupt!.transient, isTrue,
+          reason: 'a file that will not open is held, not broken, and the screen '
+              'has to say so rather than suggest starting over');
+      expect(c.corrupt!.reason, isNot(contains('Unexpected end of input')),
+          reason: 'it must not be reported as a parse failure');
+
+      // And the important half: it clears by itself once whatever was holding it
+      // lets go, without a restart.
+      lock.release();
+      await c.retryLoad();
+      expect(c.corrupt, isNull);
+    });
+
+    test('a read that opens fine is not made to wait on the retry ladder',
+        () async {
+      // The ladder costs two and a half seconds, and it must only ever be paid
+      // when something is actually in the way - otherwise every cold start
+      // would be that much slower.
+      final c = controller();
+      await c.load();
+      final started = DateTime.now();
+      c.createNote();
+      expect(DateTime.now().difference(started).inSeconds, lessThan(2));
+    });
+
+    test('a file that opens but does not parse is not transient', () async {
+      // Waiting cannot make the content change, so this must not be dressed up
+      // as a lock - that would send someone round looking for antivirus instead
+      // of telling them their file needs attention.
+      final c = controller();
+      File('${temp.path}\\notes.json').writeAsStringSync('{ "format": "winnotes"');
+      await c.load();
+      expect(c.corrupt, isNotNull);
+      expect(c.corrupt!.transient, isFalse);
+    });
+
+    test('a missing file is a first run, not a problem to report', () async {
+      // The antivirus-quarantine case. There is nothing to lose and nothing to
+      // explain, so refusing to start would be the wrong answer entirely.
+      final c = controller();
+      await c.load();
+      expect(c.corrupt, isNull);
+      expect(c.notes, isEmpty);
+      c.ensureAtLeastOneNote();
+      expect(c.notes, hasLength(1));
+    });
+
+    test('a zero-length file is a leftover temp, not corruption', () async {
+      final c = controller();
+      File('${temp.path}\\notes.json').writeAsStringSync('');
+      await c.load();
+      expect(c.corrupt, isNull);
+    });
+
+    test('each write leaves the previous version behind', () async {
+      // The recovery route that asks nothing of the person holding the problem.
+      // Because writes are atomic, WinNotes can never produce a file it cannot
+      // read, so corruption is always external - and this is the only copy that
+      // survives that.
+      final c = controller();
+      await c.load();
+      final a = c.createNote()!;
+      c.updateNote(a.id, body: 'first version');
+      await c.flush();
+
+      final note = c.notes.single;
+      c.updateNote(note.id, body: 'second version');
+      await c.flush();
+
+      final backup = File('${temp.path}\\notes.json.bak');
+      expect(backup.existsSync(), isTrue);
+      expect(backup.readAsStringSync(), contains('first version'),
+          reason: 'the backup is one write behind, which costs at most the '
+              'debounce window of typing');
+      expect(File('${temp.path}\\notes.json').readAsStringSync(),
+          contains('second version'));
+    });
+
+    test('the previous version restores the notes', () async {
+      final c = controller();
+      await c.load();
+      final a = c.createNote()!;
+      c.updateNote(a.id, body: 'the note worth keeping');
+      await c.flush();
+      c.updateNote(a.id, body: 'the note that got damaged');
+      await c.flush();
+
+      // Now break the file the way something external would.
+      File('${temp.path}\\notes.json').writeAsStringSync('{{{ truncated');
+      await c.load();
+      expect(c.corrupt, isNotNull);
+      expect(c.hasBackup, isTrue);
+
+      expect(await c.restoreBackup(), RecoveryOutcome.restoredBackup);
+
+      expect(c.corrupt, isNull);
+      expect(c.notes.single.body, 'the note worth keeping');
+      // The safety net must survive the recovery. Routing the restore through
+      // the ordinary write path would copy the corrupt file over the backup on
+      // its way past, so the one good copy would be gone the moment it was used.
+      expect(File('${temp.path}\\notes.json.bak').readAsStringSync(),
+          contains('the note worth keeping'),
+          reason: 'recovering must not consume the thing it recovered from');
+    });
+
+    test('restoring reports when there is nothing to restore', () async {
+      // One write means no previous version, and the screen must not offer a
+      // button that quietly does nothing.
+      final c = controller();
+      await c.load();
+      c.createNote();
+      await c.flush();
+      File('${temp.path}\\notes.json').writeAsStringSync('nonsense');
+      await c.load();
+
+      expect(c.hasBackup, isFalse);
+      expect(await c.restoreBackup(), RecoveryOutcome.nothingToRecover);
+      expect(c.corrupt, isNotNull,
+          reason: 'a failed restore must leave the file alone, not half-replace it');
+    });
+
+    test('starting fresh keeps the unreadable file', () async {
+      // The escape hatch. A refusal with no way out is a trap, and someone in it
+      // is already stressed. Nothing is deleted: the damaged file is renamed with
+      // the time on the end, because it may still be readable by hand.
+      final c = controller();
+      await c.load();
+      File('${temp.path}\\notes.json').writeAsStringSync('{{{ truncated');
+
+      final result = await c.startFresh();
+      expect(result.outcome, RecoveryOutcome.startedFresh);
+      expect(result.keptAt, isNotNull);
+
+      expect(File(result.keptAt!).existsSync(), isTrue);
+      expect(File(result.keptAt!).readAsStringSync(), '{{{ truncated',
+          reason: 'the damaged file is evidence, not rubbish');
+      expect(c.corrupt, isNull);
+      expect(c.notes, hasLength(1), reason: 'and something to type into');
+    });
+
+    test('a second incident does not overwrite the first one', () async {
+      // Timestamped names specifically so this holds.
+      final c = controller();
+      await c.load();
+
+      File('${temp.path}\\notes.json').writeAsStringSync('first damage');
+      final first = await c.startFresh();
+
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      File('${temp.path}\\notes.json').writeAsStringSync('second damage');
+      final second = await c.startFresh();
+
+      expect(first.keptAt, isNot(second.keptAt));
+      expect(File(first.keptAt!).readAsStringSync(), 'first damage');
+      expect(File(second.keptAt!).readAsStringSync(), 'second damage');
+    });
+
+    test('starting fresh writes a valid file, so it does not refuse again',
+        () async {
+      final c = controller();
+      await c.load();
+      File('${temp.path}\\notes.json').writeAsStringSync('{{{ truncated');
+      await c.startFresh();
+      await c.flush();
+
+      // The whole point of the escape hatch: the app is usable afterwards, which
+      // is checked by reading the folder with a controller that has never seen
+      // the damaged file.
+      final reloaded = controller();
+      await reloaded.load();
+      expect(reloaded.corrupt, isNull);
+      expect(reloaded.notes, isNotEmpty);
+    });
+  });
+
   group('search', () {
     test('filters on title and body as the user types', () async {
       final c = controller();
@@ -572,4 +764,80 @@ void main() {
       expect(c.notes, hasLength(1));
     });
   });
+}
+
+/// Holds a file open the way antivirus does, so a reader cannot open it at all.
+///
+/// Needed because pure Dart cannot reproduce the bug it guards: `dart:io` opens
+/// files with `FILE_SHARE_READ | FILE_SHARE_WRITE`, so a handle taken from Dart
+/// never blocks a reader. Calling `CreateFileW` with a share mode of zero is the
+/// only way to make a read genuinely fail the way it does on a live desktop,
+/// which is the whole point - the defect was invisible until the file was
+/// actually held.
+///
+/// Windows only, and a no-op elsewhere so the rest of the suite still runs.
+class _ExclusiveLock {
+  _ExclusiveLock(this._handle);
+
+  final Pointer<Void> _handle;
+
+  static const int _genericRead = 0x80000000;
+  static const int _openExisting = 3;
+  static const int _fileAttributeNormal = 0x80;
+  static const int _invalidHandleValue = -1;
+
+  static bool get _supported => Platform.isWindows;
+
+  /// Allocated through the C runtime already in the process, rather than through
+  /// package:ffi, which this project does not depend on and should not start
+  /// depending on for a test helper.
+  static final Pointer<Void> Function(int) _malloc =
+      DynamicLibrary.process().lookupFunction<Pointer<Void> Function(IntPtr), Pointer<Void> Function(int)>('malloc');
+  static final void Function(Pointer<Void>) _free =
+      DynamicLibrary.process().lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>('free');
+
+  static Pointer<Uint16> _allocateUtf16(List<int> units) {
+    final raw = _malloc((units.length + 1) * 2);
+    final typed = raw.cast<Uint16>();
+    for (var i = 0; i < units.length; i++) {
+      typed[i] = units[i];
+    }
+    typed[units.length] = 0;
+    return typed;
+  }
+
+  static _ExclusiveLock acquire(String path) {
+    if (!_supported) return _ExclusiveLock(Pointer<Void>.fromAddress(0));
+    final kernel32 = DynamicLibrary.process();
+    final createFile = kernel32.lookupFunction<
+        Pointer<Void> Function(
+            Pointer<Uint16>, Uint32, Pointer<Void>, Pointer<Void>, Uint32, Uint32, Pointer<Void>),
+        Pointer<Void> Function(Pointer<Uint16>, int, Pointer<Void>, Pointer<Void>, int, int,
+            Pointer<Void>)>('CreateFileW');
+
+    final buffer = _allocateUtf16(path.codeUnits);
+
+    // Share mode 0 is the whole point: nobody else may open the file, for
+    // reading or writing, until this handle is closed.
+    final handle = createFile(
+      buffer,
+      _genericRead,
+      nullptr,
+      nullptr,
+      _openExisting,
+      _fileAttributeNormal,
+      nullptr,
+    );
+    _free(buffer.cast<Void>());
+    expect(handle.address, isNot(_invalidHandleValue),
+        reason: 'the test could not take the exclusive lock it depends on');
+    return _ExclusiveLock(handle);
+  }
+
+  void release() {
+    if (!_supported || _handle.address == 0) return;
+    DynamicLibrary.process()
+        .lookupFunction<Uint32 Function(Pointer<Void>), int Function(Pointer<Void>)>('CloseHandle')
+        .call(_handle);
+  }
 }

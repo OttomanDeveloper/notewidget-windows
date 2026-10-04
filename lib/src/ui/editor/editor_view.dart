@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/note.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/notes_controller.dart';
+import '../common/widgets.dart';
 import '../theme.dart';
 import 'note_editor_pane.dart';
 import 'note_list_pane.dart';
@@ -51,8 +52,12 @@ class _EditorViewState extends State<EditorView> {
           return CorruptNotesScreen(
             error: controller.corrupt!,
             shell: widget.shell,
+            hasBackup: controller.hasBackup,
             onRestore: widget.importNotes,
             onReveal: () => widget.shell.revealPath(controller.corrupt!.path),
+            onRestoreBackup: controller.restoreBackup,
+            onRetry: controller.retryLoad,
+            onStartFresh: controller.startFresh,
           );
         }
 
@@ -254,26 +259,117 @@ class _BrandGlyph extends StatelessWidget {
 
 /// Shown instead of the editor when notes.json exists but cannot be read.
 ///
-/// The app refuses to start rather than replacing the file with an empty one.
-/// This screen is that refusal made visible, with the two ways out: point at a
-/// backup, or go and look at the file by hand.
-class CorruptNotesScreen extends StatelessWidget {
+/// The app refuses to start rather than replacing the file with an empty one,
+/// and that refusal is only defensible if every screen has a way out. This one
+/// offers four, in the order they are worth trying:
+///
+/// 1. Put the rolling backup back. Costs the person nothing - no backup they had
+///    to remember to make, no file to go and find - and since writes are atomic,
+///    the backup is a file this app wrote itself.
+/// 2. Try again, when the file is merely being held open. Antivirus holding a
+///    file for a moment is not damage, and treating it as damage is both alarming
+///    and wrong.
+/// 3. Restore from a backup they chose.
+/// 4. Start fresh, keeping the damaged file under a new name.
+///
+/// The last one used to exist only as a sentence of small print at the bottom,
+/// telling someone to rename a file in Explorer by hand and restart. That is the
+/// right instruction for someone who reads it calmly and the wrong experience for
+/// someone whose notes have just failed them, so it is a button now.
+class CorruptNotesScreen extends StatefulWidget {
   const CorruptNotesScreen({
     super.key,
     required this.error,
     required this.shell,
     required this.onRestore,
     required this.onReveal,
+    required this.onRestoreBackup,
+    required this.onRetry,
+    required this.onStartFresh,
+    required this.hasBackup,
   });
 
   final CorruptDataFileError error;
   final ShellChannel shell;
   final Future<List<Note>?> Function() onRestore;
   final VoidCallback onReveal;
+  final Future<RecoveryOutcome> Function() onRestoreBackup;
+  final Future<void> Function() onRetry;
+  final Future<({RecoveryOutcome outcome, String? keptAt})> Function() onStartFresh;
+  final bool hasBackup;
+
+  @override
+  State<CorruptNotesScreen> createState() => _CorruptNotesScreenState();
+}
+
+class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
+  bool _busy = false;
+  String? _message;
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _restoreBackup() => _run(() async {
+        final outcome = await widget.onRestoreBackup();
+        if (!mounted) return;
+        setState(() {
+          _message = switch (outcome) {
+            RecoveryOutcome.restoredBackup =>
+              'Restored the previous version of your notes.',
+            RecoveryOutcome.nothingToRecover =>
+              'There is no earlier version to go back to.',
+            RecoveryOutcome.startedFresh => null,
+            RecoveryOutcome.fileIsHeld =>
+              'Something else is holding the file. Try again in a moment.',
+          };
+        });
+      });
+
+  Future<void> _startFresh() async {
+    final confirmed = await confirmDestructiveAction(
+      context,
+      title: 'Start fresh?',
+      message: 'The file that cannot be read will be kept, renamed with today\'s '
+          'time on the end, so nothing is thrown away. WinNotes then starts a new '
+          'empty notes file beside it.',
+      confirmLabel: 'Keep it and start fresh',
+      cancelLabel: 'Go back',
+    );
+    if (!confirmed || !mounted) return;
+
+    await _run(() async {
+      final result = await widget.onStartFresh();
+      if (!mounted) return;
+      setState(() {
+        _message = switch (result.outcome) {
+          RecoveryOutcome.startedFresh => result.keptAt == null
+              ? 'The unreadable file was already gone. Starting a new one.'
+              : 'The unreadable file was kept as '
+                  '"${result.keptAt!.split('\\').last}".',
+          RecoveryOutcome.fileIsHeld =>
+            'Something else is holding the file, so it could not be moved aside. '
+                'Try again in a moment.',
+          RecoveryOutcome.restoredBackup => null,
+          RecoveryOutcome.nothingToRecover => null,
+        };
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final transient = widget.error.transient;
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -286,12 +382,17 @@ class CorruptNotesScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded,
-                        color: theme.colorScheme.error, size: 28),
+                    Icon(
+                      transient ? Icons.hourglass_top_rounded : Icons.warning_amber_rounded,
+                      color: transient ? theme.colorScheme.tertiary : theme.colorScheme.error,
+                      size: 28,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Your notes file could not be read',
+                        transient
+                            ? 'Something is holding your notes file'
+                            : 'Your notes file could not be read',
                         style: theme.textTheme.titleLarge,
                       ),
                     ),
@@ -299,46 +400,101 @@ class CorruptNotesScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'WinNotes has not changed anything on disk. It stopped rather '
-                  'than start with an empty list, because notes that were never '
-                  'read are worse than notes that take a moment longer to open.',
+                  transient
+                      ? 'WinNotes has not changed anything on disk. This is usually '
+                          'antivirus, a backup tool or a sync app looking at the file '
+                          'at this moment - your notes are almost certainly fine and '
+                          'will open as soon as it lets go.'
+                      : 'WinNotes has not changed anything on disk. It stopped rather '
+                          'than start with an empty list, because notes that were '
+                          'never read are worse than notes that take a moment longer '
+                          'to open.',
                   style: theme.textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 20),
-                _DetailCard(error: error),
+                _DetailCard(error: widget.error),
+                if (_message != null) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    _message!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
                   children: [
-                    FilledButton.icon(
-                      onPressed: () async {
-                        final restored = await onRestore();
-                        if (restored != null && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Restored ${restored.length} notes.')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.restore, size: 18),
-                      label: const Text('Restore from a backup'),
-                    ),
+                    // First, because it is the only route that asks nothing of the
+                    // person holding the problem. Hidden rather than disabled when
+                    // there is no backup: a greyed-out button invites the question
+                    // "of what?", and the honest answer is easier to just not ask.
+                    if (widget.hasBackup)
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _restoreBackup,
+                        icon: const Icon(Icons.history, size: 18),
+                        label: const Text('Restore the previous version'),
+                      ),
+                    if (transient)
+                      FilledButton.icon(
+                        onPressed: _busy ? null : () => _run(widget.onRetry),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Try again'),
+                      ),
+                    if (!widget.hasBackup && !transient)
+                      FilledButton.icon(
+                        onPressed: _busy
+                            ? null
+                            : () => _run(() async {
+                                  final restored = await widget.onRestore();
+                                  if (restored != null && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text('Restored ${restored.length} notes.')),
+                                    );
+                                  }
+                                }),
+                        icon: const Icon(Icons.restore, size: 18),
+                        label: const Text('Restore from a backup'),
+                      ),
+                    if (widget.hasBackup)
+                      OutlinedButton.icon(
+                        onPressed: _busy
+                            ? null
+                            : () => _run(() async {
+                                  final restored = await widget.onRestore();
+                                  if (restored != null && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text('Restored ${restored.length} notes.')),
+                                    );
+                                  }
+                                }),
+                        icon: const Icon(Icons.restore, size: 18),
+                        label: const Text('Restore from a backup'),
+                      ),
                     OutlinedButton.icon(
-                      onPressed: onReveal,
+                      onPressed: _busy ? null : widget.onReveal,
                       icon: const Icon(Icons.folder_open, size: 18),
                       label: const Text('Open the folder'),
                     ),
                     TextButton(
-                      onPressed: () => shell.quit(),
+                      onPressed: _busy ? null : _startFresh,
+                      child: const Text('Start fresh instead'),
+                    ),
+                    TextButton(
+                      onPressed: _busy ? null : () => widget.shell.quit(),
                       child: const Text('Quit'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'If you would rather keep this exact file and start fresh, '
-                  'rename it to notes.json.broken and WinNotes will create a new '
-                  'one on the next launch.',
+                  'Nothing here deletes anything. Starting fresh keeps the file that '
+                  'could not be read, renamed with the time on the end, in the same '
+                  'folder.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

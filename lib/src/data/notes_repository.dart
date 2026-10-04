@@ -121,6 +121,111 @@ class NotesRepository {
     _file.blocked = null;
   }
 
+  /// Where the rolling backup lives, or null when there is not one yet.
+  ///
+  /// Checked rather than assumed, because "restore the previous version" has to
+  /// be offered only when it would actually do something. On a first run, or
+  /// after a single write, there is no previous version to restore.
+  String? get backupPath {
+    final candidate = AtomicJsonFile.backupPathFor(_file.path);
+    return File(candidate).existsSync() ? candidate : null;
+  }
+
+  /// Replaces the unreadable file with the rolling backup.
+  ///
+  /// The one recovery route that asks nothing of the person holding the problem:
+  /// no backup they had to remember to make, no file to go and find. Returns the
+  /// number of notes recovered, or null if there was no backup or it could not be
+  /// used - in which case the block stays, because a half-applied recovery that
+  /// loses the notes it read would be the worst outcome available.
+  Future<int?> restoreBackup() async {
+    final backup = backupPath;
+    if (backup == null) return null;
+
+    final result = await loadFrom(File(backup));
+    switch (result) {
+      case NotesLoaded(:final notes):
+        _file.blocked = null;
+        // Copied rather than re-serialised through the normal write, and that
+        // detail matters. A normal write would first copy the file it is
+        // replacing - the corrupt one - over the backup, so recovering would
+        // destroy the only good copy you had. Copying leaves notes.json and
+        // notes.json.bak both holding the recovered version, so the net is still
+        // there if the file is damaged a second time.
+        try {
+          await File(backup).copy(_file.path);
+        } on FileSystemException {
+          // Held by whatever was holding it a moment ago. Falling back to the
+          // write path still recovers the notes; it just costs the safety net.
+          await saveNow(notes);
+        }
+        return notes.length;
+      case NotesCorrupt():
+        // The backup is damaged too, which is worth knowing but not worth
+        // reporting as a crash. The caller falls back to the other options.
+        return null;
+    }
+  }
+
+  /// Moves the unreadable file aside and lets the app start over.
+  ///
+  /// Renames, never deletes. The file on disk may be recoverable by hand, or by
+  /// someone better at JSON than the person staring at the screen, and throwing
+  /// away the only copy of a damaged file to make a button feel better would be
+  /// the opposite of what this project is for. The name carries a timestamp so
+  /// a second incident cannot overwrite the first one's evidence.
+  ///
+  /// Returns where the old file went, or null if it could not be moved - most
+  /// likely because something else is holding it open, in which case the caller
+  /// should say so rather than pretend it worked.
+  Future<String?> setAsideAndStartFresh() async {
+    final source = File(_file.path);
+    if (!source.existsSync()) {
+      // Nothing to move. The file has already gone, which is the case the app
+      // already treats as a first run, so just unblock.
+      _file.blocked = null;
+      return null;
+    }
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final kept = '${_file.path}.broken-$stamp';
+    try {
+      await source.rename(kept);
+    } on FileSystemException {
+      return null;
+    }
+    _file.blocked = null;
+    return kept;
+  }
+
+  /// Loads from an arbitrary file, so recovery can be read before it is trusted.
+  Future<NotesLoadResult> loadFrom(File file) async {
+    try {
+      final raw = await file.readAsString();
+      if (raw.trim().isEmpty) return const NotesLoaded([]);
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return const NotesLoaded([]);
+      if (decoded['format'] != _formatTag) return const NotesLoaded([]);
+      final rawNotes = decoded['notes'];
+      if (rawNotes is! List) return const NotesLoaded([]);
+      final notes = <Note>[];
+      for (final entry in rawNotes) {
+        if (entry is! Map) continue;
+        try {
+          notes.add(Note.fromJson(Map<String, dynamic>.from(entry)));
+        } on FormatException {
+          // One unreadable note does not condemn the rest. Refusing the whole
+          // backup would throw away the notes that are perfectly fine, which is
+          // the opposite of what someone recovering from corruption needs.
+        }
+      }
+      return NotesLoaded(notes);
+    } on FileSystemException {
+      return NotesCorrupt(CorruptDataFile(path: file.path, reason: 'unreadable'));
+    } on FormatException {
+      return NotesCorrupt(CorruptDataFile(path: file.path, reason: 'not JSON'));
+    }
+  }
+
   Future<void> flush() => _file.flushPending();
   Future<void> dispose() => _file.dispose();
 

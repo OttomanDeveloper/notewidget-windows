@@ -16,12 +16,32 @@ class PendingUndo {
   final int index;
 }
 
+/// What happened when someone tried to get past an unreadable file.
+///
+/// Returned rather than thrown, because every one of these is an expected thing
+/// for a person to try and every one of them has something to say afterwards.
+/// The screen has to distinguish "there was nothing to restore" from "the file is
+/// locked, try in a moment" from "I moved it aside", because the advice is
+/// different in each case.
+enum RecoveryOutcome {
+  /// No rolling backup existed, so there was nothing to restore from.
+  nothingToRecover,
+
+  /// The rolling backup was read and put back.
+  restoredBackup,
+
+  /// The unreadable file was moved aside and a fresh one created.
+  startedFresh,
+
+  /// Something else is holding the file, so it could not be moved.
+  fileIsHeld,
+}
+
 /// Editing state for the notes.
 ///
 /// Only the editor surface creates one. The widget surface reads notes.json
 /// directly and never runs this, which is what keeps a single writer.
-class NotesController extends ChangeNotifier {
-  NotesController({
+class NotesController extends ChangeNotifier {  NotesController({
     required NotesRepository repository,
     bool watchExternal = false,
   }) : _repository = repository,
@@ -104,7 +124,11 @@ class NotesController extends ChangeNotifier {
       case NotesCorrupt(:final error):
         // Mapped to the UI-facing type here so nothing above this layer has to
         // know that reading a file can throw from dart:io.
-        _corrupt = CorruptDataFileError(error.path, error.reason);
+        _corrupt = CorruptDataFileError(
+          error.path,
+          error.reason,
+          transient: error.transient,
+        );
         _notes = const [];
         _visible = const [];
     }
@@ -115,6 +139,64 @@ class NotesController extends ChangeNotifier {
   /// Re-reads after the other surface changed the file.
   void _onExternalChange() {
     unawaited(load());
+  }
+
+  /// Tries the read again, for someone who was told the file could not be opened.
+  ///
+  /// The startup ladder already waited a couple of seconds before giving up, so
+  /// this exists for the locks that last longer than that - a backup tool walking
+  /// a whole folder, a sync client deciding what to do with the file. It is the
+  /// difference between "quit and try again" and pressing one button.
+  Future<void> retryLoad() => load();
+
+  /// Whether a rolling backup of the previous good file exists.
+  bool get hasBackup => _repository.backupPath != null;
+
+  /// Puts the rolling backup back, if there is one.
+  ///
+  /// Offered ahead of anything the person has to go and find, because it is the
+  /// only route that needs nothing from them: not a backup they remembered to
+  /// make, not a file they have to locate. Since writes are atomic, this file was
+  /// written by this app and is very likely intact.
+  Future<RecoveryOutcome> restoreBackup() async {
+    if (_corrupt == null) return RecoveryOutcome.restoredBackup;
+    final recovered = await _repository.restoreBackup();
+    if (recovered == null) return RecoveryOutcome.nothingToRecover;
+    await load();
+    return RecoveryOutcome.restoredBackup;
+  }
+
+  /// Moves the unreadable file aside and starts over, keeping the old one.
+  ///
+  /// The escape hatch that has to exist. Refusing to start is the right call
+  /// when a file might hold somebody's notes, but a refusal with no way out is
+  /// not a safety feature - it is a trap, and the person in it is already
+  /// stressed. This keeps the damaged file rather than deleting it, because it
+  /// may still be readable by someone better at JSON, and losing the only copy
+  /// of a damaged file to make a button feel tidier is exactly backwards.
+  Future<({RecoveryOutcome outcome, String? keptAt})> startFresh() async {
+    final keptAt = await _repository.setAsideAndStartFresh();
+    if (_corrupt != null && keptAt == null) {
+      final stillThere = _repository.backupPath != null;
+      return (
+        outcome: RecoveryOutcome.fileIsHeld,
+        keptAt: stillThere ? _repository.path : null,
+      );
+    }
+
+    _notes = const [];
+    _selectedId = null;
+    _corrupt = null;
+    _pendingUndo = null;
+    _undoTimer?.cancel();
+    _undoTimer = null;
+    _recomputeVisible();
+    // Creates a valid, empty document, so the next thing that happens is not
+    // another refusal.
+    _persist();
+    ensureAtLeastOneNote();
+    notifyListeners();
+    return (outcome: RecoveryOutcome.startedFresh, keptAt: keptAt);
   }
 
   void setQuery(String value) {
@@ -333,7 +415,15 @@ class NotesController extends ChangeNotifier {
 
 /// Local mirror of CorruptDataFile, so the UI does not have to import dart:io.
 class CorruptDataFileError {
-  const CorruptDataFileError(this.path, this.reason);
+  const CorruptDataFileError(this.path, this.reason, {this.transient = false});
   final String path;
   final String reason;
+
+  /// Whether the file may simply be held open by something else right now.
+  ///
+  /// Carried through rather than derived, because the difference decides what the
+  /// screen says and offers: a file that is being scanned is intact, and telling
+  /// someone their notes are broken - then offering to start over - is the wrong
+  /// thing to do about it.
+  final bool transient;
 }

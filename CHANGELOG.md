@@ -2,7 +2,57 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Antivirus can no longer stop the app from starting.** This was the worst bug
+  in the project and it was invisible until the file was actually held open. The
+  write path had always retried, because something holding the destination is
+  routine on a live desktop; the read path did not. So a virus scanner passing
+  over `notes.json` for a few milliseconds could make a perfectly valid file
+  appear unreadable, and the app refused to open — saying your notes were damaged,
+  when they were intact — until it was restarted. Reads now walk the same kind of
+  retry ladder, about two and a half seconds of it, which covers a real-time scan
+  and is only ever paid when something is genuinely in the way.
+- **A file that is merely held open is no longer reported as damaged.** A file
+  that cannot be *opened* is nearly always being looked at by antivirus, a backup
+  tool or a sync client, and it is fine underneath. That case now says so, and
+  offers **Try again**, which recovers the moment whatever was holding it lets go.
+  A file that opens but does not parse is still treated as damaged, because
+  waiting cannot make bad content become good content.
+- **Starting fresh no longer requires renaming a file by hand.** It used to exist
+  only as a sentence of small grey text at the bottom of the screen, telling you
+  to do it in Explorer and restart — the right instruction for someone reading it
+  calmly and the wrong experience for someone whose notes had just failed them.
+  It is a button now, behind a confirmation that spells out what happens.
+- **Starting fresh keeps the damaged file.** It is renamed with the time on the
+  end rather than deleted, so a second incident cannot overwrite the first one's
+  evidence and the text is still there for anyone who can read JSON by hand. The
+  new name is shown once it has happened.
+
 ### Added
+
+- **`notes.json.bak` — the previous good version, kept automatically.** Written
+  before every atomic replace, so it is one write behind: at most the debounce
+  window of typing, a fraction of a second. Because writes are atomic, WinNotes
+  can never produce a file it cannot read, which means corruption is always
+  something external — a hand-edit, a sync client writing two copies at once, a
+  disk dropping a sector. In every one of those cases the thing that saves the
+  notes is the last state this app put on disk, and now there is one.
+- **"Restore the previous version"**, offered first on the problem screen, above
+  anything you have to go and find yourself. No backup you had to remember to
+  make, no file to locate. Recovering through it does not consume it: the good
+  copy is still there afterwards, so a second incident can be recovered the same
+  way.
+
+### Changed
+
+- The problem screen now leads with whatever is most likely to recover the notes,
+  in the order: the rolling backup, **Try again** if the file is only being held,
+  a backup you choose, then starting fresh. Nothing is offered when it would do
+  nothing — with no previous version there is no "restore the previous version"
+  button, rather than a greyed-out one inviting the question "of what?".
+
+### Added (continued)
 
 - **Mark a note as done, from the app or the widget.** Every note gets a circle
   on its left; press it and a line goes through the note's title and body, and

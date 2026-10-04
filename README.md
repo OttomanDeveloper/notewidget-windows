@@ -223,6 +223,7 @@ so a change made here reaches the window without a restart.
 | File | Written by | Purpose |
 | --- | --- | --- |
 | `notes.json` | the editor, or the widget when there is no editor | Every note. The only file that matters. |
+| `notes.json.bak` | the editor | The previous good version, kept automatically. |
 | `settings.json` | the editor | Appearance, startup, hotkey, storage location. |
 | `widget_state.json` | the widget | Where the widget was left, and on which monitor. |
 | `selection.json` | either | Which note is focused. |
@@ -240,13 +241,31 @@ nothing buffered to lose, so the widget writes it itself. The decision comes fro
 the runner's own view of the world rather than from a cached guess, so the two
 branches cannot both write.
 
+### When something goes wrong with the file
+
+**If `notes.json` cannot be read, WinNotes stops rather than starting with an
+empty list**, because notes that were never read are worse than notes that take a
+moment longer to open. Every write is blocked while that is true, so nothing can
+overwrite a file the app has not managed to read.
+
+It is not stuck, though. The screen offers whatever is worth trying, in order:
+
+| What you see | What it means | What to press |
+| --- | --- | --- |
+| *Something is holding your notes file* | Antivirus, a backup tool or a sync client has it open. Your notes are almost certainly fine. | **Try again** — it opens the moment the file is let go. |
+| *Your notes file could not be read* | The content is wrong. Writes are atomic, so WinNotes cannot have caused it. | **Restore the previous version** — `notes.json.bak`, which this app wrote itself. Failing that, a plain-text backup of your own, or **Start fresh instead**. |
+
+**Start fresh** never deletes anything. The unreadable file is renamed to
+`notes.json.broken-<timestamp>` in the same folder, and a new empty one is
+created beside it, so the damaged content is still there if you want it — or want
+to send it to someone who can read JSON.
+
+A file that has been **deleted** — quarantined by antivirus, say — is not a
+problem at all. A missing file is a first run, and WinNotes opens with an empty
+note ready to type into.
+
 `notes.json` is written whole, via a temporary file and an atomic replace, so a
 kill mid-sentence cannot leave it half-written.
-
-**If `notes.json` cannot be read, WinNotes refuses to start** rather than
-replacing it with an empty list, and says so on a screen offering a restore. Every
-write is blocked while that is true. Notes that were never read are worse than
-notes that take a moment longer to open.
 
 Reading these, and copying them somewhere safe, works while the app is running -
 nothing here holds a lock, which is a deliberate choice rather than an accident.
@@ -367,7 +386,7 @@ moved in the first hop.
 flutter test
 ```
 
-145 tests covering the parts where being wrong loses data: atomic writes and
+156 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and
@@ -382,6 +401,12 @@ the lock stops the hand-off, and that an edge grab is a resize. And the Settings
 test drives the real overflow menu, because the bug there was a `BuildContext`
 sitting above the `MaterialApp`'s Navigator — nothing about the code looked
 wrong, and the symptom was silence.
+
+A third needed `CreateFileW` called directly. `dart:io` opens files with
+`FILE_SHARE_READ | FILE_SHARE_WRITE`, so a handle taken from Dart never blocks a
+reader, which means the "antivirus is looking at your file" bug could not be
+reproduced from Dart at all — it needed a real exclusive lock, and it had already
+shipped by the time anyone noticed.
 
 ## Deliberately not built
 
