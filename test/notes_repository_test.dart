@@ -144,6 +144,42 @@ void main() {
       final reloaded = await repo().load();
       expect((reloaded as NotesLoaded).notes.single.id, 'restored');
     });
+
+    test('loadFrom keeps the notes it can read when one entry is broken', () async {
+      // §3.13, and the asymmetry with load() above is the whole point. load()
+      // refuses anything it did not write, because that is your only copy and
+      // guessing at it is unacceptable. loadFrom() is reading a *candidate*
+      // backup chosen by a person who is already in trouble - and refusing the
+      // whole file because one entry is malformed would throw away notes that
+      // are perfectly fine. That is the opposite of what someone recovering from
+      // corruption needs.
+      writeFile(
+        '{"format":"winnotes","version":1,"notes":['
+        '{"id":"good1","title":"Fine","body":"","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"},'
+        '{"title":"No id at all"},'
+        '{"id":"good2","title":"Also fine","body":"","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}'
+        ']}',
+      );
+
+      final result = await repo().loadFrom(File(notesPath()));
+
+      expect(result, isA<NotesLoaded>());
+      expect(
+        (result as NotesLoaded).notes.map((n) => n.id).toSet(),
+        {'good1', 'good2'},
+        reason: 'one malformed note must not condemn the rest of a backup',
+      );
+    });
+
+    test('loadFrom returns empty rather than claiming damage on a non-backup',
+        () async {
+      // Distinct from load(), which reports corruption. Here the caller is
+      // deciding whether to offer a file as a recovery source, and "this is not
+      // one of ours" is simply "no", not an error to report.
+      writeFile('{"hello":"world"}');
+      final result = await repo().loadFrom(File(notesPath()));
+      expect((result as NotesLoaded).notes, isEmpty);
+    });
   });
 
   group('ordering', () {
@@ -254,6 +290,28 @@ void main() {
       await file.writeNow({'a': 1});
       expect(File('$notesPath.tmp').existsSync(), isFalse);
       await file.dispose();
+    });
+
+    test('the backup holds the PREVIOUS content, not the new one', () async {
+      // The single most damaging thing this file could do wrong, and the easiest
+      // to get wrong by accident: extracting the atomic write into a helper and
+      // taking the backup afterwards would leave the backup a duplicate of the
+      // current file, and the previous version gone for good. So the ordering is
+      // pinned rather than trusted.
+      final file = AtomicJsonFile(notesPath());
+      addTearDown(file.dispose);
+
+      await file.writeNow({'generation': 1});
+      await file.writeNow({'generation': 2});
+
+      expect(
+        jsonDecode(File('${notesPath()}.bak').readAsStringSync()),
+        {'generation': 1},
+        reason: 'the backup is taken before the replace, so it is one write '
+            'behind - which is the whole point of it',
+      );
+      expect(jsonDecode(File(notesPath()).readAsStringSync()),
+          {'generation': 2});
     });
 
     test('a concurrent reader never observes a partially written file', () async {

@@ -306,23 +306,42 @@ read or to find.
 
 ## 7. Tests
 
-| Rule | Pinned by |
-|---|---|
-| The composer is absent until asked for | `widget_integration_test` → *the field is not there until you ask for it* |
-| Borrowing and returning the keyboard | `widget_integration_test` → *opening it asks the runner for the keyboard, closing gives it back* |
-| Routing the write | `widget_integration_test` → *a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
-| Empty input makes no note | `widget_integration_test` → *saving nothing just closes it* |
-| No drag while composing | `widget_integration_test` → *the widget cannot be dragged while composing* |
-| Completion from the widget | `widget_integration_test` → the *marking a task finished from the widget* group |
-| Big card skips finished notes | `notes_controller_test` → *the big card skips finished notes*, *with everything finished the big card falls back*, *an explicit selection still wins* |
-| Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
-| "No text yet" only when empty | `widget_surface_test` → *says so when a note has nothing in it at all*, *says nothing about the body when there is a title* |
-| Card sizing at small sizes | `widget_surface_test` → *a widget too small for a large card* |
-| Compact card previews | `widget_surface_test` → *a compact card* |
+Every numbered rule in §3 appears here, with how it is actually pinned. Three
+kinds, and the distinction matters: a **test** fails when the behaviour changes,
+a **guard** in `test/architecture/` fails when the *code* stops looking like the
+rule, and **manual** means a release build driven with `WN.Probe.cs`, which is
+not in CI (`docs/testing_pattern.md` §2).
 
-**Not covered, and cannot be on this host:** §3.1, §3.2, §3.3 and §3.7 are all
-Win32 behaviour. See `docs/testing_pattern.md` §2 for what was verified instead
-and how.
+| § | Rule | Pinned by |
+|---|---|---|
+| 3.1 | `HTCLIENT` everywhere | **guard** `widget_guard_test` → *the runner never answers HTCAPTION*; `widget_integration_test` → *a drag is handed to the runner with its anchor* |
+| 3.2 | Drag computed in screen space | **manual** — the decision is `widget_integration_test` → *a drag is handed to the runner with its anchor*; the arithmetic is verified by probe: 5 drags at exactly −60,0 |
+| 3.3 | Anchor travels with the hand-off | `widget_integration_test` → *a drag is handed to the runner with its anchor* (asserts the exact anchor); **guard** `widget_guard_test` → *both move and resize seed the loop from the pending anchor*, *the loop cursor comes from the anchor, not from the live cursor*, *the anchor is consumed, so a stale one cannot be reused* |
+| 3.4 | Scroll decided by extent | `widget_integration_test` → *a scroll wins over a drag while there is more list to read*, *at the top of the list, dragging down moves the widget* |
+| 3.5 | Grab band; resizing never locked | `widget_integration_test` → *grabbing an edge hands a resize to the runner, with the edge*, *a locked widget is not handed to the runner* |
+| 3.6 | The lock explains itself | `widget_integration_test` → *a refused drag explains itself instead of doing nothing*, *an unlocked widget does not nag about dragging* |
+| 3.7 | Keyboard borrowed and returned | **guard** `widget_guard_test` → *the runner restores WS_EX_NOACTIVATE when compose mode ends*, *focus goes back to the window it was taken from*, *WM_MOUSEACTIVATE defers to compose mode*; **manual** — `GWL_EXSTYLE` and `GetForegroundWindow` before/during/after |
+| 3.8 | No move or resize while composing | `widget_integration_test` → *the widget cannot be dragged while composing* |
+| 3.9 | One slot, faint, keyed | `widget_integration_test` → *the field is not there until you ask for it* |
+| 3.10 | One line becomes a title | `widget_integration_test` → *a jotted line becomes a note, routed to the editor* |
+| 3.11 | Big card prefers unfinished | `notes_controller_test` → *the big card skips finished notes so it is never a struck-through task*, *with everything finished the big card falls back to the most recent*, *an explicit selection still wins over the unfinished preference* |
+| 3.11 | "No text yet" only when empty | `widget_surface_test` → *says so when a note has nothing in it at all*, *says nothing about the body when there is a title* |
+| 3.11 | Card sizing and previews | `widget_surface_test` → *is larger than a compact card*, *renders every card compact*, *shows a preview even with no body*, *collapses line breaks so previews stay one paragraph*, *falls back to a placeholder when untitled* |
+| 3.12 | Hides when nothing has text | `widget_integration_test` → *no note with text means the widget is not shown*, *one note with text is enough to show it* |
+| 3.13 | Sizes clamped in the runner | **manual** — a 900 px haul against the 200×140 floor |
+| — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
+| — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
+| — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |
+
+**§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
+the runner, its failure mode is a widget too small to read rather than a crash,
+and a Dart test could only assert the absence of a bug. Everything else in §3 is
+either a test or a guard.
+
+The distinction that matters throughout: a **test** fails when the *behaviour*
+changes, a **guard** fails when the *code* stops looking like the rule. §3.1 is
+the one that most needs the guard — with `HTCAPTION` back in the body the widget
+cannot be dragged and cards cannot be tapped, and nothing throws.
 
 ---
 

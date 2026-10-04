@@ -197,6 +197,29 @@ class NotesRepository {
     return kept;
   }
 
+  /// Size and last-changed time of a data file, or null when it cannot be read.
+  ///
+  /// Static, and behind this seam rather than a `File(...)` in the recovery
+  /// screen, for two reasons that are really one: `dart:io` in `ui/` is a layer
+  /// break, and a read performed in the UI cannot see [AtomicJsonFile.blocked]
+  /// — which is exactly the state that screen exists to explain.
+  ///
+  /// Deliberately swallows every failure. This runs on the screen shown *because*
+  /// a file could not be read, so throwing here would replace an explanation
+  /// with a crash. Absent details are better than no screen.
+  static FileDescription? describeFile(String path) {
+    try {
+      final file = File(path);
+      if (!file.existsSync()) return null;
+      return (
+        bytes: file.lengthSync(),
+        changed: file.lastModifiedSync(),
+      );
+    } on FileSystemException {
+      return null;
+    }
+  }
+
   /// Loads from an arbitrary file, so recovery can be read before it is trusted.
   Future<NotesLoadResult> loadFrom(File file) async {
     try {
@@ -303,6 +326,41 @@ class BackupService {
     return buffer.toString();
   }
 
+  /// Writes [notes] to [path] as plain text, atomically.
+  ///
+  /// Lives here rather than as a `File(path).writeAsString` at the call site for
+  /// the reason that matters most: an export is the file someone reaches for when
+  /// everything else has failed, so a truncated one is the worst outcome
+  /// available. Written straight to the destination it could be interrupted
+  /// halfway and leave something that reads like a backup but is missing half
+  /// your notes — with nothing to tell you it was incomplete.
+  ///
+  /// Returns the text written, so a caller can report or log exactly what
+  /// landed on disk.
+  Future<String> exportTo(String path, List<Note> notes) async {
+    final text = export(notes);
+    await AtomicJsonFile.writeTextAtomically(path, text);
+    return text;
+  }
+
+  /// Reads a backup from [path], or null if it cannot be read or holds no notes.
+  ///
+  /// Null rather than an exception, because the caller is a person who chose
+  /// this file and needs to be told "that did not work", not handed a
+  /// `FileSystemException`. A file that parses to zero notes is treated the
+  /// same way: an empty file is not a backup.
+  Future<List<Note>?> readFrom(String path) async {
+    try {
+      final text = await File(path).readAsString();
+      final notes = import(text);
+      return notes.isEmpty ? null : notes;
+    } on FileSystemException {
+      return null;
+    } on FormatException {
+      return null;
+    }
+  }
+
   /// Parses the plain-text backup format.
   ///
   /// Deliberately forgiving: a backup edited in Notepad is still a backup. A
@@ -401,6 +459,9 @@ class BackupService {
     return lines.sublist(0, end);
   }
 }
+
+/// What the recovery screen shows about a file it could not read.
+typedef FileDescription = ({int bytes, DateTime changed});
 
 /// Which note is focused, shared by both surfaces.
 ///

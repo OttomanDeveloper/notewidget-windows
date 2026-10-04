@@ -729,6 +729,42 @@ void main() {
     });
   });
 
+  group('the widget hides rather than showing an empty list', () {
+    // §3.12. A widget sitting on the desktop with nothing in it is noise, and
+    // the editor is one hotkey away. This also means there is no way to add the
+    // first note from the widget - a deliberate trade, recorded as a known
+    // consequence in AGENTS.md §4.
+    testWidgets('no note with text means the widget is not shown', (tester) async {
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', '', '')]),
+      );
+      addRelease(tester, controller!);
+      await tester.runAsync(controller.load);
+
+      expect(controller.hasAnyNoteWithText, isFalse);
+      expect(controller.widgetVisible, isFalse);
+    });
+
+    testWidgets('one note with text is enough to show it', (tester) async {
+      final controller = await tester.runAsync(
+        () => makeController(tester, [
+          note('a', '', ''),
+          note('b', 'Groceries', 'milk'),
+        ]),
+      );
+      addRelease(tester, controller!);
+      await tester.runAsync(controller.load);
+
+      expect(controller.hasAnyNoteWithText, isTrue);
+      expect(controller.widgetVisible, isTrue);
+    });
+
+    // Not tested here: emptying the last note *from the editor* and watching the
+    // widget notice. That path goes through the directory watcher and a debounce,
+    // so a test would be asserting on timing rather than on a rule. It is
+    // covered by the reload path in notes_controller_test instead.
+  });
+
   group('the add-a-note composer', () {
     /// Records compose-mode and note-creation calls.
     List<MethodCall> recordComposer({bool editorRunning = true}) {

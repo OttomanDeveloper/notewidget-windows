@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:win_notes/src/data/note.dart';
 import 'package:win_notes/src/data/notes_repository.dart';
@@ -77,6 +79,84 @@ void main() {
         backup.import(backup.export([note('a', 'T', '  a  ')])).single.body,
         '  a  ',
       );
+    });
+  });
+
+  group('writing a backup to disk', () {
+    test('the file appears whole, not in pieces', () async {
+      // The export is the file someone reaches for when everything else has
+      // failed, so a half-written one is the worst outcome available. It used to
+      // be written straight to the destination from the UI layer, where an
+      // interruption left something that read like a backup and was missing half
+      // your notes, with nothing to say so.
+      final dir = Directory.systemTemp.createTempSync('wn_export');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+
+      await backup.exportTo(target, [
+        note('a', 'Groceries', 'Milk, sourdough\nCheck the bike light'),
+        note('b', 'Ideas', 'Widget per monitor?'),
+      ]);
+
+      final text = File(target).readAsStringSync();
+      expect(text, contains('Groceries'));
+      expect(text, contains('Widget per monitor?'));
+      expect(backup.import(text), hasLength(2),
+          reason: 'and it reads back as a valid backup');
+    });
+
+    test('nothing is left half-written beside the target', () async {
+      final dir = Directory.systemTemp.createTempSync('wn_export');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+
+      await backup.exportTo(target, [note('a', 'T', 'B')]);
+
+      expect(File('$target.tmp').existsSync(), isFalse,
+          reason: 'the temp file is renamed into place, not left as debris');
+    });
+
+    test('an existing backup is replaced, not appended to', () async {
+      final dir = Directory.systemTemp.createTempSync('wn_export');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+
+      await backup.exportTo(target, [note('a', 'First', 'one')]);
+      await backup.exportTo(target, [note('b', 'Second', 'two')]);
+
+      final text = File(target).readAsStringSync();
+      expect(text, isNot(contains('First')));
+      expect(backup.import(text).single.title, 'Second');
+    });
+
+    test('no .bak is left beside a caller-chosen export', () async {
+      // Deliberate, and worth pinning because it looks inconsistent with the
+      // notes file until you know why: an export is written once, to a path the
+      // person chose, so a rolling previous version beside it is noise they
+      // never asked for. The notes file is rewritten constantly, which is why it
+      // does get one.
+      final dir = Directory.systemTemp.createTempSync('wn_export');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+
+      await backup.exportTo(target, [note('a', 'T', 'B')]);
+      await backup.exportTo(target, [note('b', 'U', 'C')]);
+
+      expect(File('$target.bak').existsSync(), isFalse);
+    });
+
+    test('reading a backup that is not there returns null, not a crash', () async {
+      expect(await backup.readFrom('${Directory.systemTemp.path}\\nope-wn.txt'),
+          isNull);
+    });
+
+    test('reading a file with no notes in it returns null', () async {
+      final dir = Directory.systemTemp.createTempSync('wn_import');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final target = '${dir.path}${Platform.pathSeparator}empty.txt';
+      File(target).writeAsStringSync('WinNotes backup\nNotes: 0\n');
+
+      expect(await backup.readFrom(target), isNull);
     });
   });
 

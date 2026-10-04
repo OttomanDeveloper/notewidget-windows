@@ -277,25 +277,28 @@ which is the opposite of what someone recovering from corruption needs.
 ## 6. Layer isolation
 
 `dart:io` file operations belong to `core/` and `data/`. Today: **19 operations
-across 2 files** (`atomic_json_file.dart` 11, `notes_repository.dart` 8).
+across 2 files** (`atomic_json_file.dart` 11, `notes_repository.dart` 8), and
+**zero** anywhere else.
 
-`ui/` currently has **8 in 2 files, and all 8 are a known divergence**:
+This was not true. `ui/` held 8 operations across 2 files, and the one that
+mattered was the export:
 
 ```
 lib/src/ui/editor/editor_app.dart:162   await File(path).writeAsString(text);
-lib/src/ui/editor/editor_app.dart:172   final file = File(path);
-lib/src/ui/editor/editor_app.dart:175   _backup.import(await file.readAsString());
-lib/src/ui/editor/editor_view.dart:539  File(error.path).existsSync()
-lib/src/ui/editor/editor_view.dart:542  File(error.path).lengthSync()
-lib/src/ui/editor/editor_view.dart:543  File(error.path).lastModifiedSync()
 ```
 
-**Why it matters:** the export at `editor_app.dart:162` is **not atomic**. An
-interrupted export leaves a truncated file, and that file is the one someone
-reaches for when everything else has gone wrong. The other five are reads and
-are merely untidy — a widget stat-ing the filesystem is a smell, not a hazard.
+**Not atomic.** An interrupted export leaves a truncated file, and that file is
+the one someone reaches for when everything else has gone wrong. It is now
+`BackupService.exportTo`, which goes through `AtomicJsonFile.writeTextAtomically`
+— the same temp-and-rename the notes file uses — and the other five reads are
+behind `BackupService.readFrom` and `NotesRepository.describeFile`.
 
-**The rule going forward:** writes go through `AtomicJsonFile`. Reads that need
+**Enforced:** `test/architecture/layer_test.dart` fails on any `dart:io`
+operation in `ui/`, `state/` or `platform/`. The guard has no allowlist, on
+purpose: if a write genuinely cannot go through `data/`, the fix is to edit the
+scanner, where the diff shows it, rather than to grow a list somewhere quiet.
+
+**The rule:** writes go through `AtomicJsonFile`. Reads that need
 `existsSync` / `lengthSync` / `lastModifiedSync` belong behind a repository
 method, because that is where `blocked` lives and a read in the UI cannot see it.
 
@@ -318,33 +321,40 @@ Changing any of these breaks files already on disk:
 
 ## 8. Tests
 
-| Rule | Pinned by |
-|---|---|
-| Missing file is a first run | `notes_repository_test` → *a missing file is a first run, not an error* |
-| Zero-length file is a leftover temp | `notes_repository_test` → *a file with only whitespace is treated as empty* |
-| Valid JSON that is not ours is refused | `notes_repository_test` → *valid JSON that is not a WinNotes document is also refused* |
-| A failed read blocks every write | `notes_repository_test` → *while blocked, every write is a no-op and the file is untouched* |
-| A restore can lift the block | `notes_repository_test` → *a restore can lift the block and write for real* |
-| Write retry does not lose the value | `notes_repository_test` → *a write that cannot land neither blocks the file nor loses the value* |
-| Debounce coalesces | `notes_repository_test` → *a burst of writes coalesces into one file change* |
-| Ceiling is not a second debounce | `notes_repository_test` → *the ceiling fires even while writes keep arriving* |
-| Atomicity | `notes_repository_test` → *a concurrent reader never observes a partially written file* |
-| No temp left behind | `notes_repository_test` → *no temp file is left behind after a successful write* |
-| Sort and its tiebreak | `notes_repository_test` → *most recently edited comes first*, *equal timestamps still produce a stable order* |
-| Transient vs damaged | `notes_controller_test` → *a file that cannot be opened is reported as transient, not damaged*, *a file that opens but does not parse is not transient* |
-| The ladder is not walked needlessly | `notes_controller_test` → *a read that opens fine is not made to wait on the retry ladder* |
-| `.bak` exists | `notes_controller_test` → *each write leaves the previous version behind* |
-| Restore works and can report nothing to do | `notes_controller_test` → *the previous version restores the notes*, *restoring reports when there is nothing to restore* |
-| Start fresh never deletes | `notes_controller_test` → *starting fresh keeps the unreadable file* |
-| A second incident keeps its evidence | `notes_controller_test` → *a second incident does not overwrite the first one* |
-| Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
-| Completion survives undo | `notes_controller_test` → *undo brings a finished note back finished* |
-| Lock behaviour | `notes_controller_test` → the `_ExclusiveLock` FFI helper (§4) |
-| Backup round trip, dividers in bodies, hand-edited files | `backup_service_test` → all four groups |
-| Whitespace-only body normalises to empty | `backup_service_test` → *a whitespace-only body comes back empty, not as blank lines* |
+Every numbered rule in §3 appears here. A rule with no row is a comment, and
+`test/architecture/docs_test.dart` fails the build if that happens or if a
+cited test stops existing.
 
-**Not covered here, and deliberately:** `completedAt` reaching the plain-text
-backup. It does not, by decision (§4).
+| § | Rule | Pinned by |
+|---|---|---|
+| 3.1 | One writer per file | `widget_integration_test` → *a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
+| 3.2 | Writes are atomic | `notes_repository_test` → *a concurrent reader never observes a partially written file*, *no temp file is left behind after a successful write*, *writes replace the file rather than appending to it* |
+| 3.2 | …and the export too | **guard** `storage_guard_test` → *exportTo goes through the atomic writer*, *the backup is taken before the replace, not after*, *the export does not write the destination directly*; `backup_service_test` → *the file appears whole, not in pieces*, *nothing is left half-written beside the target* |
+| 3.3 | Debounce plus ceiling | `notes_repository_test` → *a burst of writes coalesces into one file change*, *the ceiling fires even while writes keep arriving*, *a continuous burst still reaches disk before the process dies* |
+| 3.4 | Write retry ladder | `notes_repository_test` → *a write that cannot land neither blocks the file nor loses the value* |
+| 3.5 | Read ladder, and what not to retry | `notes_controller_test` → *a read that opens fine is not made to wait on the retry ladder* |
+| 3.6 | Transient vs damaged | `notes_controller_test` → *a file that cannot be opened is reported as transient, not damaged*, *a file that opens but does not parse is not transient* |
+| 3.7 | A failed read blocks writes | `notes_repository_test` → *while blocked, every write is a no-op and the file is untouched*, *a restore can lift the block and write for real* |
+| 3.8 | Watch the directory | **guard** `storage_guard_test` → *the subscription is on the parent directory*, *nothing watches the file itself*, *the events are filtered down to the one file* |
+| 3.9 | `.bak` before every replace | `notes_controller_test` → *each write leaves the previous version behind*; `notes_repository_test` → *the backup holds the PREVIOUS content, not the new one* |
+| 3.10 | Recovery copies | `notes_controller_test` → *the previous version restores the notes*, *restoring reports when there is nothing to restore* |
+| 3.11 | Start fresh renames | `notes_controller_test` → *starting fresh keeps the unreadable file*, *a second incident does not overwrite the first one*, *starting fresh writes a valid file, so it does not refuse again* |
+| 3.12 | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list*, *undo brings a finished note back finished* |
+| 3.13 | `loadFrom` is forgiving | `notes_repository_test` → *loadFrom keeps the notes it can read when one entry is broken*, *loadFrom returns empty rather than claiming damage on a non-backup* |
+| — | A missing file is a first run | `notes_repository_test` → *a missing file is a first run, not an error*, *a file with only whitespace is treated as empty* |
+| — | Format tag enforced | `notes_repository_test` → *valid JSON that is not a WinNotes document is also refused*, *a notes entry that is not a list is refused*, *a note entry that is not an object is refused*, *a note missing its id is refused rather than skipped* |
+| — | Sort and its tiebreak | `notes_repository_test` → *most recently edited comes first*, *equal timestamps still produce a stable order* |
+| — | Backup format | `backup_service_test` → all five groups |
+| — | Whitespace-only body normalises | `backup_service_test` → *a whitespace-only body comes back empty, not as blank lines* |
+| — | Lock behaviour | `notes_controller_test` → the `_ExclusiveLock` FFI helper (§4) |
+| — | `dart:io` confined to `core/`+`data/` | **guard** `layer_test` → *no file operation appears in ui/, state/ or platform/* |
+
+**Not covered, and deliberately:** `completedAt` reaching the plain-text backup.
+It does not, by decision (§4).
+
+**Not covered, and honestly:** editing a note from the editor and watching the
+*widget* react to it goes through the directory watcher and a debounce, so it is
+not asserted directly. The reload path itself is covered in `notes_controller_test`.
 
 ---
 

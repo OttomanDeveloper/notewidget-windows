@@ -45,6 +45,70 @@
   a click near its edge would otherwise resize the window instead of placing the
   caret.
 
+### Added
+
+- **The pattern docs are now enforced, not just written.** 31 architecture
+  guards in `test/architecture/`, run by `flutter test` like everything else:
+
+  - `layer_test` — `dart:io` confined to `core/` and `data/`; only `platform/`
+    builds a `MethodChannel`; every method called from Dart is handled by the
+    runner. The last one matters because an unhandled method is a **silent**
+    no-op: the runner answers `Success()` either way, so the Dart `await`
+    completes and nothing happens.
+  - `storage_guard_test` — the watcher is on the directory and filtered; the
+    export goes through the atomic writer; `.bak` is taken **before** the
+    replace.
+  - `widget_guard_test` — the runner never answers `HTCAPTION`; the loop cursor
+    comes from the gesture anchor and not `GetCursorPos`; `WS_EX_NOACTIVATE` is
+    restored; focus goes back to the window it was taken from;
+    `WM_MOUSEACTIVATE` defers to compose mode.
+  - `docs_test` — every rule in §3 of a pattern doc has a row in its test table,
+    every test it cites still exists, every guard it cites exists, and
+    `AGENTS.md` does not claim a fixed rule is still broken.
+
+  These cover the rules whose failure is **silent**. `HTCAPTION` over the widget
+  body looks reasonable in a diff, and it is the reason the widget could not be
+  dragged for its entire life. `File(path).writeAsString` looks correct, and it
+  is the reason an interrupted export left a truncated file. A guard that cannot
+  fail reads as enforcement, so **each one was broken on purpose and watched go
+  red** — the list is in `docs/testing_pattern.md` §6.
+
+  The layer guard has no allowlist, on purpose: if a write genuinely cannot go
+  through `data/`, the fix is to edit the scanner where the diff shows it,
+  rather than to grow a list somewhere quiet.
+
+### Changed
+
+- **The pattern doc tables now carry the rule number.** Checked by set rather
+  than by counting rows, because a count is satisfied by thirteen rows all
+  pointing at §3.1 — which is exactly the rot the check exists to catch. A rule
+  with no row, or a row citing a test that has been renamed, fails the build.
+- **Four rules that had no test now have one.** The `.bak` holds the *previous*
+  content rather than the new one; `loadFrom` keeps the notes it can read when
+  one entry is malformed; the widget hides when no note has text; and writing an
+  export puts a whole file on disk. The first of those exists because I broke it
+  while extracting the atomic write into a shared helper, which is the second
+  time that ordering has nearly gone wrong.
+- **`docs/widget_pattern.md` §3.4 is no longer "manual only".** Scroll-versus-
+  drag by extent is thoroughly tested already — both directions, with a real
+  overflowing list — and the doc claimed otherwise. Same for §3.3's Dart half.
+  One rule genuinely remains manual: §3.13, the runner's size clamp, whose
+  failure is a widget too small to read rather than a crash.
+
+### Fixed
+
+- **The plain-text export is now atomic.** It was written with
+  `File(path).writeAsString` from the UI layer, so an interrupted export left a
+  truncated file — and that file is what you reach for when everything else has
+  failed. It goes through `AtomicJsonFile.writeTextAtomically` now, the same
+  temp-and-rename the notes file uses, and the other five `dart:io` calls in
+  `ui/` are behind `BackupService.readFrom` and `NotesRepository.describeFile`.
+  `dart:io` outside `core/` and `data/` is now zero, and stays that way.
+- **The watcher is confirmed to be on the directory.** It was, but nothing said
+  so. `File.watch()` holds a handle on the file on Windows, which blocks the
+  other isolate's atomic rename, blocks a backup tool, and stops you copying
+  your own notes out by hand — with nothing thrown and no error message.
+
 ### Documentation
 
 - **`AGENTS.md` and three pattern docs.** `docs/storage_pattern.md`,
@@ -64,14 +128,12 @@
   permissions, localisation, region handling or database here, so those
   concerns would have had no subject matter.
 
-- **`AGENTS.md` records four known divergences and one known bug.** The most
-  important is the first: the plain-text export is written with
-  `File.writeAsString` from the UI layer, so it is **not atomic** — an
-  interrupted export leaves a truncated file, and that file is what someone
-  reaches for when everything else has failed. Documented rather than fixed,
-  because fixing it is a behaviour question and this is a documentation change.
-  The first-launch widget bug is recorded as **unrooted** rather than quietly
-  left as folklore.
+- **`AGENTS.md` records the known divergences and the one known bug.** It also
+  lists which guards enforce what, and names the single rule that remains manual
+  verification rather than leaving "Win32 is not covered" as a vague area. The
+  first-launch widget bug is recorded as **unrooted** rather than quietly left as
+  folklore. (The export divergence it originally listed is now fixed — see
+  Fixed above — and `docs_test` fails if this file claims otherwise.)
 
 - **A whitespace-only note body is now pinned as normalising to empty** through
   the plain-text backup round trip, while a body with text keeps its own

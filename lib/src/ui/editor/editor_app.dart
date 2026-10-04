@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -158,8 +157,7 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
       suggestedName: 'winnotes-backup-$stamp.txt',
     );
     if (path == null) return;
-    final text = _backup.export(_notes.notes);
-    await File(path).writeAsString(text);
+    await _backup.exportTo(path, _notes.notes);
     if (!mounted || messenger == null) return;
     messenger.showSnackBar(
       SnackBar(content: Text('Exported ${_notes.notes.length} notes.')),
@@ -169,11 +167,9 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
   Future<List<Note>?> _import() async {
     final path = await widget.shell.pickFile();
     if (path == null) return null;
-    final file = File(path);
-    if (!await file.exists()) return null;
 
-    final incoming = _backup.import(await file.readAsString());
-    if (incoming.isEmpty) return null;
+    final incoming = await _backup.readFrom(path);
+    if (incoming == null) return null;
 
     if (_notes.corrupt != null) {
       // A hand-chosen backup is the one thing allowed to replace a file the app

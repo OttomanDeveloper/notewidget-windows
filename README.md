@@ -337,7 +337,8 @@ tool/brand/                  logo generator
 tool/release/                packaging: builds, verifies, zips, compiles setup.exe
 tool/screenshots/            screenshot capture, hero composition, input probe
 .github/workflows/           CI on every push, release on a version tag
-test/                        164 tests
+test/                        206 tests
+test/architecture/           guards: the rules that are not about behaviour
 ```
 
 ### How the two windows work
@@ -405,11 +406,21 @@ it could not be typed into.
 flutter test
 ```
 
-164 tests covering the parts where being wrong loses data: atomic writes and
-concurrent readers, the refusal to overwrite unreadable notes, retrying a write
-the filesystem would not accept, undo ordering, search, the plain-text backup
-format including bodies that contain a divider, settings validation and
+206 tests: **175 about behaviour**, and **31 about the rules themselves**.
+
+The behaviour half covers the parts where being wrong loses data: atomic writes
+and concurrent readers, the refusal to overwrite unreadable notes, retrying a
+write the filesystem would not accept, undo ordering, search, the plain-text
+backup format including bodies that contain a divider, settings validation and
 clamping, and the widget's card rendering.
+
+The other half is `test/architecture/` — guards that read the source tree as
+text and fail when a rule stops being true: `dart:io` creeping back into a
+widget, a channel method the runner does not handle, the runner answering
+`HTCAPTION`, the gesture anchor seeded from the cursor, `.bak` taken after the
+replace, or a pattern doc citing a test that no longer exists. Each one was
+broken on purpose to prove it goes red; a guard that has never failed is a
+comment.
 
 Two of them exist because of bugs that only a person using the app would have
 found. A widget that claims to be draggable but cannot be is not something a test

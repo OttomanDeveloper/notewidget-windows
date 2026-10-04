@@ -273,23 +273,57 @@ class AtomicJsonFile {
   }
 
   Future<void> _writeAtomically(String contents) async {
+    // Order matters and is easy to get wrong: the previous version is captured
+    // *before* the replace. Taking it afterwards would copy the file we just
+    // wrote over the backup, leaving the backup a duplicate of the current
+    // content and the previous version gone for good - which is the one thing
+    // the backup exists to prevent.
+    await writeTextAtomically(
+      path,
+      contents,
+      beforeReplace: () => _keepPreviousVersion(contents),
+    );
+  }
+
+  /// Replaces [path] with [contents], or not at all.
+  ///
+  /// The whole document goes to a sibling temp file and is then renamed over the
+  /// target, so a reader sees either the old file or the new one and never a
+  /// partial write. A torn write is what turns a recoverable problem into lost
+  /// notes, which is why this is not an optimisation.
+  ///
+  /// Static, and public, because the plain-text export needs the same guarantee
+  /// and it is not JSON: an export is the file someone reaches for when
+  /// everything else has gone wrong, so a half-written one is the worst possible
+  /// outcome. Duplicating the temp-and-rename dance at the call site is how the
+  /// export ended up writing non-atomically in the first place.
+  ///
+  /// No `.bak`, deliberately. This is a caller-chosen destination, not a file
+  /// the app rewrites constantly, so a rolling previous version beside it would
+  /// be noise the user did not ask for. [AtomicJsonFile] takes one because it
+  /// replaces the same file over and over - and takes it before the replace,
+  /// which is why this takes a [beforeReplace] hook rather than doing it here.
+  ///
+  /// The rename is retried because MoveFileEx fails outright if anything else
+  /// happens to hold the destination open, and on Windows that is routinely
+  /// Search Indexer, antivirus, or a backup tool.
+  static Future<void> writeTextAtomically(
+    String path,
+    String contents, {
+    Future<void> Function()? beforeReplace,
+    int attempts = 5,
+  }) async {
     final file = File(path);
     await file.parent.create(recursive: true);
     final temp = File('$path.tmp');
     await temp.writeAsString(contents, flush: true);
 
-    await _keepPreviousVersion(contents);
+    await beforeReplace?.call();
 
-    // rename replaces the destination on Windows, so a reader sees either the
-    // old file or the new one and never a partial write.
-    //
-    // Retried, because MoveFileEx fails outright if anything else happens to
-    // hold the destination open, and on Windows that is routinely Search
-    // Indexer, antivirus, or a backup tool. Retrying a few times turns a lost
-    // write into a slightly delayed one.
     Object? lastError;
-    for (var attempt = 0; attempt < 5; attempt++) {
+    for (var attempt = 0; attempt < attempts; attempt++) {
       try {
+        // rename replaces the destination on Windows.
         await temp.rename(path);
         return;
       } on FileSystemException catch (error) {
@@ -300,7 +334,7 @@ class AtomicJsonFile {
     // Temp file deliberately left in place rather than discarded, so a partial
     // write can never be mistaken for real data on the next run.
     throw FileSystemException(
-      'Could not replace $path after 5 attempts: $lastError',
+      'Could not replace $path after $attempts attempts: $lastError',
       path,
     );
   }

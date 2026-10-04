@@ -42,7 +42,7 @@ Verified against Flutter 3.47.5 stable, Dart SDK `^3.13.4`.
 | `PROJECT.md` | What the product is, and is not. The authority. |
 | `docs/storage_pattern.md` | One writer per file, atomic replace, debounce + ceiling, retry ladders, transient vs damaged, `.bak`, recovery that never destroys. |
 | `docs/widget_pattern.md` | `HTCLIENT` everywhere, Dart-decides/runner-performs, screen-space drags, scroll-vs-drag by extent, borrowing the keyboard, card sizing. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 164 tests, and the seven traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 206 tests, and the seven traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged. |
 
@@ -61,12 +61,29 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 ```
 
 - **`dart:io` file operations belong to `core/` and `data/` only.** 19
-  operations live there today. The 8 in `ui/` are a known divergence — §4.1.
+  operations live there. Zero anywhere else, and that is now enforced — see §3.1.
 - **`platform/` is the only place that touches `MethodChannel`.** No file in
   `ui/` or `state/` constructs one; they go through `ShellChannel`.
 - **Every method name must exist on both sides.** 28 in C++, all reachable from
   Dart. Adding one on one side only is a silent no-op — `result->Success()` is
   returned either way, so the Dart `await` completes and nothing happens.
+
+### 3.1 The layer rules are enforced
+
+`test/architecture/` — 31 tests, in CI, in `flutter test`. Not prose:
+
+| Guard | What it fails on |
+|---|---|
+| `layer_test` | any `dart:io` operation in `ui/`, `state/` or `platform/`; a `MethodChannel` built outside `platform/`; a method called from Dart that the runner does not handle |
+| `storage_guard_test` | the watcher attached to the file instead of the directory; the export not going through the atomic writer; `.bak` taken after the replace instead of before |
+| `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode |
+| `docs_test` | a rule in §3 of a pattern doc with no row in its test table; a cited test that no longer exists; a cited guard that does not exist; this file claiming a fixed rule is still broken |
+
+The guard has **no allowlist**, on purpose. If a write genuinely cannot go
+through `data/`, the fix is to edit the scanner where the diff shows it.
+
+**Every one of them has been broken on purpose to prove it goes red.** The list
+is in `docs/testing_pattern.md` §6. A guard that has never failed is a comment.
 
 ---
 
@@ -74,26 +91,27 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 Real, current, and not blessed. Each is a thing the code says it does not do.
 
-1. **The plain-text export bypasses the atomic writer.** `editor_app.dart:162`
-   calls `File(path).writeAsString(text)` from the UI layer. Not atomic: an
-   interrupted export leaves a truncated file, and that file is what someone
-   reaches for when everything else has failed. Five further `dart:io` calls in
-   `ui/` are reads and are untidy rather than hazardous.
-2. **A whitespace-only note body is normalised to empty by the plain-text backup
+1. **A whitespace-only note body is normalised to empty by the plain-text backup
    round trip.** Deliberate and pinned by a test: the importer cannot distinguish
    a body of spaces from the blank line the exporter writes after the title. A
    body with real text keeps its own whitespace.
-3. **Win32 behaviour is not covered by CI.** Drag correctness, focus borrowing,
-   acrylic, tray, hotkey, autostart, single-instance and multi-monitor are
-   verified by driving a release build with `tool/screenshots/WN.Probe.cs`. A
-   regression in any of them would not be caught automatically. See
-   `docs/testing_pattern.md` §2.
-4. **Completion state is not in the plain-text backup.** Deliberate — the file
+2. **Win32 behaviour is only partly covered by CI.** `HTCLIENT`, the gesture
+   anchor and the compose-mode focus handling are guarded as source, because
+   they are silent when they break. Drag *arithmetic* (§3.2, §3.4, §3.13 of
+   `docs/widget_pattern.md`) is verified by driving a release build with
+   `tool/screenshots/WN.Probe.cs` and is **not** in CI — a wrong number is not a
+   crash, and a Dart test can only assert the absence of a bug. Acrylic, tray,
+   hotkey, autostart, single-instance and multi-monitor are likewise manual.
+3. **Completion state is not in the plain-text backup.** Deliberate — the file
    must stay readable in Notepad, and there is no plain-text spelling of
    "struck through" that is not a formatting convention. Not a bug.
-5. **The widget hides when no note has text**, so with an empty library there is
+4. **The widget hides when no note has text**, so with an empty library there is
    no widget and therefore no way to add the first note from the widget.
    Deliberate, and interacts with §5.1.
+5. **The exported backup gets no `.bak`.** Deliberate: it is written once to a
+   path the person chose, so a rolling previous version beside it is noise they
+   never asked for. `notes.json` is rewritten constantly, which is why it does
+   get one. Pinned by a test so the asymmetry is a decision rather than a drift.
 
 ---
 
@@ -113,7 +131,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 164 passing
+flutter test             # 206 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md` that says **why**, not just

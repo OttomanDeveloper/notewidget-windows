@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../../data/note.dart';
+import '../../data/notes_repository.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/notes_controller.dart';
 import '../common/widgets.dart';
@@ -536,11 +535,11 @@ class _DetailCard extends StatelessWidget {
           Text('Problem', style: theme.textTheme.labelSmall),
           const SizedBox(height: 2),
           Text(error.reason, style: theme.textTheme.bodySmall),
-          if (File(error.path).existsSync()) ...[
+          if (NotesRepository.describeFile(error.path) case final details?) ...[
             const SizedBox(height: 12),
             Text(
-              '${File(error.path).lengthSync()} bytes, last changed '
-              '${_stamp(File(error.path).lastModifiedSync())}',
+              '${details.bytes} bytes, last changed '
+              '${_stamp(details.changed)}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
