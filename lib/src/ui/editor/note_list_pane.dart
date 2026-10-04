@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../data/note.dart';
 import '../../state/notes_controller.dart';
+import '../common/completion_toggle.dart';
 
 /// The list of notes, with search on top.
 ///
@@ -137,6 +138,8 @@ class _NoteListPaneState extends State<NoteListPane> {
                             controller.select(note.id);
                             widget.onOpenNote();
                           },
+                          onToggleCompleted: () =>
+                              controller.toggleCompleted(note.id),
                         );
                       },
                     ),
@@ -225,52 +228,88 @@ class _NoteListItem extends StatelessWidget {
     required this.note,
     required this.selected,
     required this.onTap,
+    required this.onToggleCompleted,
   });
 
   final Note note;
   final bool selected;
   final VoidCallback onTap;
 
+  /// Separate from [onTap] so ticking a task off does not also open it. Working
+  /// through a list means pressing the same small circle a dozen times in a row,
+  /// and having the editor jump to each note in turn makes that unusable.
+  final VoidCallback onToggleCompleted;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final done = note.isCompleted;
 
     return Material(
       color: selected ? scheme.primary.withValues(alpha: 0.10) : Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(
                 // The caret colour marks selection, tying the list to the mark.
-                color: selected ? scheme.primary : Colors.transparent,
+                // A finished note gives it up: it is no longer the one to pick up.
+                color: selected && !done ? scheme.primary : Colors.transparent,
                 width: 3,
               ),
             ),
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                note.displayTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: scheme.onSurface,
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: CompletionToggle(
+                  completed: done,
+                  onToggle: onToggleCompleted,
+                  diameter: 18,
+                  hitTarget: 30,
+                  color: done ? scheme.primary : null,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                _preview(note),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  height: 1.35,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      note.displayTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: markCompleted(
+                        theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                          color: done
+                              ? scheme.onSurfaceVariant.withValues(alpha: 0.75)
+                              : scheme.onSurface,
+                        ),
+                        completed: done,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      _preview(note),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: markCompleted(
+                        theme.textTheme.bodySmall?.copyWith(
+                          color: done
+                              ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
+                              : scheme.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                        completed: done,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

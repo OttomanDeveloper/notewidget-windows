@@ -345,6 +345,8 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
                                   accent: accent,
                                   roomy: roomy,
                                   onTap: () => controller.focusNote(note.id),
+                                  onToggleCompleted: () =>
+                                      unawaited(controller.toggleCompleted(note.id)),
                                 );
                               },
                             ),

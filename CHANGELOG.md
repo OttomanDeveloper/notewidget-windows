@@ -2,7 +2,49 @@
 
 ## Unreleased
 
+### Added
+
+- **Mark a note as done, from the app or the widget.** Every note gets a circle
+  on its left; press it and a line goes through the note's title and body, and
+  press it again to bring it back. It is on every note in the widget's cards, on
+  every row in the editor's list, and beside the title of the note you are
+  editing, with `Ctrl+D` for the keyboard. Pressing it in the editor's list does
+  not also open the note, because working through a list means pressing the same
+  small circle a dozen times in a row.
+- The widget's large card now skips notes that are already done, so ticking off
+  the task you were looking at reveals the next one instead of leaving a line
+  through the middle of it. An explicitly selected note still wins over that, and
+  when everything is finished the most recent note is used, so the card never
+  goes missing.
+
+Finished state is kept in `notes.json` as a `completedAt` timestamp, so it
+survives a restart and you can answer "when did I finish this" later. Notes
+written before this are unaffected, and an unfinished note writes no extra field
+at all, so your file does not change just because the app was updated.
+
+Not part of the plain-text backup: `Export as text` writes only what you wrote,
+because that file is meant to be readable in Notepad, and a note's finished state
+has no plain-text spelling that would not also become a formatting convention you
+would then have to keep reading. Importing a backup restores the text and leaves
+everything open.
+
+### Changed
+
+- Marking a task done deliberately does **not** count as editing it, so notes do
+  not jump to the top of the list as you work through them. Finishing something
+  is a change of state, not an edit.
+- The widget surface can now write `notes.json`, but only when there is no
+  editor window to own it. With an editor open it asks the runner to route the
+  toggle to the editor, which is the single writer of that file; on an autostart
+  launch there is no editor and therefore nothing to lose, so it writes the file
+  itself rather than refusing to work. Writing it unconditionally would race the
+  editor's debounced keystrokes and lose them.
+
 ### Fixed
+
+- The widget now flushes `notes.json` on the way out, not just its own state.
+  Without this, quitting within a quarter of a second of ticking a task from the
+  widget silently undid the tick.
 
 - **The widget can be dragged and resized at all.** This is the big one, and it
   was not a lock or a settings problem: the widget has never been movable. It

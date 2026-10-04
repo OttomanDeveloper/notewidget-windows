@@ -558,6 +558,36 @@ void Host::HandleMethodCall(
     return;
   }
 
+  if (method == "editor.running") {
+    // Whether an editor window exists, which is the same question as "does
+    // anything own notes.json right now". The widget surface asks before it
+    // touches that file: with an editor open, that editor is the only writer and
+    // the widget must go through it, or a toggle would overwrite whatever was
+    // typed in the last quarter of a second and before that.
+    result->Success(flutter::EncodableValue(
+        editor_ != nullptr && editor_->handle() != nullptr));
+    return;
+  }
+
+  if (method == "note.toggleCompleted") {
+    // Routed, never applied here. notes.json has one writer and the editor is
+    // it; this just carries the request across to the isolate that owns the
+    // file, which then makes the change the same way it makes any other edit.
+    if (editor_ != nullptr && editor_->handle() != nullptr) {
+      SendTo(SurfaceRole::kEditor, "event.toggleCompleted",
+             std::make_unique<flutter::EncodableValue>(
+                 flutter::EncodableValue(flutter::EncodableMap{
+                     {flutter::EncodableValue("id"),
+                      flutter::EncodableValue(GetString(args, "id"))},
+                 })));
+    }
+    // Answered either way. A toggle with no editor to apply it is the widget
+    // surface's own business, and it has already handled that case by not
+    // asking; an error here would only make it retry something that cannot work.
+    result->Success(flutter::EncodableValue());
+    return;
+  }
+
   if (method == "widget.beginMove") {
     if (shell_ != nullptr) {
       shell_->PostBeginMove(GetDouble(args, "anchorX", 0.0),

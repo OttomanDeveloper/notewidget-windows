@@ -201,6 +201,24 @@ class ShellChannel {
         'positionLocked': positionLocked,
       });
 
+  /// Whether an editor window exists, and therefore whether it owns notes.json.
+  ///
+  /// Asked at the moment it is needed rather than cached from launch info,
+  /// because the answer changes: the editor can be opened and closed at any
+  /// time, and on an autostart launch it does not exist at all until someone asks
+  /// for it.
+  Future<bool> isEditorRunning() async {
+    final result = await _invoke('editor.running');
+    return result == true;
+  }
+
+  /// Asks the editor isolate to toggle a note's completed state.
+  ///
+  /// Only meaningful while an editor exists; the caller checks [isEditorRunning]
+  /// first and writes the file itself otherwise.
+  Future<void> requestToggleCompleted(String id) =>
+      _fire('note.toggleCompleted', {'id': id});
+
   Future<void> setWidgetGeometry(NativeBounds bounds) => _fire('widget.setGeometry', {
         'left': bounds.left,
         'top': bounds.top,
@@ -425,6 +443,7 @@ class ShellEvent {
         'event.openSettings' => ShellEventKind.openSettings,
         'event.visibility' => ShellEventKind.visibility,
         'event.geometry' => ShellEventKind.geometry,
+        'event.toggleCompleted' => ShellEventKind.toggleCompleted,
         _ => ShellEventKind.unknown,
       };
 
@@ -432,7 +451,14 @@ class ShellEvent {
       ShellEvent._(method, arguments);
 }
 
-enum ShellEventKind { hotkey, openSettings, visibility, geometry, unknown }
+enum ShellEventKind {
+  hotkey,
+  openSettings,
+  visibility,
+  geometry,
+  toggleCompleted,
+  unknown,
+}
 
 /// Convenience accessors over [ShellEvent] arguments.
 extension ShellEventData on ShellEvent {
@@ -444,5 +470,13 @@ extension ShellEventData on ShellEvent {
     final args = arguments;
     if (args is! Map) return null;
     return NativeBounds.fromMap(args);
+  }
+
+  /// The note an `event.toggleCompleted` refers to, or null if it named none.
+  String? get noteId {
+    final args = arguments;
+    if (args is! Map) return null;
+    final id = args['id'];
+    return id is String && id.isNotEmpty ? id : null;
   }
 }

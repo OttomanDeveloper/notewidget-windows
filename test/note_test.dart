@@ -78,6 +78,63 @@ void main() {
     });
   });
 
+  group('completion', () {
+    test('a note is unfinished until it is marked otherwise', () {
+      expect(make().isCompleted, isFalse);
+      expect(make().completedAt, isNull);
+    });
+
+    test('survives a JSON round trip with the time it was finished', () {
+      final original = make()..completedAt = DateTime(2026, 3, 4, 5, 6, 7);
+      final restored = Note.fromJson(original.toJson());
+
+      expect(restored.isCompleted, isTrue);
+      // Compared in UTC against the original's own UTC value rather than a
+      // literal, because the stored form is UTC and the local one depends on
+      // where the machine running the tests happens to be.
+      expect(restored.completedAt!.toUtc(), original.completedAt!.toUtc());
+    });
+
+    test('an unfinished note writes no completion field at all', () {
+      // Every notes.json written before completion existed must stay byte-for-byte
+      // what it was, rather than gaining a null on every note the first time the
+      // app is opened after an update.
+      expect(make().toJson().containsKey('completedAt'), isFalse);
+    });
+
+    test('a file written before this field existed reads as unfinished', () {
+      // The upgrade path, in full: no key, no crash, nothing finished.
+      final restored = Note.fromJson({
+        'id': 'old',
+        'title': 'Written last year',
+        'body': 'x',
+        'createdAt': '2025-01-01T00:00:00.000Z',
+        'updatedAt': '2025-01-01T00:00:00.000Z',
+      });
+      expect(restored.isCompleted, isFalse);
+    });
+
+    test('an unparseable completion time reads as unfinished', () {
+      // The same rule as every other field here: a bad value must not be able to
+      // make a note un-openable.
+      final restored = Note.fromJson({
+        'id': 'n',
+        'title': 't',
+        'body': 'b',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-01-01T00:00:00.000Z',
+        'completedAt': 'not a time',
+      });
+      expect(restored.isCompleted, isFalse);
+    });
+
+    test('copy carries the finished state, because undo restores a whole note',
+        () {
+      final original = make()..completedAt = DateTime(2026, 3, 4);
+      expect(original.copy().isCompleted, isTrue);
+    });
+  });
+
   group('NoteIdFactory', () {
     test('ids are unique', () {
       final factory = NoteIdFactory();

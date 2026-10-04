@@ -1,9 +1,10 @@
 import 'dart:math';
 
-/// A stored note: a title, a body, and the two timestamps nothing displays.
+/// A stored note: a title, a body, and the timestamps nothing displays.
 ///
-/// The timestamps exist because notes sort by most recently edited and because
-/// undo has to put a deleted note back where it was. Neither is ever shown.
+/// The timestamps exist because notes sort by most recently edited, because undo
+/// has to put a deleted note back where it was, and because [completedAt] is the
+/// only record of when a task was actually finished. None of them are shown.
 class Note {
   Note({
     required this.id,
@@ -11,6 +12,7 @@ class Note {
     required this.body,
     required this.createdAt,
     required this.updatedAt,
+    this.completedAt,
   });
 
   final String id;
@@ -18,6 +20,15 @@ class Note {
   String body;
   final DateTime createdAt;
   DateTime updatedAt;
+
+  /// When the note was marked finished, or null while it is still open.
+  ///
+  /// A timestamp rather than a flag, because "when did I finish this" is the
+  /// question worth being able to answer later, and because absence is already
+  /// an unambiguous "not finished" without needing a second field.
+  DateTime? completedAt;
+
+  bool get isCompleted => completedAt != null;
 
   /// A note exists even with nothing in it. Deleting the last character of a
   /// body is not the same as deleting the note, so emptiness is never a reason
@@ -47,6 +58,10 @@ class Note {
         body: body,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        // Carried by copy because undo restores a note wholesale. A restored
+        // note that silently lost its finished state would be a bug report
+        // nobody could explain.
+        completedAt: completedAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +70,10 @@ class Note {
         'body': body,
         'createdAt': createdAt.toUtc().toIso8601String(),
         'updatedAt': updatedAt.toUtc().toIso8601String(),
+        // Omitted rather than written as null while the note is open, so a file
+        // of ordinary notes stays exactly as it was before this field existed.
+        if (completedAt != null)
+          'completedAt': completedAt!.toUtc().toIso8601String(),
       };
 
   static Note fromJson(Map<String, dynamic> json) {
@@ -68,6 +87,10 @@ class Note {
       body: json['body'] is String ? json['body'] as String : '',
       createdAt: _parseTime(json['createdAt']),
       updatedAt: _parseTime(json['updatedAt']),
+      // Absent in every file written before this field existed, and absent again
+      // for an open note. Both mean the same thing, which is the point of making
+      // it nullable rather than defaulting it to a sentinel date.
+      completedAt: _parseOptionalTime(json['completedAt']),
     );
   }
 
@@ -77,6 +100,13 @@ class Note {
       if (parsed != null) return parsed.toLocal();
     }
     return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  /// Like [_parseTime] but keeps "absent" as absent, rather than inventing the
+  /// epoch for a note that was never finished.
+  static DateTime? _parseOptionalTime(Object? value) {
+    if (value is! String) return null;
+    return DateTime.tryParse(value)?.toLocal();
   }
 }
 

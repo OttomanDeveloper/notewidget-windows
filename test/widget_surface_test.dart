@@ -26,6 +26,7 @@ void main() {
     required bool focused,
     required bool roomy,
     Brightness brightness = Brightness.light,
+    VoidCallback? onToggleCompleted,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -43,6 +44,7 @@ void main() {
                 dark: brightness == Brightness.dark,
                 accent: WinNotesColors.coral,
                 onTap: () {},
+                onToggleCompleted: onToggleCompleted ?? () {},
               ),
             ),
           ),
@@ -140,6 +142,7 @@ void main() {
                 dark: false,
                 accent: WinNotesColors.coral,
                 onTap: () => taps++,
+                onToggleCompleted: () {},
               ),
             ),
           ),

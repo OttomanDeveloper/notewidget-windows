@@ -70,9 +70,22 @@ class NotesController extends ChangeNotifier {
     return _notes.isEmpty ? null : _notes.first;
   }
 
-  /// The note the widget should render large. Falls back to the most recent
-  /// note so the focused card is never missing while notes exist.
-  Note? get focusedNote => selectedNote;
+  /// The note the widget should render large.
+  ///
+  /// Prefers the most recent note that is still open. A big card with a line
+  /// through it is a poor thing to greet someone with every time they glance at
+  /// the desktop, and ticking off the top task should reveal the next one rather
+  /// than move a finished note into the position that says "this is what you are
+  /// working on". An explicit selection still wins, because that is a deliberate
+  /// choice rather than a default. When everything is finished, the most recent
+  /// note is used, so the card is never missing while notes exist.
+  Note? get focusedNote {
+    if (_selectedId != null) return selectedNote;
+    for (final note in _notes) {
+      if (!note.isCompleted) return note;
+    }
+    return _notes.isEmpty ? null : _notes.first;
+  }
 
   PendingUndo? get pendingUndo => _pendingUndo;
 
@@ -194,6 +207,26 @@ class NotesController extends ChangeNotifier {
     _notes = NotesRepository.sorted(_notes);
     // The search filter depends on the text, so it has to be reapplied.
     _recomputeVisible();
+    _persist();
+    notifyListeners();
+  }
+
+  /// Flips a note between finished and unfinished.
+  ///
+  /// Deliberately does not touch [Note.updatedAt], and that is the whole design
+  /// of the method rather than an oversight. Notes sort by most recently edited,
+  /// so bumping the timestamp would send the note to the top of the list every
+  /// single time it is ticked off - which turns working through a list into a
+  /// shuffle, and makes the note you just finished the first thing you see
+  /// again. Finishing something is a change of state, not an edit.
+  ///
+  /// No re-sort follows from that, so the list does not move under the pointer.
+  void toggleCompleted(String id) {
+    if (_corrupt != null) return;
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index < 0) return;
+    final note = _notes[index];
+    note.completedAt = note.isCompleted ? null : DateTime.now();
     _persist();
     notifyListeners();
   }

@@ -72,11 +72,19 @@ class WidgetController extends ChangeNotifier {
   bool get positionLocked => _settings.settings.widgetPositionLocked;
 
   /// The note rendered large. Everything else in the widget is a compact card.
+  ///
+  /// Prefers the most recent note that is still open, so ticking off the task in
+  /// the big card reveals the next one instead of leaving a line through the
+  /// middle of the thing you look at most. See [NotesController.focusedNote] for
+  /// the same rule and the reasoning.
   Note? get focusedNote {
     if (_selectedId != null) {
       for (final note in _notes) {
         if (note.id == _selectedId) return note;
       }
+    }
+    for (final note in _notes) {
+      if (!note.isCompleted) return note;
     }
     return _notes.isEmpty ? null : _notes.first;
   }
@@ -209,6 +217,39 @@ class WidgetController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Marks a note finished or unfinished, from the widget.
+  ///
+  /// notes.json has exactly one writer, and normally that is the editor. This
+  /// method does not simply write the file, because doing so would race it: the
+  /// editor holds keystrokes in memory for a quarter of a second before they
+  /// reach disk, so a toggle written from here in that window would overwrite
+  /// them and silently lose whatever was typed.
+  ///
+  /// So the runner is asked who owns the file. With an editor open the request
+  /// goes to the editor isolate, which toggles and persists like any other edit,
+  /// and this surface learns about it through the same directory watcher it
+  /// already uses. With no editor open there is nothing to lose - no other
+  /// writer, no buffered edits - and this surface writes directly rather than
+  /// refusing to work.
+  ///
+  /// The two branches cannot both write, because the decision is made from the
+  /// runner's own view of whether an editor window exists at that moment.
+  Future<void> toggleCompleted(String id) async {
+    if (await _shell.isEditorRunning()) {
+      await _shell.requestToggleCompleted(id);
+      return;
+    }
+
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index < 0) return;
+    final note = _notes[index];
+    // No timestamp bump, exactly as in the editor: ticking a list must not
+    // reorder it.
+    note.completedAt = note.isCompleted ? null : DateTime.now();
+    notifyListeners();
+    _notesRepo.save(_notes);
+  }
+
   Future<void> setWidgetVisible(bool visible) async {
     _widgetVisible = visible;
     notifyListeners();
@@ -248,7 +289,19 @@ class WidgetController extends ChangeNotifier {
   Future<void> beginResize(ResizeEdge edge, Offset anchor) =>
       _shell.beginWidgetResize(edge, anchor);
 
-  Future<void> flush() => _widgetRepo.flush();
+  /// Pushes everything this surface has queued to disk before the process goes
+  /// away.
+  ///
+  /// Includes notes.json, not just the widget's own state and the selection.
+  /// This surface writes notes.json whenever it marks a task finished and there
+  /// is no editor to do it, and that write goes through the same debounced queue
+  /// as everything else - so quitting inside the debounce window would lose the
+  /// toggle. It is a small thing to lose, and an invisible one: the tick would
+  /// come back on screen undone.
+  Future<void> flush() async {
+    await _notesRepo.flush();
+    await _widgetRepo.flush();
+  }
 
   bool _released = false;
 

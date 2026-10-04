@@ -10,6 +10,7 @@ import 'package:win_notes/src/data/settings_repository.dart';
 import 'package:win_notes/src/platform/shell_channel.dart';
 import 'package:win_notes/src/state/settings_controller.dart';
 import 'package:win_notes/src/state/widget_controller.dart' as wn;
+import 'package:win_notes/src/ui/common/completion_toggle.dart';
 import 'package:win_notes/src/ui/theme.dart';
 import 'package:win_notes/src/ui/widget/widget_note_card.dart';
 import 'package:win_notes/src/ui/widget/widget_surface.dart';
@@ -594,4 +595,150 @@ void main() {
 
     expect(calls, isEmpty, reason: 'below the threshold this is just a tap');
   });
+
+  group('marking a task finished from the widget', () {
+    /// Answers `editor.running`, and records who was asked to do the writing.
+    List<MethodCall> recordWriter({required bool editorRunning}) {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dev.winnotes/shell'),
+        (call) async {
+          if (call.method == 'editor.running') return editorRunning;
+          if (call.method == 'note.toggleCompleted') calls.add(call);
+          return null;
+        },
+      );
+      return calls;
+    }
+
+    testWidgets('with an editor open, the widget asks rather than writes',
+        (tester) async {
+      // The invariant this whole feature has to respect: notes.json has one
+      // writer, and while the editor is open that is the editor. Writing from
+      // here would overwrite whatever was typed in the last quarter of a second
+      // and before that, silently.
+      final requests = recordWriter(editorRunning: true);
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await tester.runAsync(() => controller.toggleCompleted('a'));
+      await tester.pump();
+
+      expect(requests, hasLength(1),
+          reason: 'the toggle must be routed to the writer');
+      expect((requests.single.arguments as Map)['id'], 'a');
+    });
+
+    testWidgets('with no editor, the widget writes the file itself',
+        (tester) async {
+      // An autostart launch has no editor at all, and refusing to work there
+      // would mean the feature only exists for people who opened the app first.
+      // With no editor there is no other writer and no buffered edits, so this
+      // surface is the only one that can safely do it.
+      final requests = recordWriter(editorRunning: false);
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      );
+      addRelease(tester, controller!);
+
+      await tester.runAsync(() async {
+        await controller.toggleCompleted('a');
+        // The write is queued behind a debounce, exactly as it would be in the
+        // app, so the test has to let it out the same way quitting does.
+        await controller.flush();
+      });
+      await tester.pump();
+
+      expect(requests, isEmpty,
+          reason: 'nobody to route to, so it must not try');
+
+      final raw = File('${temp.path}\\notes.json').readAsStringSync();
+      expect(raw, contains('completedAt'),
+          reason: 'the change has to reach disk, not just the screen');
+      expect(controller.notes.single.isCompleted, isTrue);
+    });
+
+    testWidgets('a queued toggle survives quitting inside the debounce window',
+        (tester) async {
+      // The write this surface makes goes through the debounced queue like every
+      // other write. If the surface's flush did not drain notes.json, quitting
+      // within a quarter of a second of ticking a task would silently undo it -
+      // and only that, and only sometimes, which is the worst way for it to
+      // break.
+      recordWriter(editorRunning: false);
+      final controller = (await tester.runAsync(
+        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      ))!;
+
+      await tester.runAsync(() async {
+        await controller.toggleCompleted('a');
+        await controller.flush();
+        await controller.release();
+      });
+      controller.dispose();
+
+      expect(File('${temp.path}\\notes.json').readAsStringSync(),
+          contains('completedAt'));
+    });
+
+    testWidgets('the card offers a tick that does not also focus the note',
+        (tester) async {
+      // Tapping a card means "I am working on this"; ticking it means "this is
+      // done". Conflating them would move the editor's selection every time
+      // someone worked through a list, which is the one thing this must not do.
+      final requests = recordWriter(editorRunning: true);
+      final controller = await tester.runAsync(
+        () => makeController(tester, [
+          note('a', 'Task one', 'first'),
+          note('b', 'Task two', 'second', minute: -5),
+        ]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+      final before = controller.focusedNote!.id;
+
+      // The tick sits to the left of the text, clear of the resize band that
+      // owns the outer edge of the widget.
+      final toggle = find.byType(CompletionToggle).first;
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      expect(requests, hasLength(1));
+      expect(controller.focusedNote!.id, before,
+          reason: 'ticking a task off must not drag the selection with it');
+    });
+
+    testWidgets('a finished card draws a line through its text', (tester) async {
+      final controller = await tester.runAsync(
+        () => makeController(tester, [note('a', 'Task one', 'first')]),
+      );
+      addRelease(tester, controller!);
+
+      await pumpSurface(tester, controller, width: 360, height: 420);
+      expect(_strikethroughCount(tester), 0);
+
+      await tester.runAsync(() => controller.toggleCompleted('a'));
+      await tester.pumpAndSettle();
+
+      expect(_strikethroughCount(tester), greaterThan(0),
+          reason: 'the line through the text is the whole signal');
+    });
+  });
+}
+
+/// Counts the rendered texts on a card that are struck through.
+///
+/// Walks the text widgets rather than looking for the decoration on one
+/// particular string, because a card has a title and a preview and the test
+/// should pass if either of them carries the line.
+int _strikethroughCount(WidgetTester tester) {
+  var count = 0;
+  for (final text in tester.widgetList<Text>(find.byType(Text))) {
+    if (text.style?.decoration == TextDecoration.lineThrough) count++;
+  }
+  return count;
 }

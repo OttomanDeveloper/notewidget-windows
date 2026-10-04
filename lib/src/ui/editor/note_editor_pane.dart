@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../data/note.dart';
 import '../../state/notes_controller.dart';
+import '../common/completion_toggle.dart';
 import '../common/widgets.dart';
 
 /// Title and body of the selected note, with no toolbar and no save button.
@@ -143,6 +144,10 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
               child: Shortcuts(
                 shortcuts: const {
                   SingleActivator(LogicalKeyboardKey.keyS, control: true): _SaveIntent(),
+                  // Ctrl+D because it is what every other list-shaped thing on
+                  // this planet uses for "done", and because finishing a task
+                  // should not require reaching for a 22px circle.
+                  SingleActivator(LogicalKeyboardKey.keyD, control: true): _DoneIntent(),
                 },
                 child: Actions(
                   actions: {
@@ -155,31 +160,62 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                         return null;
                       },
                     ),
+                    _DoneIntent: CallbackAction<_DoneIntent>(
+                      onInvoke: (_) {
+                        final selected = controller.selectedNote;
+                        if (selected != null) controller.toggleCompleted(selected.id);
+                        return null;
+                      },
+                    ),
                   },
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextField(
-                          controller: _title,
-                          focusNode: _titleFocus,
-                          onChanged: (_) => _pushToModel(controller),
-                          textInputAction: TextInputAction.next,
-                          onSubmitted: (_) => _bodyFocus.requestFocus(),
-                          maxLines: null,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: 'Title',
-                            filled: false,
-                            border: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            contentPadding: EdgeInsets.zero,
-                            isDense: true,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // The one control that says this note is a task
+                            // rather than a thought, sitting beside the thing it
+                            // applies to rather than in a bar above it.
+                            CompletionToggle(
+                              completed: note.isCompleted,
+                              onToggle: () => controller.toggleCompleted(note.id),
+                              diameter: 22,
+                              hitTarget: 40,
+                              filled: true,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _title,
+                                focusNode: _titleFocus,
+                                onChanged: (_) => _pushToModel(controller),
+                                textInputAction: TextInputAction.next,
+                                onSubmitted: (_) => _bodyFocus.requestFocus(),
+                                maxLines: null,
+                                // Struck through while it is finished, so the
+                                // editor says the same thing the widget and the
+                                // list do rather than needing its own convention.
+                                style: markCompleted(
+                                  theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  completed: note.isCompleted,
+                                ),
+                                decoration: const InputDecoration(
+                                  hintText: 'Title',
+                                  filled: false,
+                                  border: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         Expanded(
@@ -191,7 +227,10 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                             expands: true,
                             textAlignVertical: TextAlignVertical.top,
                             keyboardType: TextInputType.multiline,
-                            style: theme.textTheme.bodyLarge?.copyWith(height: 1.55),
+                            style: markCompleted(
+                              theme.textTheme.bodyLarge?.copyWith(height: 1.55),
+                              completed: note.isCompleted,
+                            ),
                             decoration: const InputDecoration(
                               hintText: 'Start writing',
                               filled: false,
@@ -227,24 +266,41 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
         ),
       );
 
-  Widget _backBar(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Back to notes',
-              onPressed: widget.onBack,
+  Widget _backBar(BuildContext context) {
+    final note = widget.controller.selectedNote;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back to notes',
+            onPressed: widget.onBack,
+          ),
+          const Spacer(),
+          // The narrow layout has no room for the toggle beside the title, so it
+          // lives in the bar instead. Marking a task done has to work the same
+          // way in both arrangements, and this is the only place it fits here.
+          if (note != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: CompletionToggle(
+                completed: note.isCompleted,
+                onToggle: () => widget.controller.toggleCompleted(note.id),
+                diameter: 20,
+                hitTarget: 36,
+                filled: true,
+              ),
             ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete note',
-              onPressed: () => _deleteCurrent(widget.controller),
-            ),
-          ],
-        ),
-      );
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Delete note',
+            onPressed: () => _deleteCurrent(widget.controller),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _statusBar(
     BuildContext context,
@@ -292,4 +348,8 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
 
 class _SaveIntent extends Intent {
   const _SaveIntent();
+}
+
+class _DoneIntent extends Intent {
+  const _DoneIntent();
 }

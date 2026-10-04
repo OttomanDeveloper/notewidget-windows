@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/note.dart';
+import '../common/completion_toggle.dart';
 import '../theme.dart';
 
 /// One note in the widget.
@@ -18,12 +19,22 @@ class WidgetNoteCard extends StatelessWidget {
     required this.onTap,
     required this.accent,
     required this.roomy,
+    required this.onToggleCompleted,
     this.dark = false,
   });
 
   final Note note;
   final bool focused;
   final VoidCallback onTap;
+
+  /// Marks this note finished or unfinished, without also focusing it.
+  ///
+  /// A separate target from [onTap] on purpose. Tapping a card means "I am
+  /// working on this"; tapping its tick means "this is done" and should not drag
+  /// the editor's selection along with it, because working through a list would
+  /// otherwise move the cursor every time you tick something off.
+  final VoidCallback onToggleCompleted;
+
   final Color accent;
   final bool dark;
 
@@ -45,6 +56,19 @@ class WidgetNoteCard extends StatelessWidget {
     );
 
     final renderLarge = focused && roomy;
+    final done = note.isCompleted;
+
+    // The line through the text is the signal; this is the quiet second one, so
+    // a long finished list recedes instead of competing with the open tasks for
+    // attention. Kept subtle on purpose - the widget is already drawn at reduced
+    // opacity by the runner, and dimming much harder starts to look broken
+    // rather than finished.
+    final titleColor = done
+        ? mutedColor.withValues(alpha: 0.7)
+        : (renderLarge ? bodyColor : mutedColor);
+    final previewColor = done
+        ? mutedColor.withValues(alpha: 0.6)
+        : (renderLarge ? bodyColor.withValues(alpha: 0.88) : mutedColor);
 
     return Semantics(
       button: true,
@@ -63,73 +87,108 @@ class WidgetNoteCard extends StatelessWidget {
             decoration: BoxDecoration(
               // The focused card is the only one with a surface of its own,
               // which is what makes it obvious which note the editor has open.
-              color: renderLarge
+              // A finished card gives it up, so the eye goes to what is left.
+              color: renderLarge && !done
                   ? accent.withValues(alpha: dark ? 0.16 : 0.09)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
               border: Border(
                 left: BorderSide(
-                  color: renderLarge ? accent : Colors.transparent,
+                  color: renderLarge && !done ? accent : Colors.transparent,
                   width: 3,
                 ),
               ),
             ),
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        note.displayTitle,
-                        maxLines: renderLarge ? 2 : 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: renderLarge ? 18 : 13,
-                          height: 1.25,
-                          fontWeight: renderLarge ? FontWeight.w600 : FontWeight.w500,
-                          letterSpacing: renderLarge ? -0.2 : 0,
-                          color: renderLarge ? bodyColor : mutedColor,
+                _toggle(),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              note.displayTitle,
+                              maxLines: renderLarge ? 2 : 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: markCompleted(
+                                TextStyle(
+                                  fontSize: renderLarge ? 18 : 13,
+                                  height: 1.25,
+                                  fontWeight:
+                                      renderLarge ? FontWeight.w600 : FontWeight.w500,
+                                  letterSpacing: renderLarge ? -0.2 : 0,
+                                  color: titleColor,
+                                ),
+                                completed: done,
+                              ),
+                            ),
+                          ),
+                          if (renderLarge && _hasBody(note))
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, top: 2),
+                              child: Icon(Icons.push_pin_outlined,
+                                  size: 14, color: mutedColor.withValues(alpha: 0.7)),
+                            ),
+                        ],
+                      ),
+                      if (_hasBody(note)) ...[
+                        SizedBox(height: renderLarge ? 8 : 3),
+                        Text(
+                          _preview(note, renderLarge),
+                          maxLines: renderLarge ? 6 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: markCompleted(
+                            TextStyle(
+                              fontSize: renderLarge ? 14 : 12,
+                              height: renderLarge ? 1.5 : 1.35,
+                              color: previewColor,
+                            ),
+                            completed: done,
+                          ),
                         ),
-                      ),
-                    ),
-                    if (renderLarge && _hasBody(note))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8, top: 2),
-                        child: Icon(Icons.push_pin_outlined,
-                            size: 14, color: mutedColor.withValues(alpha: 0.7)),
-                      ),
-                  ],
+                      ] else if (renderLarge) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'No text yet',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                            color: mutedColor,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                if (_hasBody(note)) ...[
-                  SizedBox(height: renderLarge ? 8 : 3),
-                  Text(
-                    _preview(note, renderLarge),
-                    maxLines: renderLarge ? 6 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: renderLarge ? 14 : 12,
-                      height: renderLarge ? 1.5 : 1.35,
-                      color: renderLarge ? bodyColor.withValues(alpha: 0.88) : mutedColor,
-                    ),
-                  ),
-                ] else if (renderLarge) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'No text yet',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic,
-                      color: mutedColor,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// The tick, aligned to the first line of text rather than centred in the card.
+  Widget _toggle() {
+    // Sits at least a card's padding in from the left edge. The outer band of the
+    // widget is the resize grab, and a tick inside that band would be swallowed
+    // by it, so the control has to start clear of it.
+    final size = focused && roomy ? 20.0 : 16.0;
+    return Padding(
+      padding: const EdgeInsets.only(top: 1),
+      child: CompletionToggle(
+        completed: note.isCompleted,
+        onToggle: onToggleCompleted,
+        diameter: size,
+        hitTarget: size + 6,
+        color: note.isCompleted ? accent : null,
       ),
     );
   }

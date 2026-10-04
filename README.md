@@ -159,6 +159,15 @@ pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Wid
   are typed, debounced by a fraction of a second so a burst of keystrokes costs
   one write rather than one per character. A burst that never pauses still lands
   within 1.5 seconds, so continuous typing cannot outrun the disk forever.
+- **A note can be marked done**, from the widget or the editor, and the line
+  through the text is the whole signal. There is a circle on every card in the
+  widget, on every row in the editor's list, and beside the title you are
+  editing; `Ctrl+D` does the same from the keyboard. Pressing it in the list does
+  not also open the note, because working through a list means pressing the same
+  small circle a dozen times in a row. Marking a note done deliberately does not
+  count as editing it, so the list does not jump around as you tick things off —
+  and the widget's large card moves on to the next unfinished note, rather than
+  leaving a line through the thing you look at most.
 - **A failed write never costs you a note.** Replacing a file on Windows fails
   outright if antivirus, Search Indexer or a backup tool happens to hold it open.
   WinNotes retries with backoff and keeps the value queued. It never mistakes a
@@ -213,7 +222,7 @@ so a change made here reaches the window without a restart.
 
 | File | Written by | Purpose |
 | --- | --- | --- |
-| `notes.json` | the editor | Every note. The only file that matters. |
+| `notes.json` | the editor, or the widget when there is no editor | Every note. The only file that matters. |
 | `settings.json` | the editor | Appearance, startup, hotkey, storage location. |
 | `widget_state.json` | the widget | Where the widget was left, and on which monitor. |
 | `selection.json` | either | Which note is focused. |
@@ -221,6 +230,15 @@ so a change made here reaches the window without a restart.
 One writer per file. That is the whole concurrency story: there is no merge
 logic anywhere in this project, because there is never a moment when two
 surfaces write the same file.
+
+The one row worth reading twice is `notes.json`. Marking a note done from the
+widget is a real edit, so the widget asks the runner whether an editor window
+exists. If it does, the request is routed to the editor, which owns the file and
+makes the change the way it makes any other. If it does not — an autostart launch,
+where the editor has never been opened — then there is no other writer and
+nothing buffered to lose, so the widget writes it itself. The decision comes from
+the runner's own view of the world rather than from a cached guess, so the two
+branches cannot both write.
 
 `notes.json` is written whole, via a temporary file and an atomic replace, so a
 kill mid-sentence cannot leave it half-written.
@@ -349,7 +367,7 @@ moved in the first hop.
 flutter test
 ```
 
-125 tests covering the parts where being wrong loses data: atomic writes and
+145 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and

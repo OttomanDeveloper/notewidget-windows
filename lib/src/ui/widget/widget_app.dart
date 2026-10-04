@@ -124,6 +124,13 @@ class _WidgetAppState extends State<WidgetApp> with WidgetsBindingObserver {
         _controller.setWidgetVisibleFromPlatform(event.isVisible);
       case ShellEventKind.openSettings:
         unawaited(widget.shell.openSettings());
+      case ShellEventKind.toggleCompleted:
+        // Only ever sent to the editor, which owns notes.json. Arriving here
+        // would mean the runner routed a write request to the wrong isolate, and
+        // re-applying it would put two writers on one file - the exact thing the
+        // routing exists to prevent. Notes reach this surface through the
+        // directory watcher instead.
+        break;
       case ShellEventKind.unknown:
         break;
     }

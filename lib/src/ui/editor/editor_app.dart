@@ -100,6 +100,13 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
         _focusEditor();
       case ShellEventKind.openSettings:
         _openSettings();
+      case ShellEventKind.toggleCompleted:
+        // The widget surface asks rather than writing, because this is the one
+        // writer of notes.json. Answering here means the change is made in the
+        // same place every other edit is, and the widget sees it through the
+        // directory watcher it already uses.
+        final id = event.noteId;
+        if (id != null) _notes.toggleCompleted(id);
       case ShellEventKind.geometry:
       case ShellEventKind.visibility:
       case ShellEventKind.unknown:

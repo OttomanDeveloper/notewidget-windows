@@ -110,7 +110,6 @@ void main() {
       c.updateNote(a.id, title: 'A', body: '');
       expect(c.notes.map((n) => n.id).toList(), orderBefore);
     });
-
     test('a note whose body is emptied still exists', () async {
       final c = controller();
       await c.load();
@@ -147,6 +146,168 @@ void main() {
       c.addListener(() => notifications++);
       c.setQuery('milk');
       expect(notifications, 0);
+    });
+  });
+
+  group('marking a task finished', () {
+    test('a note toggles both ways', () async {
+      final c = controller();
+      await c.load();
+      final note = c.createNote()!;
+
+      expect(note.isCompleted, isFalse);
+
+      c.toggleCompleted(note.id);
+      expect(note.isCompleted, isTrue);
+      expect(note.completedAt, isNotNull);
+
+      c.toggleCompleted(note.id);
+      expect(note.isCompleted, isFalse);
+      expect(note.completedAt, isNull);
+    });
+
+    test('finishing a note does not reorder the list', () async {
+      // The reason toggleCompleted exists in the shape it does. Notes sort by
+      // most recently edited, so bumping the timestamp would send the note to
+      // the top every time it is ticked off, and working through a list would
+      // become a shuffle with the finished task landing back in front of you.
+      final c = controller();
+      await c.load();
+      final first = c.createNote()!;
+      first.title = 'older';
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final second = c.createNote()!;
+      second.title = 'newer';
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final third = c.createNote()!;
+      third.title = 'newest';
+
+      expect(c.notes.map((n) => n.title), ['newest', 'newer', 'older']);
+      final stampsBefore = {for (final n in c.notes) n.id: n.updatedAt};
+
+      c.toggleCompleted(second.id);
+
+      expect(c.notes.map((n) => n.title), ['newest', 'newer', 'older'],
+          reason: 'the list must not move under the pointer');
+      for (final note in c.notes) {
+        expect(note.updatedAt, stampsBefore[note.id],
+            reason: 'finishing a task is a state change, not an edit');
+      }
+    });
+
+    test('undo brings a finished note back finished', () async {
+      final c = controller();
+      await c.load();
+      final note = c.createNote()!;
+      c.toggleCompleted(note.id);
+      await c.flush();
+
+      c.deleteNote(note.id);
+      expect(c.undoDelete(), isTrue);
+
+      expect(c.selectedNote!.isCompleted, isTrue,
+          reason: 'a restored note that lost its finished state would be a bug '
+              'nobody could explain');
+    });
+
+    test('the finished state is written to disk', () async {
+      final c = controller();
+      await c.load();
+      final note = c.createNote()!;
+      c.toggleCompleted(note.id);
+      await c.flush();
+
+      final reread = NotesRepository(
+        AtomicJsonFile('${temp.path}\\notes.json'),
+      );
+      final result = await reread.load();
+      final restored = (result as NotesLoaded).notes.single;
+      expect(restored.isCompleted, isTrue);
+      await reread.dispose();
+    });
+
+    test('the big card skips finished notes so it is never a struck-through task',
+        () async {
+      final c = controller();
+      await c.load();
+      final older = c.createNote()!;
+      older.title = 'older';
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final newer = c.createNote()!;
+      newer.title = 'newer';
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final newest = c.createNote()!;
+      newest.title = 'newest';
+
+      // With nothing picked. createNote selects what it makes, and that is a
+      // deliberate choice the preference must not override - see the test below.
+      c.select(null);
+
+      expect(c.focusedNote!.title, 'newest');
+
+      c.toggleCompleted(newest.id);
+
+      expect(c.focusedNote!.title, 'newer',
+          reason: 'ticking the top task off should reveal the next one');
+    });
+
+    test('with everything finished the big card falls back to the most recent',
+        () async {
+      final c = controller();
+      await c.load();
+      final a = c.createNote()!;
+      a.title = 'a';
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final b = c.createNote()!;
+      b.title = 'b';
+
+      c.toggleCompleted(a.id);
+      c.toggleCompleted(b.id);
+
+      expect(c.focusedNote, isNotNull,
+          reason: 'the card must not go missing while notes exist');
+    });
+
+    test('an explicit selection still wins over the unfinished preference',
+        () async {
+      // The preference is a default, not a rule. If someone has picked a note,
+      // moving the selection out from under them would be worse than showing a
+      // finished note large.
+      final c = controller();
+      await c.load();
+      final older = c.createNote()!;
+      older.title = 'older';
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final newer = c.createNote()!;
+      newer.title = 'newer';
+      c.toggleCompleted(newer.id);
+
+      c.select(older.id);
+      expect(c.focusedNote!.title, 'older');
+    });
+
+    test('nothing is marked finished while the file cannot be read', () async {
+      // Every other mutation is refused in this state, and this one has to be too:
+      // a note flipped to finished in memory that never reaches disk is a note
+      // that comes back unfinished, which is worse than the toggle doing nothing.
+      final c = controller();
+      await c.load();
+      final note = c.createNote()!;
+
+      File('${temp.path}\\notes.json').writeAsStringSync('{ not json');
+      await c.load();
+      expect(c.corrupt, isNotNull);
+
+      c.toggleCompleted(note.id);
+      expect(c.notes, isEmpty, reason: 'the file was unreadable, so nothing loaded');
+    });
+
+    test('toggling a note that is not there does nothing', () async {
+      final c = controller();
+      await c.load();
+      c.createNote();
+      c.toggleCompleted('no-such-note');
+      expect(c.notes.single.isCompleted, isFalse);
     });
   });
 
