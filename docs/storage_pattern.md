@@ -312,6 +312,15 @@ Changing any of these breaks files already on disk:
 - `notes[].id`, `.title`, `.body`, `.createdAt`, `.updatedAt`, `.completedAt`
 - `notes[].completedAt` **omitted when unset**, never `null`
 - `notes.json.bak`, `notes.json.broken-<stamp>`
+- `settings.json` `accentPalette` — **omitted when unset**, and resolved at the
+  edge by `paletteById`, which treats an unrecognised name as the default rather
+  than as an error. The **palette ids themselves are frozen too**
+  (`lib/src/ui/palette.dart`): they are in people's `settings.json`, so
+  renaming one silently resets anyone who chose it. Add palettes, do not
+  rename.
+- The default palette is index **zero**, not a named constant, because a
+  `settings.json` written before the setting existed resolves to it. Reordering
+  the list changes what an existing install sees.
 - `BackupService.separator` — a 40-dash rule. The importer does **not** match on
   this exact string; it splits on any unindented line of three or more
   `-`, `*` or `_`, which is what lets a body containing a rule survive the round
@@ -348,6 +357,8 @@ cited test stops existing.
 | — | Whitespace-only body normalises | `backup_service_test` → *a whitespace-only body comes back empty, not as blank lines* |
 | — | Lock behaviour | `notes_controller_test` → the `_ExclusiveLock` FFI helper (§4) |
 | — | `dart:io` confined to `core/`+`data/` | **guard** `layer_test` → *no file operation appears in ui/, state/ or platform/* |
+| — | `accentPalette` omitted when unset | `palette_test` → *omitted from the file entirely when never chosen* |
+| — | Unknown palette id is kept, not rewritten | `palette_test` → *an unknown value in the file is kept, not silently rewritten* |
 
 **Not covered, and deliberately:** `completedAt` reaching the plain-text backup.
 It does not, by decision (§4).

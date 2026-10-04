@@ -153,6 +153,16 @@ pwsh -File tool/screenshots/compose_hero.ps1 -Editor docs/images/editor.png -Wid
 
 ## What it does
 
+- **Nine colour schemes, yours to pick.** Settings has a row of swatches under
+  Appearance. Choose one and the accent *and* the surfaces built around it change
+  together, in both windows, immediately — the focused card's bar, the tick, the
+  composer's border, the editor background, the dialogs. `Coral` is the original
+  and still the default; `Graphite` is nearly grey, for when you want the app to
+  stop being colourful. A free colour picker would be more freedom and less
+  guarantee: these sit over an arbitrary wallpaper through a transparent window,
+  so a swatch you could pick might not be readable. Every one of the nine is
+  checked against its own surfaces for contrast in both light and dark, and the
+  check runs in the test suite.
 - **Notes** are a title and a body. Nothing else, ever. They sort by most
   recently edited and search covers titles and bodies, filtering as you type.
 - **Writing is immediate.** There is no save button. Changes are written as they
@@ -337,7 +347,7 @@ tool/brand/                  logo generator
 tool/release/                packaging: builds, verifies, zips, compiles setup.exe
 tool/screenshots/            screenshot capture, hero composition, input probe
 .github/workflows/           CI on every push, release on a version tag
-test/                        206 tests
+test/                        271 tests
 test/architecture/           guards: the rules that are not about behaviour
 ```
 
@@ -406,7 +416,7 @@ it could not be typed into.
 flutter test
 ```
 
-206 tests: **175 about behaviour**, and **31 about the rules themselves**.
+271 tests: **175 about behaviour**, **31 about the rules themselves**, and **65 about colour**.
 
 The behaviour half covers the parts where being wrong loses data: atomic writes
 and concurrent readers, the refusal to overwrite unreadable notes, retrying a

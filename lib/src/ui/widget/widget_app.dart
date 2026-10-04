@@ -9,6 +9,7 @@ import '../../data/settings_repository.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/settings_controller.dart';
 import '../../state/widget_controller.dart';
+import '../palette.dart';
 import '../theme.dart';
 import 'widget_surface.dart';
 
@@ -174,6 +175,7 @@ class _WidgetAppState extends State<WidgetApp> with WidgetsBindingObserver {
     final theme = buildWinNotesTheme(
       brightness: _brightness,
       highContrast: widget.launch.highContrast,
+      palette: paletteById(_settings.settings.accentPalette),
     );
 
     if (!_ready) {
@@ -198,6 +200,10 @@ class _WidgetAppState extends State<WidgetApp> with WidgetsBindingObserver {
             child: WidgetSurface(
               controller: _controller,
               brightness: surfaceBrightness,
+              // Resolved here rather than read from the theme, because the Theme
+              // above deliberately replaces the app theme with a bare
+              // ThemeData - so the palette cannot arrive through colorScheme.
+              palette: paletteById(_settings.settings.accentPalette),
               acrylicAvailable: widget.launch.acrylicSupported &&
                   _settings.settings.acrylicEnabled,
               onOpenEditor: () => unawaited(widget.shell.showEditor()),

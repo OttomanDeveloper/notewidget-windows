@@ -5,6 +5,8 @@ import '../../data/hotkey_binding.dart';
 import '../../data/settings.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/settings_controller.dart';
+import '../palette.dart';
+import '../theme.dart';
 
 /// Settings, in five flat groups with no nesting.
 ///
@@ -203,6 +205,135 @@ class _Separator extends StatelessWidget {
       Divider(height: 1, color: Theme.of(context).dividerColor);
 }
 
+/// The colour swatches.
+///
+/// Nine circles and the name of the one you picked, rather than a dropdown:
+/// the whole point of a colour list is that you can recognise the colour you
+/// want without reading its name, and a dropdown throws that away.
+///
+/// Each swatch shows the palette's **light-mode** accent, because that is the
+/// one with to stay legible against a pale dialog — the dark-mode variant is a
+/// lighter shade of the same hue, so the swatch reads as the family rather than
+/// as a colour you will not actually get.
+class _PalettePicker extends StatelessWidget {
+  const _PalettePicker({required this.selected, required this.onSelected});
+
+  final WinNotesPalette selected;
+  final ValueChanged<WinNotesPalette> onSelected;
+
+  /// Exposed so widget tests aim at a swatch without reverse-engineering the
+  /// wrap order — the same reason the composer's controls are keyed.
+  static Key keyFor(String paletteId) => ValueKey('settings.palette.$paletteId');
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 196,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            alignment: WrapAlignment.end,
+            children: [
+              for (final palette in winNotesPalettes)
+                _Swatch(
+                  palette: palette,
+                  isSelected: palette.id == selected.id,
+                  onTap: () => onSelected(palette),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            selected.label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.palette,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final WinNotesPalette palette;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // A tick rather than a ring: a ring in the same colour as the swatch reads
+    // as a slightly bigger swatch, which is not obviously "this one".
+    final onAccent = readableOn(palette.accent);
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: palette.label,
+      // On the Semantics rather than the InkWell nested inside it, so a test can
+      // ask "which swatch claims to be selected" by key. A key on the innermost
+      // widget would make the selected state unobservable, because the
+      // Semantics that carries it sits above.
+      key: _PalettePicker.keyFor(palette.id),
+      child: Tooltip(
+        message: palette.label,
+        child: SizedBox(
+          // Outside the Material, deliberately: a Material with a clip shape
+          // expands to fill its constraints, which would make every swatch the
+          // width of the picker and swallow taps meant for its neighbours.
+          width: 30,
+          height: 30,
+          child: Material(
+            color: Colors.transparent,
+            shape: CircleBorder(
+              side: BorderSide(
+                color: isSelected ? palette.accent : scheme.outlineVariant,
+                width: isSelected ? 2.5 : 1,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: Center(
+                child: AnimatedContainer(
+                  // A plain duration rather than WinNotesMotion: that class is
+                  // fed by the launch's animation flag, which this dialog is not
+                  // plumbed to, and plumbing it for a 14px circle is not worth
+                  // the seam.
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOut,
+                  width: isSelected ? 16 : 14,
+                  height: isSelected ? 16 : 14,
+                  decoration: BoxDecoration(
+                    color: palette.accent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: isSelected
+                      ? Icon(Icons.check, size: 11, color: onAccent)
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AppearanceGroup extends StatelessWidget {
   const _AppearanceGroup({
     required this.settings,
@@ -233,6 +364,17 @@ class _AppearanceGroup extends StatelessWidget {
             selected: {settings.themeMode},
             onSelectionChanged: (value) =>
                 controller.update((s) => s.copyWith(themeMode: value.first)),
+          ),
+        ),
+        const _Separator(),
+        _Row(
+          label: 'Colour',
+          description: 'The accent, and the surfaces built around it.',
+          trailing: _PalettePicker(
+            selected: paletteById(settings.accentPalette),
+            onSelected: (palette) => controller.update(
+              (s) => s.copyWith(accentPalette: palette.id),
+            ),
           ),
         ),
         const _Separator(),

@@ -47,6 +47,37 @@
 
 ### Added
 
+- **Nine colour schemes, chosen in Settings.** A row of swatches under
+  Appearance. Picking one changes the accent *and* the surfaces built around it —
+  the focused card's bar, the completion tick, the composer's border, the editor
+  background, the dialogs — in both windows, immediately, with no restart.
+
+  Three hand-picked values per palette rather than ten: the accent is exact, so
+  the swatch is the colour you get, and everything else is derived from a single
+  neutral seed with `ColorScheme.fromSeed`. That keeps the tonal relationships
+  guaranteed by one piece of code instead of nine hand-tuned sets, the ninth of
+  which would be wrong.
+
+  The neutral seed is deliberately *not* the accent. The brand is a warm caret on
+  a cool plate, and tying the two together would flatten it into a single hue —
+  which is also why `Coral` keeps exactly the indigo-tinted darks and warm
+  parchment lights it has always had. **The default palette is unchanged**, and
+  the logo and artwork keep the brand colours regardless of what you pick: a
+  palette changes what the app looks like, not what it is.
+
+  A curated list rather than a free picker, because these surfaces float over an
+  arbitrary desktop wallpaper through a transparent window. An accent has to stay
+  readable on a light surface *and* a dark one *and* against a photograph, and
+  there is no honest way to let someone pick one that does not. Every palette is
+  checked against its own surfaces for contrast in both modes, in the test suite,
+  so the next one cannot be added without being checked.
+
+  `accentPalette` is omitted from `settings.json` when never chosen, for the same
+  reason `completedAt` is: a profile that never touched the setting stays
+  byte-identical to one written before the setting existed. An unrecognised name
+  resolves to the default rather than refusing to start, and is left in the file
+  rather than silently rewritten.
+
 - **The pattern docs are now enforced, not just written.** 31 architecture
   guards in `test/architecture/`, run by `flutter test` like everything else:
 
@@ -96,6 +127,15 @@
   failure is a widget too small to read rather than a crash.
 
 ### Fixed
+
+- **`readableOn` picked the wrong ink for mid-luminance colours.** It used a
+  luminance threshold of 0.45, but the crossover where black overtakes white sits
+  at 0.179 — so a threshold anywhere near it is wrong for exactly the colours an
+  accent is. Coral's dark-mode variant measures 0.356, where white gives 2.6:1 and
+  black gives 8.1:1, and the old code chose white. Both contrasts are now computed
+  and the higher one wins. This is what the tick, the checkbox mark and the
+  selection ring are drawn in, so it made a finished task look unfinished; it was
+  caught by the new contrast test on the first run.
 
 - **The plain-text export is now atomic.** It was written with
   `File(path).writeAsString` from the UI layer, so an interrupted export left a

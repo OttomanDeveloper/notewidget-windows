@@ -20,6 +20,10 @@ and pointers, not essays. Detail lives in `docs/*.md`.
    and that is a decision rather than an accident. Windows behaviour is
    hand-written in `windows/runner/`. Do not add a package to get a window
    effect.
+5. **Palette ids are frozen.** The ids in `lib/src/ui/palette.dart` live in
+   people's `settings.json`. Renaming one silently resets anyone who chose it;
+   add palettes instead. The default is index zero, not a named constant, for
+   the same reason — a file written before the setting existed resolves to it.
 
 ---
 
@@ -42,7 +46,7 @@ Verified against Flutter 3.47.5 stable, Dart SDK `^3.13.4`.
 | `PROJECT.md` | What the product is, and is not. The authority. |
 | `docs/storage_pattern.md` | One writer per file, atomic replace, debounce + ceiling, retry ladders, transient vs damaged, `.bak`, recovery that never destroys. |
 | `docs/widget_pattern.md` | `HTCLIENT` everywhere, Dart-decides/runner-performs, screen-space drags, scroll-vs-drag by extent, borrowing the keyboard, card sizing. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 206 tests, and the seven traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 271 tests, and the seven traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged. |
 
@@ -131,7 +135,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 206 passing
+flutter test             # 271 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md` that says **why**, not just

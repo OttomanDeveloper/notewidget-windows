@@ -13,6 +13,7 @@ import 'hotkey_binding.dart';
 class WinNotesSettings {
   WinNotesSettings({
     this.themeMode = ThemeMode.system,
+    this.accentPalette = '',
     this.widgetOpacity = 92,
     this.acrylicEnabled = true,
     this.alwaysOnTop = true,
@@ -30,6 +31,19 @@ class WinNotesSettings {
   static final WinNotesSettings defaults = WinNotesSettings();
 
   ThemeMode themeMode;
+
+  /// Which colour palette, by id. Empty means "never chose one".
+  ///
+  /// Empty rather than defaulting to `'coral'` on purpose: the id of the default
+  /// palette is a product decision that could change, and a file that records
+  /// "coral" would then be pinned to it forever. Empty keeps meaning "whatever
+  /// the default is", which is what someone who never touched the setting
+  /// meant. Same reasoning as `completedAt` being omitted rather than null.
+  ///
+  /// The value is *not* validated here. `paletteById` resolves anything unknown
+  /// to the default, and doing it at the edge means one place decides what an
+  /// unrecognised name means instead of two that could disagree.
+  String accentPalette;
 
   /// Percentage, 30-100. A widget that is too solid sits on top of the work
   /// rather than beside it.
@@ -74,6 +88,7 @@ class WinNotesSettings {
       identical(this, other) ||
       other is WinNotesSettings &&
           other.themeMode == themeMode &&
+          other.accentPalette == accentPalette &&
           other.widgetOpacity == widgetOpacity &&
           other.acrylicEnabled == acrylicEnabled &&
           other.alwaysOnTop == alwaysOnTop &&
@@ -88,6 +103,7 @@ class WinNotesSettings {
   @override
   int get hashCode => Object.hash(
         themeMode,
+        accentPalette,
         widgetOpacity,
         acrylicEnabled,
         alwaysOnTop,
@@ -102,6 +118,7 @@ class WinNotesSettings {
 
   WinNotesSettings copyWith({
     ThemeMode? themeMode,
+    String? accentPalette,
     int? widgetOpacity,
     bool? acrylicEnabled,
     bool? alwaysOnTop,
@@ -115,6 +132,7 @@ class WinNotesSettings {
   }) =>
       WinNotesSettings(
         themeMode: themeMode ?? this.themeMode,
+        accentPalette: accentPalette ?? this.accentPalette,
         widgetOpacity: widgetOpacity ?? this.widgetOpacity,
         acrylicEnabled: acrylicEnabled ?? this.acrylicEnabled,
         alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
@@ -130,6 +148,10 @@ class WinNotesSettings {
   Map<String, dynamic> toJson() => {
         'version': 1,
         'themeMode': themeMode.name,
+        // Omitted rather than written as '' when unset, for the same reason
+        // completedAt is: a file that never mentioned the setting stays
+        // byte-identical to one written before the setting existed.
+        if (accentPalette.isNotEmpty) 'accentPalette': accentPalette,
         'widgetOpacity': widgetOpacity,
         'acrylicEnabled': acrylicEnabled,
         'alwaysOnTop': alwaysOnTop,
@@ -160,6 +182,7 @@ class WinNotesSettings {
 
     return WinNotesSettings(
       themeMode: theme,
+      accentPalette: pick<String>('accentPalette', fallback.accentPalette),
       // Clamped rather than trusted: a hand-edited file should not be able to
       // produce a fully invisible widget.
       widgetOpacity:

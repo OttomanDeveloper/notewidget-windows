@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../data/settings_repository.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/widget_controller.dart';
+import '../palette.dart';
 import '../theme.dart';
 import 'widget_note_card.dart';
 
@@ -23,12 +24,21 @@ class WidgetSurface extends StatefulWidget {
     required this.brightness,
     required this.acrylicAvailable,
     required this.onOpenEditor,
+    this.palette,
   });
 
   final WidgetController controller;
   final Brightness brightness;
   final bool acrylicAvailable;
   final VoidCallback onOpenEditor;
+
+  /// The user's colour choice, or null for the default.
+  ///
+  /// Passed in rather than read from the theme because the widget deliberately
+  /// replaces the app theme with a bare `ThemeData(brightness:)` — the surface
+  /// is drawn over the desktop, not over the app's own background — so the
+  /// palette cannot arrive through `colorScheme` here.
+  final WinNotesPalette? palette;
 
   @override
   State<WidgetSurface> createState() => _WidgetSurfaceState();
@@ -346,7 +356,11 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   @override
   Widget build(BuildContext context) {
     final dark = widget.brightness == Brightness.dark;
-    final accent = dark ? WinNotesColors.coralSoft : WinNotesColors.coral;
+    // Resolved through the palette rather than read from the theme, so the
+    // focused card's bar, the tick and the composer's border cannot disagree
+    // with the editor about what the accent is.
+    final palette = widget.palette ?? winNotesPalettes.first;
+    final accent = palette.accentFor(widget.brightness);
     final controller = widget.controller;
 
     return AnimatedBuilder(
@@ -363,6 +377,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
               brightness: widget.brightness,
               acrylicAvailable: widget.acrylicAvailable,
               opacityPercent: 92,
+              palette: palette,
             ),
             child: Stack(
               children: [

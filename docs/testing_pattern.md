@@ -20,6 +20,7 @@ test/
   backup_service_test.dart       23   plain-text round trip, writing it
   note_test.dart                 17   the model, completion, id factory
   widget_surface_test.dart        9   card rendering at a given size
+  palette_test.dart              65   contrast per palette, the picker, the setting
   editor_navigation_test.dart     4   dialog routing
 
   architecture/                         rules that are not about behaviour
@@ -36,8 +37,13 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**206 tests: 175 about behaviour, 31 about the rules themselves.** All in
-`flutter test`. Nothing needs a device.
+**271 tests: 175 about behaviour, 31 about the rules themselves, 65 about
+colour.** All in `flutter test`. Nothing needs a device.
+
+The 65 in `palette_test` are mostly generated: one group per palette, asserting
+the contrast guarantee holds for it. That is deliberate — a curated palette is
+only worth having if nothing in it is unreadable, and the test is what stops the
+next one being added without checking.
 
 The `architecture/` folder exists because a rule written in prose stops being
 true the moment someone is in a hurry, and nothing fails. `docs/storage_pattern.md`
@@ -179,7 +185,12 @@ pay again.
   a cancellable `Timer` rather than `Future.delayed` for exactly this reason.
 - **Debounced writes need a real-clock flush.** A widget test's fake clock never
   advances the real event loop, so `controller.flush()` has to run under
-  `tester.runAsync` or the pending timer fails the test on the way out.
+  `tester.runAsync` or the pending timer fails the test on the way out. The same
+  trap has a second form: **loading a file** inside `testWidgets` hangs forever
+  if it is not wrapped in `runAsync`, and a debounced write under a fake clock
+  fires its timer but never completes the real write — so `flush()` then finds
+  nothing pending and no file appears. Both look like "the setting is not being
+  saved". Test a debounce in a plain `test()` with real elapsed time instead.
 - **Do not double-dispose.** `addRelease(tester, controller)` already disposes.
 - **Reading state back from a file races the 250 ms debounce.** A `Get-Content`
   a moment after a change can miss it. Parse per note with
@@ -222,6 +233,27 @@ afterwards. All five went red; all five returned to green.
 The third one is the interesting entry: it was broken by accident while
 extracting the atomic write into a shared helper, and the guard now exists
 because of it.
+
+The palette tests were put through the same thing, and one break is worth
+recording because **the first attempt at it was wrong**:
+
+| Broken on purpose | Test that caught it |
+|---|---|
+| An accent painted the same tone as the light surface | `palette_test` → *the accent reads against the light widget surface* |
+| An accent painted the same tone as the dark surface | `palette_test` → *the accent reads against the dark widget surface* |
+| `readableOn` put back on a 0.45 luminance threshold | `palette_test` → *the tick drawn inside the accent* |
+| Two palettes given the same id | `palette_test` → *ids are unique* |
+| The default palette's accent quietly changed | `palette_test` → *the default palette is still the brand* |
+| The default palette renamed | `palette_test` → *the default is first* |
+
+The first attempt darkened the default accent and the test stayed green — which
+looked like an inert test and was not. Darkening an accent *raises* contrast
+against a light surface; the failure mode is an accent too close to the surface,
+not too dark. Painting it the same tone as the surface took it red immediately.
+
+That is the argument for doing this at all: without breaking the rule on purpose
+you cannot tell a guard that works from one that never fires — and when a break
+fails to break anything, you cannot tell which of those two you are looking at.
 
 ---
 

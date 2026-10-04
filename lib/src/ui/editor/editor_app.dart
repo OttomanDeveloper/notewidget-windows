@@ -11,6 +11,7 @@ import '../../platform/shell_channel.dart';
 import '../../state/notes_controller.dart';
 import '../../state/settings_controller.dart';
 import '../settings/settings_dialog.dart';
+import '../palette.dart';
 import '../theme.dart';
 import 'editor_view.dart';
 
@@ -268,6 +269,7 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
           theme: buildWinNotesTheme(
             brightness: brightness,
             highContrast: widget.launch.highContrast,
+            palette: paletteById(_settings.settings.accentPalette),
           ),
           home: EditorView(
             controller: _notes,

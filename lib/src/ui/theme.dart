@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// WinNotes' colours.
+import 'palette.dart';
+
+/// WinNotes' brand colours.
 ///
-/// Built from the logo rather than from Material's defaults: the indigo plate
-/// and the coral caret are the two brand colours, and the accent is the caret
-/// because that is the part of the mark that means "being written right now".
+/// These are the *logo* — the indigo plate and the coral caret baked into the
+/// mark, and the artwork derived from it. They are deliberately **not** the
+/// user's palette: `WinNotesPalette` changes what the app looks like, and the
+/// mark stays the mark. Tinting the logo with a chosen colour would make the
+/// thing people recognise into one of nine variations of itself.
+///
+/// The live accent comes from [WinNotesPalette] instead. The values below are
+/// the default palette's, kept here so the relationship between the two is
+/// visible from one file.
 class WinNotesColors {
   const WinNotesColors._();
 
@@ -15,16 +23,6 @@ class WinNotesColors {
   static const Color coralSoft = Color(0xFFFF7A45);
   static const Color parchment = Color(0xFFF7F5F0);
   static const Color inkMuted = Color(0xFFAEB4C6);
-
-  /// Widget surface fills.
-  ///
-  /// The widget is drawn over the desktop, so these need to hold up against an
-  /// arbitrary wallpaper. The light surface is warm rather than pure white so
-  /// it separates from a white background without needing a border.
-  static const Color widgetSurfaceLight = Color(0xF2F7F5F0);
-  static const Color widgetSurfaceDark = Color(0xF21F1A38);
-  static const Color widgetSurfacePlainLight = Color(0xE6EDE9E1);
-  static const Color widgetSurfacePlainDark = Color(0xE6161228);
 }
 
 /// Motion durations, zeroed out when Windows reports animation is off.
@@ -41,29 +39,44 @@ class WinNotesMotion {
 ThemeData buildWinNotesTheme({
   required Brightness brightness,
   required bool highContrast,
+  WinNotesPalette? palette,
 }) {
+  final chosen = palette ?? winNotesPalettes.first;
   final isDark = brightness == Brightness.dark;
+  final surfaces = chosen.surfaces(brightness);
+  final accent = chosen.accentFor(brightness);
+
+  // Built from the accent so the switches, checkboxes and text selections in
+  // Settings belong to the palette, then the neutrals are replaced wholesale
+  // with the ones from the neutral seed. Overriding the roles actually used
+  // beats copyWith on a forty-field scheme: a field nobody reads cannot be
+  // wrong in a way anyone sees.
   final scheme = ColorScheme.fromSeed(
-    seedColor: WinNotesColors.indigo,
+    seedColor: accent,
     brightness: brightness,
   ).copyWith(
-    // The caret colour, used for the one interactive accent per surface.
-    primary: isDark ? WinNotesColors.coralSoft : WinNotesColors.coral,
-    secondary: WinNotesColors.indigoLight,
+    primary: accent,
+    onPrimary: readableOn(accent),
+    surface: surfaces.scaffold,
+    onSurface: surfaces.onSurface,
+    surfaceContainerLow: surfaces.surface,
+    surfaceContainer: surfaces.plain,
+    surfaceContainerHigh: surfaces.dialog,
+    onSurfaceVariant: surfaces.onSurfaceVariant,
+    outlineVariant: surfaces.outlineVariant,
+    surfaceTint: Colors.transparent,
   );
 
   final base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
     brightness: brightness,
-    scaffoldBackgroundColor: isDark
-        ? const Color(0xFF14111F)
-        : const Color(0xFFF3F1EA),
+    scaffoldBackgroundColor: surfaces.scaffold,
   );
 
   final textTheme = base.textTheme.apply(
-    bodyColor: isDark ? const Color(0xFFE8E6F0) : const Color(0xFF23202E),
-    displayColor: isDark ? const Color(0xFFF5F3FA) : const Color(0xFF1B1826),
+    bodyColor: surfaces.onSurface,
+    displayColor: surfaces.onSurface,
   );
 
   return base.copyWith(
@@ -75,12 +88,12 @@ ThemeData buildWinNotesTheme({
       titleLarge: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
     ),
     dividerTheme: DividerThemeData(
-      color: scheme.outlineVariant.withValues(alpha: highContrast ? 0.9 : 0.35),
+      color: surfaces.outlineVariant.withValues(alpha: highContrast ? 0.9 : 0.35),
       thickness: highContrast ? 2 : 1,
       space: 1,
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: isDark ? const Color(0xFF221D33) : WinNotesColors.parchment,
+      backgroundColor: surfaces.dialog,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
@@ -95,18 +108,42 @@ ThemeData buildWinNotesTheme({
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: scheme.primary, width: 2),
+        borderSide: BorderSide(color: accent, width: 2),
       ),
     ),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF322B4C) : const Color(0xFF2B2450),
+        color: isDark
+            ? surfaces.dialog
+            : surfaces.onSurface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(6),
       ),
-      textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+      textStyle: TextStyle(
+        color: isDark ? surfaces.onSurface : Colors.white,
+        fontSize: 12,
+      ),
       waitDuration: const Duration(milliseconds: 500),
     ),
   );
+}
+
+/// Black or white, whichever actually reads better on [background].
+///
+/// Both contrasts are computed and the higher one wins. A luminance *threshold*
+/// looks equivalent and is not: the crossover where black overtakes white sits
+/// at luminance 0.179, so a threshold anywhere near it gets mid-luminance
+/// colours wrong. Mid-luminance saturated colours are precisely what an accent
+/// is — coral's dark-mode variant measures 0.356, where white gives 2.6:1 and
+/// black gives 8.1:1, and a threshold of 0.45 would have picked white.
+///
+/// This is what the palette's tick, the checkbox mark and the selection ring are
+/// drawn in, so getting it wrong makes a finished task look unfinished.
+Color readableOn(Color background) {
+  const dark = Color(0xFF17151C);
+  final luminance = background.computeLuminance();
+  final againstWhite = 1.05 / (luminance + 0.05);
+  final againstDark = (luminance + 0.05) / 0.05;
+  return againstWhite >= againstDark ? Colors.white : dark;
 }
 
 /// Shorthand for picking the right surface colour for the widget.
@@ -114,11 +151,12 @@ Color widgetSurfaceColor({
   required Brightness brightness,
   required bool acrylicAvailable,
   required int opacityPercent,
+  WinNotesPalette? palette,
 }) {
-  final isDark = brightness == Brightness.dark;
-  final base = acrylicAvailable
-      ? (isDark ? WinNotesColors.widgetSurfaceDark : WinNotesColors.widgetSurfaceLight)
-      : (isDark ? WinNotesColors.widgetSurfacePlainDark : WinNotesColors.widgetSurfacePlainLight);
+  final chosen = palette ?? winNotesPalettes.first;
+  final base = chosen
+      .surfaces(brightness)
+      .surfaceColor(acrylicAvailable: acrylicAvailable);
   // The window already carries a per-window alpha for this setting; the colour
   // alpha here is only a floor so text never sits on a fully clear surface.
   final floor = (opacityPercent / 100).clamp(0.35, 1.0);
