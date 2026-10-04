@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
 ### Fixed
+
+- **The test suite stopped losing races with Windows file handles.** Cleaning up a
+  temporary directory failed about one run in six with *"being used by another
+  process"*: a background write or a directory watcher had not let go yet. The
+  retry budget was one second, which is long enough to look like it works and
+  short enough to keep losing. It is now about five, which is far longer than it
+  ever needs and far shorter than a flake costs. This is not a change to the app
+  — it is the difference between a suite you trust and one you re-run.
 
 - **The editor can no longer be shrunk to nothing.** It could be dragged by a
   corner down to a few pixels and left there — a window too small to hold a
@@ -171,6 +179,8 @@
   the note's title directly above the body, so a `# Heading` in the body is a
   repeat, and at 1.3x it was eating a third of a two-line card and pushing the
   content off the end.
+
+## 1.1.0
 
 - **Add a note from the widget.** A small circle in the bottom-right corner,
   nearly invisible until you move the pointer over the widget, turns into a text

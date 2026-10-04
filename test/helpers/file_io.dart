@@ -19,13 +19,20 @@ import 'dart:io';
 /// which are synchronous, and a caller that cannot await should still get the
 /// retry rather than a first-attempt failure.
 void deleteTempDir(Directory dir) {
-  for (var attempt = 0; attempt < 40; attempt++) {
+  // About five seconds, which is far longer than it ever needs and far shorter
+  // than a flake costs. Several of these tests leave a directory watcher, an
+  // exclusive lock, or a debounced write holding the file, and how long the
+  // last handle survives is not a property of the code under test. A previous
+  // budget of one second failed about one run in six - long enough to look like
+  // it worked, short enough to keep losing.
+  const attempts = 200;
+  for (var attempt = 0; attempt < attempts; attempt++) {
     if (!dir.existsSync()) return;
     try {
       dir.deleteSync(recursive: true);
       return;
     } on FileSystemException {
-      if (attempt == 39) rethrow;
+      if (attempt == attempts - 1) rethrow;
       sleep(const Duration(milliseconds: 25));
     }
   }
@@ -37,8 +44,9 @@ void deleteTempDir(Directory dir) {
 /// on the result can catch the file mid-replace. `errno 32` from here says
 /// nothing about whether the write succeeded.
 String readFileEventually(File file) {
+  const attempts = 200;
   Object? last;
-  for (var attempt = 0; attempt < 40; attempt++) {
+  for (var attempt = 0; attempt < attempts; attempt++) {
     try {
       return file.readAsStringSync();
     } on FileSystemException catch (e) {
