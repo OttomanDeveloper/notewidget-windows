@@ -4,6 +4,39 @@
 
 ### Fixed
 
+- **The editor can no longer be shrunk to nothing.** It could be dragged by a
+  corner down to a few pixels and left there — a window too small to hold a
+  title, a note and a status bar is not a smaller version of this app, it is a
+  broken one. There is now a floor of **520 × 360**; the window still grows to
+  most of the screen and maximises like any ordinary window.
+
+  The floor comes from the layout rather than from taste: the editor already
+  collapses to one pane at a time below 760 wide, and that pane stops fitting
+  much under 400, so 520 leaves the narrow layout genuinely usable rather than
+  technically reachable.
+
+  Enforced with `WM_GETMINMAXINFO`, the only hook that governs the size the user
+  can reach by dragging a frame edge. Three things about it are easy to get
+  wrong and invisible in a diff, so all three are guarded:
+
+  - **`ptMinTrackSize` is in physical pixels**, so it is scaled for the window's
+    DPI. A literal would be a 520 px floor at 100% and a 347 *logical* px floor
+    at 150% — the displays people actually use get the wrong answer, and nothing
+    looks wrong.
+  - **`ptMinSize` is the wrong field.** It also caps programmatic sizing, so
+    Dart asking for a particular size would be silently ignored.
+  - **`ptMaxPosition` and `ptMaxSize` are left alone.** The first governs how far
+    the window may be dragged off-screen, which the runner already owns; writing
+    it here would be a second, conflicting answer to the same question.
+
+  The widget is deliberately untouched. It is frameless and resized by the drag
+  loop, which already clamps to 200 × 140 and never reaches the window manager's
+  track-size path — a minimum set here would do nothing for it while reading
+  like a second source of truth.
+
+  Verified on a release build by dragging the corner past the top-left of the
+  screen: it stops at exactly 520 × 360, each edge clamps independently, and
+  maximise and restore are unaffected.
 - **The widget no longer sits on top of the editor.** Always-on-top is absolute:
   a window carrying `WS_EX_TOPMOST` is above every other window, so once the
   widget had that flag there was no position in the Z-order meaning "above other

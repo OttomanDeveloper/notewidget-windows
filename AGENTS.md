@@ -55,7 +55,7 @@ Verified against Flutter 3.47.5 stable, Dart SDK `^3.13.4`.
 | `PROJECT.md` | What the product is, and is not. The authority. |
 | `docs/storage_pattern.md` | One writer per file, atomic replace, debounce + ceiling, retry ladders, transient vs damaged, `.bak`, recovery that never destroys. |
 | `docs/widget_pattern.md` | `HTCLIENT` everywhere, Dart-decides/runner-performs, screen-space drags, scroll-vs-drag by extent, borrowing the keyboard, card sizing. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 326 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 332 tests, and the ten traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged. |
 
@@ -83,13 +83,13 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 44 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 50 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
 | `layer_test` | any `dart:io` operation in `ui/`, `state/` or `platform/`; a `MethodChannel` built outside `platform/`; a method called from Dart that the runner does not handle |
 | `storage_guard_test` | the watcher attached to the file instead of the directory; the export not going through the atomic writer; `.bak` taken after the replace instead of before |
-| `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode; the editor created topmost; `SetAlwaysOnTop` reachable for the editor; no `WM_ACTIVATE`; the widget demoted **without** the editor being raised |
+| `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode; the editor created topmost; `SetAlwaysOnTop` reachable for the editor; no `WM_ACTIVATE`; the widget demoted **without** the editor being raised; no `WM_GETMINMAXINFO`; the editor's minimum size written unscaled, as `ptMinSize`, or alongside `ptMaxPosition` |
 | `docs_test` | a rule in §3 of a pattern doc with no row in its test table; a cited test that no longer exists; a cited guard that does not exist; this file claiming a fixed rule is still broken |
 | `dependency_guard_test` | a runtime dependency in `pubspec.yaml` that is not on the enumerated list in §0.4; an approved list that has quietly grown into "anything goes" |
 
@@ -151,7 +151,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 326 passing
+flutter test             # 332 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md` that says **why**, not just

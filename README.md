@@ -125,7 +125,9 @@ caret from whatever you are typing in. It survives every restart.
 
 **The editor** is an ordinary window with an ordinary title bar, because it is
 the one surface you are deliberately looking at. You ask for it; it never appears
-on its own at boot.
+on its own at boot. It resizes freely from any edge or corner, maximises like
+any other window, and will not go below **520 × 360** — below that it stops being
+a smaller editor and starts being a broken one.
 
 Neither is more real than the other. They are two views of the same notes.
 

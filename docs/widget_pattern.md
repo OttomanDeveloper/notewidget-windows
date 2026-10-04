@@ -379,9 +379,49 @@ nothing to crash. `docs/testing_pattern.md` §2 puts that in tier C, and
 topmost, that the setting cannot reach it, that activation is observed, and that
 `ApplyWidgetTopmost` raises the editor as well as demoting the widget.
 
+### 3.18 The editor has a minimum size
+
+`WM_GETMINMAXINFO`, setting `ptMinTrackSize` to `520 × 360` logical pixels.
+The editor could previously be dragged by a corner down to a few pixels and left
+there — a window too small to hold a title, a note and a status bar is not a
+smaller version of this app, it is a broken one.
+
+The floor is derived from the layout rather than picked to look tidy.
+`EditorView` collapses to one pane at a time below 760 logical px, and that pane
+carries the title row, the body and the status bar alone; the status bar — "Saved
+to this PC" beside a Delete button — stops fitting much under 400. 520 leaves the
+narrow layout genuinely usable rather than technically reachable.
+
+**Editor only.** The widget is `WS_POPUP` and is resized by the drag loop in
+`PostBeginResize`, which already clamps against `kMinWidgetW`/`kMaxWidgetW`. A
+frameless window does not go through the window manager's track-size path, so a
+minimum here would do nothing for it — a second source of truth that reads like
+the first.
+
+Three things about the handler that are easy to get wrong and impossible to see:
+
+- **`ptMinTrackSize` is in physical pixels**, so the value is scaled with
+  `ScaleForWindow`. A literal `520` is a 520 px floor at 100% and a 347
+  *logical* px floor at 150% — so the displays people actually use are the ones
+  that get the wrong answer, and nothing looks wrong.
+- **`ptMinSize` is the wrong field.** It also caps programmatic sizing, so Dart
+  asking for a particular size would be silently ignored.
+- **`ptMaxPosition` and `ptMaxSize` are left alone.** `ptMaxPosition` governs how
+  far the window may be dragged off-screen, which `ClampToReachableScreen`
+  already owns; writing it here is a second, conflicting answer to the same
+  question.
+
+**Verified by driving a release build**: dragging the corner past the top-left of
+the screen stops at exactly 520×360, each edge clamps independently, and maximise
+and restore are unaffected. `docs/testing_pattern.md` §2 puts that in tier C;
+`widget_guard_test` covers the four source-level facts that can be in CI.
+
 ---
 
 ## 4. The traps
+
+- **Do not write the minimum unscaled.** `ptMinTrackSize` is physical pixels
+  (§3.18).
 
 - **Do not give the editor `WS_EX_TOPMOST`.** It is the one window the user is
   deliberately looking at, and adding the flag looks like it would fix "the app
@@ -464,6 +504,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing* |
 | 3.16 | Clamped by height | `markdown_test` → *a compact card still clamps to its line budget* |
 | 3.17 | The widget yields to the editor | **guard** `widget_guard_test` → *nothing puts the widget above the editor*, *the scanner finds the code it is looking for in the first place*, *the guard bites: an editor with WS_EX_TOPMOST is rejected*, *the guard bites: demoting without raising the editor is rejected*, *the guard bites: an un-guarded SetAlwaysOnTop is rejected*, *the guard bites: no WM_ACTIVATE is rejected*, *the guard bites: a host with no activation handler is rejected*; **manual** - click the editor, then another app, on a release build: the widget's `WS_EX_TOPMOST` clears and returns |
+| 3.18 | The editor has a minimum size | **guard** `widget_guard_test` → *the floor is enforced*, *the floor is a named constant, scaled for DPI*, *the guard bites: no WM_GETMINMAXINFO at all is rejected*, *the guard bites: ptMinSize instead of ptMinTrackSize is rejected*, *the guard bites: an unscaled floor is rejected*, *the guard bites: claiming ptMaxPosition is rejected*; **manual** - drag the editor's corner and each edge past zero on a release build: stops at exactly 520×360, and maximise is untouched |
 | - | Markdown on a card | `markdown_test` → *a plain note is untouched by any of this*, *a markdown note renders rather than showing its source*, *a markdown title honours inline formatting*, *a finished markdown card is struck through* |
 | — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |

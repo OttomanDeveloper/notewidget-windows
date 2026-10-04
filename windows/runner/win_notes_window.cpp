@@ -29,6 +29,22 @@ constexpr const wchar_t kWindowClassName[] = L"FLUTTER_WINNOTES_WINDOW";
 constexpr int kMinWidgetWidth = 200;
 constexpr int kMinWidgetHeight = 140;
 
+// The editor's floor, in logical pixels.
+//
+// Not arbitrary, and derived from the Dart layout rather than picked to look
+// tidy. `EditorView` collapses to a single pane below 760 logical px, so below
+// that the note pane carries the title row, the body and the status bar on its
+// own - and the status bar alone ("Saved to this PC" beside a Delete button)
+// stops fitting much under 400. 520 leaves the narrow layout genuinely usable
+// rather than technically reachable.
+//
+// The widget's floor is 200x140 and is a different question: that window is
+// frameless and resized by our own drag loop, which already clamps
+// (kMinWidgetW/kMaxWidgetW below). It never goes through the window manager's
+// track-size path, so a minimum here would do nothing for it.
+constexpr int kMinEditorWidth = 520;
+constexpr int kMinEditorHeight = 360;
+
 // Messages below WM_APP are reserved for the system, so WinNotes starts there.
 constexpr UINT kWmGeometryChanged = WM_APP + 1;
 constexpr UINT kWmShow = WM_APP + 2;
@@ -699,6 +715,37 @@ LRESULT Window::HandleMessage(HWND window, UINT message, WPARAM wparam,
       // Flutter covers the client area; letting Windows erase it first would
       // show as flicker during resize and window moves.
       return 1;
+
+    case WM_GETMINMAXINFO: {
+      // The editor's minimum size.
+      //
+      // WM_GETMINMAXINFO is the only hook that governs the size the *user* can
+      // reach by dragging a frame edge or a corner, which is exactly the thing
+      // that had no floor: without it the editor could be dragged down to a few
+      // pixels and stay there.
+      //
+      // Editor only, deliberately. The widget is WS_POPUP and is resized by the
+      // drag loop in PostBeginResize, which clamps against kMinWidgetW /
+      // kMaxWidgetW itself; a frameless window does not go through the window
+      // manager's track-size path, so a minimum here would be dead code that
+      // reads as a second, conflicting source of truth.
+      //
+      // ptMinTrackSize rather than ptMinSize: this is the user-resizable floor,
+      // and ptMinSize would also fight programmatic sizing.
+      //
+      // ptMaxSize and ptMaxPosition are left alone. The maximum is the
+      // system's own limit, and ptMaxPosition governs how far the window may be
+      // dragged off-screen, which ClampToReachableScreen already handles for
+      // this app.
+      //
+      // Physical pixels, so scaled - at 150% a 520 logical floor is 780.
+      if (IsWidgetRole(params_.role)) break;
+      auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
+      if (info == nullptr) break;
+      info->ptMinTrackSize.x = ScaleForWindow(window, kMinEditorWidth);
+      info->ptMinTrackSize.y = ScaleForWindow(window, kMinEditorHeight);
+      break;
+    }
 
     case WM_SIZE: {
       if (child_content_ != nullptr) {

@@ -25,6 +25,88 @@ String _seedLoopBody(String source) =>
 void main() {
   final tree = SourceTree();
 
+  group('the editor has a minimum size', () {
+    late String windowSource;
+
+    setUpAll(() {
+      windowSource = SourceTree().read('windows/runner/win_notes_window.cpp');
+    });
+
+    List<String> faultsFor([String? source]) =>
+        findEditorMinSizeFaults(source ?? windowSource);
+
+    test('the floor is enforced', () {
+      expect(
+        faultsFor(),
+        isEmpty,
+        reason: 'docs/widget_pattern.md §3.18.\n${faultsFor().join('\n')}',
+      );
+    });
+
+    test('the floor is a named constant, scaled for DPI', () {
+      // Asserted directly rather than only through the scanner, so the numbers
+      // themselves are pinned: a floor of 520x360 is a design decision, and a
+      // scanner cannot tell whether someone changed it to 200.
+      expect(windowSource, contains('constexpr int kMinEditorWidth = 520;'));
+      expect(windowSource, contains('constexpr int kMinEditorHeight = 360;'));
+      expect(
+        windowSource,
+        contains('ScaleForWindow(window, kMinEditorWidth)'),
+        reason: 'unscaled, the floor is wrong on every display that is not at '
+            '100%',
+      );
+      expect(windowSource, contains('ScaleForWindow(window, kMinEditorHeight)'));
+    });
+
+    test('the guard bites: no WM_GETMINMAXINFO at all is rejected', () {
+      expect(
+        faultsFor(windowSource.replaceAll('case WM_GETMINMAXINFO: {', 'case WM_NCPAINT: {'))
+            .any((f) => f.contains('no WM_GETMINMAXINFO')),
+        isTrue,
+      );
+    });
+
+    test('the guard bites: ptMinSize instead of ptMinTrackSize is rejected',
+        () {
+      final faulty = windowSource.replaceAll('ptMinTrackSize', 'ptMinSize');
+      expect(
+        faultsFor(faulty).any((f) => f.contains('ptMinTrackSize')),
+        isTrue,
+        reason: 'ptMinSize also caps programmatic sizing, so Dart asking for '
+            'a size would be silently ignored.',
+      );
+    });
+
+    test('the guard bites: an unscaled floor is rejected', () {
+      final faulty = windowSource.replaceAll(
+        'ScaleForWindow(window, kMinEditorWidth)',
+        'kMinEditorWidth',
+      ).replaceAll('ScaleForWindow(window, kMinEditorHeight)', 'kMinEditorHeight');
+      expect(faulty, isNot(equals(windowSource)));
+      expect(
+        faultsFor(faulty).any((f) => f.contains('unscaled')),
+        isTrue,
+        reason: 'a literal here is 520 physical pixels, which is 347 logical '
+            'pixels at 150% scaling.',
+      );
+    });
+
+    test('the guard bites: claiming ptMaxPosition is rejected', () {
+      final faulty = windowSource.replaceAll(
+        '      info->ptMinTrackSize.x = ScaleForWindow(window, kMinEditorWidth);',
+        '      info->ptMaxPosition.x = 0;\n'
+            '      info->ptMinTrackSize.x = ScaleForWindow(window, kMinEditorWidth);',
+      );
+      expect(faulty, isNot(equals(windowSource)));
+      expect(
+        faultsFor(faulty).any((f) => f.contains('ptMaxPosition')),
+        isTrue,
+        reason: 'that field governs dragging off-screen, which '
+            'ClampToReachableScreen already owns.',
+      );
+    });
+  });
+
   group('the widget gets out of the editor way', () {
     // The real runner, read once, and then mutated one fault at a time.
     late String windowSource;

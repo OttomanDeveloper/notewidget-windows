@@ -329,6 +329,87 @@ List<String> findWidgetAboveEditorFaults(String window, String host) {
   return faults;
 }
 
+/// Faults in the editor's minimum-size enforcement.
+///
+/// `docs/widget_pattern.md` §3.18. Three ways to write this handler and have
+/// it not work, all silent, all invisible in a diff:
+///
+///  1. **No DPI scaling.** `ptMinTrackSize` is in physical pixels. Written as a
+///     literal `520`, the floor is 520 physical pixels — which is a 520px floor
+///     at 100% and a 347px *logical* floor at 150%, so the window people
+///     actually use is the one that gets the wrong answer.
+///  2. **Writing `ptMaxPosition` or `ptMaxSize` as well.** `ptMaxPosition`
+///     governs how far the window may be dragged off-screen, which
+///     `ClampToReachableScreen` already owns. Setting it here is a second,
+///     conflicting answer to the same question.
+///  3. **Using `ptMinSize` instead of `ptMinTrackSize`.** `ptMinSize` also caps
+///     programmatic sizing, so Dart asking for a particular size would be
+///     silently ignored.
+List<String> findEditorMinSizeFaults(String window) {
+  final faults = <String>[];
+
+  final m = RegExp(
+    r'case WM_GETMINMAXINFO:(.*?)\n    \}',
+    dotAll: true,
+  ).firstMatch(window);
+  if (m == null) {
+    faults.add(
+      'win_notes_window.cpp handles no WM_GETMINMAXINFO, so the editor has no '
+      'minimum size and can be dragged down to nothing.\n'
+      'This is the only hook that governs the size the user can reach by '
+      'dragging a frame edge; nothing else in this runner does.',
+    );
+    return faults;
+  }
+  // Line comments stripped first. This handler explains at length why
+  // ptMaxPosition and ptMaxSize are *not* written, and a scanner that reads its
+  // own explanation as code would fail on the comment that documents the rule.
+  // The same reason findCaptionHits strips comments.
+  final body = (m.group(1) ?? '')
+      .split('\n')
+      .where((l) => !l.trimLeft().startsWith('//'))
+      .join('\n');
+
+  if (!RegExp(r'ptMinTrackSize').hasMatch(body)) {
+    faults.add(
+      'WM_GETMINMAXINFO does not set ptMinTrackSize, so the minimum size has '
+      'no effect.\n'
+      'ptMinTrackSize is the user-resizable floor. ptMinSize would also cap '
+      'programmatic sizing, which would silently ignore Dart asking for a '
+      'particular size.',
+    );
+  }
+
+  if (!RegExp(r'kMinEditorWidth').hasMatch(body) ||
+      !RegExp(r'kMinEditorHeight').hasMatch(body)) {
+    faults.add(
+      'WM_GETMINMAXINFO does not use kMinEditorWidth/kMinEditorHeight, so the '
+      'floor is a literal that cannot be found or changed in one place.',
+    );
+  }
+
+  if (!RegExp(r'ScaleForWindow').hasMatch(body)) {
+    faults.add(
+      'WM_GETMINMAXINFO writes the minimum unscaled.\n'
+      'ptMinTrackSize is in *physical* pixels. A literal 520 is a 520px floor '
+      'at 100% scaling and a 347 logical-pixel floor at 150%, so the displays '
+      'people actually use get the wrong answer and nothing looks wrong.',
+    );
+  }
+
+  for (final field in ['ptMaxPosition', 'ptMaxSize']) {
+    if (RegExp(field).hasMatch(body)) {
+      faults.add(
+        'WM_GETMINMAXINFO writes $field.\n'
+        '${field == 'ptMaxPosition' ? 'It governs how far the window may be dragged off-screen, which ClampToReachableScreen already owns - a second conflicting answer to the same question.' : 'The maximum is the system limit; the widget has its own clamp for the frameless case.'}\n'
+        'Only the minimum belongs here.',
+      );
+    }
+  }
+
+  return faults;
+}
+
 /// SDK packages, which are named in `dependencies` but are not dependencies.
 ///
 /// `flutter:` is listed there because that is where it belongs; counting it as a

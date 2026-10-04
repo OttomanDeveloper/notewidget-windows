@@ -80,6 +80,7 @@ Now each feature with a little more detail.
 - There is no save button. The body is written as it is typed, so leaving the note, closing the window, and quitting all leave the same text behind.
 - Exiting the editor is the ✕ in its title bar, which returns to the widget rather than closing the app.
 - The editor never appears on its own at boot. Boot brings back the widget, never a full window the user has to dismiss, because the widget is the state worth restoring and the editor is the state worth asking for.
+- The editor has a minimum size and cannot be dragged below it. It is free to grow to most of the screen, and it maximises like any ordinary window, but it cannot be shrunk to a sliver and left there — a window too small to show a title, a note and a status bar is not a smaller version of this app, it is a broken one. The floor is 520×360, chosen from the layout rather than rounded off: below 760 the editor shows one pane at a time, and that pane stops fitting much under 400 wide.
 
 ## Startup and the widget reappearing
 
