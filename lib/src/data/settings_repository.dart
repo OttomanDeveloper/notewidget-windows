@@ -50,6 +50,44 @@ class SettingsRepository {
   Future<void> dispose() => _file.dispose();
 }
 
+/// Which edge or corner a resize gesture is dragging.
+enum ResizeEdge {
+  left,
+  right,
+  top,
+  bottom,
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight;
+
+  bool get movesLeft => this == left || this == topLeft || this == bottomLeft;
+  bool get movesRight =>
+      this == right || this == topRight || this == bottomRight;
+  bool get movesTop => this == top || this == topLeft || this == topRight;
+  bool get movesBottom =>
+      this == bottom || this == bottomLeft || this == bottomRight;
+}
+
+/// Wire values for [ResizeEdge], matching the EdgeCode enum in the runner.
+///
+/// Explicit rather than `index + 1`, so reordering the Dart enum cannot quietly
+/// change which edge the native loop resizes.
+class ResizeEdgeCode {
+  const ResizeEdgeCode._();
+
+  static const Map<ResizeEdge, int> value = {
+    ResizeEdge.left: 1,
+    ResizeEdge.right: 2,
+    ResizeEdge.top: 3,
+    ResizeEdge.bottom: 4,
+    ResizeEdge.topLeft: 5,
+    ResizeEdge.topRight: 6,
+    ResizeEdge.bottomLeft: 7,
+    ResizeEdge.bottomRight: 8,
+  };
+}
+
 /// Where the widget was left, and which monitor it was left on.
 ///
 /// Owned by the widget surface. The editor never writes it, so the two sides

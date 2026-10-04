@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../data/settings_repository.dart';
+
 /// One monitor, as the native runner sees it.
 class MonitorInfo {
   const MonitorInfo({
@@ -206,6 +208,42 @@ class ShellChannel {
         'height': bounds.height,
       });
 
+  /// Hands a recognised drag to the runner, which then tracks the cursor itself.
+  ///
+  /// Called once, the moment Dart decides the pointer is dragging rather than
+  /// scrolling or tapping. Flutter only reports view-relative positions, so a
+  /// window that follows the cursor shrinks its own delta and lands at roughly
+  /// 40% of the drag asked for; the screen-space position exists only in the
+  /// runner, so the loop that moves the window has to start there.
+  ///
+  /// [anchor] is where the gesture began, view-relative and logical. It has to
+  /// come from here: the runner is told about the drag only after the pointer
+  /// has already travelled past the threshold, so anchoring on the cursor at
+  /// that point quietly throws away everything moved in the first hop.
+  Future<void> beginWidgetMove(Offset anchor) =>
+      _fire('widget.beginMove', {'anchorX': anchor.dx, 'anchorY': anchor.dy});
+
+  Future<void> beginWidgetResize(ResizeEdge edge, Offset anchor) => _fire(
+        'widget.beginResize',
+        {
+          'edge': ResizeEdgeCode.value[edge],
+          'anchorX': anchor.dx,
+          'anchorY': anchor.dy,
+        },
+      );
+
+  /// Where the widget window actually is, or null if it is not there.
+  ///
+  /// Asked for once at startup because nothing else can answer it on a first
+  /// run: there is no saved geometry, and the runner picks the default
+  /// placement itself. Without this the widget's idea of its own position is
+  /// empty, and a drag has nothing to move relative to.
+  Future<NativeBounds?> widgetBounds() async {
+    final result = await _invoke('widget.getBounds');
+    if (result is! Map) return null;
+    return NativeBounds.fromMap(result);
+  }
+
   Future<HotkeyRegistration> registerHotkey({
     required List<String> modifiers,
     required String key,
@@ -302,6 +340,22 @@ class ShellChannel {
         'suggestedName': suggestedName,
         'filter': filter,
       });
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// Calls the runner and returns its answer, or null if it has none to give.
+  ///
+  /// Distinct from [_fire] because some calls are worth an answer rather than
+  /// being fire-and-forget: the widget asks where it actually is, and swallowing
+  /// a failure there would leave it with no idea of its own position and make
+  /// the first drag of a new install do nothing.
+  Future<Object?> _invoke(String method, [Map<String, dynamic>? args]) async {
+    try {
+      return await methodChannel.invokeMethod<Object?>(method, args);
     } on PlatformException {
       return null;
     } on MissingPluginException {

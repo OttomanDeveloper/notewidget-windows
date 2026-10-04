@@ -4,14 +4,48 @@
 
 ### Fixed
 
-- **The widget can be dragged again.** 1.1.0 shipped the position lock switched
-  on by default, which meant the widget could not be moved at all unless you
-  found a switch in Settings. Dragging now works out of the box and the lock is
-  opt-in, for when the widget is parked somewhere you want it to stay.
+- **The widget can be dragged and resized at all.** This is the big one, and it
+  was not a lock or a settings problem: the widget has never been movable. It
+  reported `HTCAPTION` for its body so that Windows would run the drag loop for
+  it, and that could not work twice over. The Flutter view covers the client
+  area, so the system hit-tested the child and never asked the widget anything.
+  And even when it did ask, `DefWindowProc` only starts a move or size loop for a
+  window with `WS_CAPTION` or `WS_THICKFRAME`, which a borderless popup has
+  neither of. Dragging the body and grabbing a corner now both work, to the
+  pixel, in any direction.
+- **Cards are still tappable.** Answering `HTCAPTION` over the body would have
+  fixed dragging and broken everything else on the same pixels — Windows delivers
+  a message to one target per pixel — so the widget is now `HTCLIENT`
+  throughout, and both the drag and the resize are recognised in Dart and handed
+  to the runner, which tracks the cursor in screen space. Tapping a card,
+  scrolling the list and double-clicking through to the editor all still work,
+  and a press that does not travel is still a tap.
+- **Settings opens.** Clicking Settings did nothing: the menu opened, the row was
+  clicked, and no dialog appeared. `EditorApp` returns a `MaterialApp`, which
+  puts its own State's context *above* the Navigator, so `showDialog` from there
+  had no Navigator to push onto and threw instead. Export still appeared to work
+  because it reached for a native file dialog first and only fell over on the
+  confirmation afterwards, which is what made this look like "Settings is
+  broken" rather than "a context is in the wrong place". The same fault silently
+  swallowed the "Exported N notes" confirmation and the import merge question.
+- **Scrolling and dragging no longer fight.** They are the same gesture shape, so
+  the widget now decides by the scroll extent: scroll while there is more to
+  read, and once the list is at its end, keep going and the widget comes with
+  you. Deciding by which notification arrived first was a race, and a list with
+  nothing left to scroll never sent one at all.
+- **A first drag on a fresh install works.** With no saved geometry, the widget's
+  idea of its own position was empty and there was nothing for a drag to move
+  relative to. It now asks the runner where the window actually is at startup.
+- **The widget cannot be dragged off the screen or shrunk out of reach.** A resize
+  is clamped to a floor, so a fast flick cannot leave a window nobody can find.
 - **A locked widget now says so.** Dragging one used to do nothing whatsoever,
   with nothing on screen to suggest the lock was the reason. It now shows a short
   hint naming both the state and where to change it, and only after someone has
   actually tried to drag, so it never nags anyone who has not.
+- **The widget can be dragged out of the box again.** 1.1.0 shipped the position
+  lock switched on by default, which meant it could not be moved at all unless you
+  found a switch in Settings. The lock is now opt-in, for when the widget is
+  parked somewhere you want it to stay.
 
 ### Added
 
@@ -32,12 +66,13 @@
   report.
 - **[CONTRIBUTING.md]**, covering the build setup, the two design rules most
   mistakes break, and how a release is cut.
-- **Lock the widget in place.** New switch in Settings → Widget, on by default.
+- **Lock the widget in place.** New switch in Settings → Widget, off by default.
   While it is on, dragging the widget does nothing, so a stray drag across the
-  card cannot move a widget that was deliberately placed. Turning it off makes
-  the widget draggable again straight away, with no restart: the widget watches
-  `settings.json`, so the change reaches the window as it is made. Resizing from
-  a corner is unaffected, because locking is about position, not size.
+  card cannot move a widget that was deliberately placed, and the widget says so
+  rather than ignoring you. Turning it off makes the widget draggable again
+  straight away, with no restart: the widget watches `settings.json`, so the change
+  reaches the window as it is made. Resizing from an edge or a corner is
+  unaffected, because locking is about position, not size.
 - **A dedicated Widget settings group.** "Keep the widget above other windows"
   moves here from Appearance, so the two switches about where the widget sits
   and whether it gets in the way are described together. `alwaysOnTop` itself is
@@ -48,6 +83,9 @@
 - The widget is draggable by default again. 1.1.0 made "Lock the widget in
   place" default to on, which removed dragging altogether rather than merely
   guarding against accidental drags.
+- The grab band for resizing is a little wider than it looks like it needs to
+  be. The window is clipped to a rounded region, so the literal corner pixels do
+  not exist and a grab aimed at one arrives at nothing.
 - The version reported by the executable was `0.1.0` while the changelog claimed
   `1.0.0`. `pubspec.yaml` is now the single source of truth, and the release
   workflow fails if the tag disagrees with it.

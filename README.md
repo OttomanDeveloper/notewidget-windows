@@ -318,12 +318,30 @@ entry, and single-instance behaviour. `window_manager`-style plugins were not
 used, so the behaviours above are implemented directly against Win32 and can be
 tested by reading the code rather than by trusting a dependency.
 
-The position lock is one of them. Dragging the widget works by having
-`WM_NCHITTEST` answer `HTCAPTION` for the card's body, which hands the drag to
-Windows' own move loop — snap-to-edge and all — instead of reimplementing it.
-Locked, the same message answers `HTCLIENT`, so the pointer reaches Flutter, the
-cards stay tappable, and a drag moves nothing. The resize bands keep
-answering `HTLEFT`/`HTTOPLEFT`/and so on either way.
+The position lock is one of them, and so is dragging the widget at all.
+
+The obvious way to make a frameless window draggable is to answer `HTCAPTION`
+for its body and let Windows run the move loop. That cannot work here, for two
+independent reasons. The Flutter view covers the client area, so the system
+hit-tests the child and never asks the widget what it thinks. And even when it
+does ask, `DefWindowProc` only starts a move or size loop for a window with
+`WS_CAPTION` or `WS_THICKFRAME`, which a borderless `WS_POPUP` has neither of.
+Claiming `HTCAPTION` over the body would also be wrong on its own terms: the same
+pixels have to deliver taps, because the cards are selectable and a double-click
+opens the editor, and Windows delivers a message to exactly one target per pixel.
+
+So the widget is `HTCLIENT` throughout. Dart decides what a gesture is — and has
+to, since it is the only side that can tell a scroll from a drag, and the only
+side the position lock lives on — and then hands it to the runner, which tracks
+the cursor itself. That last part is not optional: Flutter reports pointer
+positions relative to the view, so a window that follows the cursor shrinks its
+own delta, and computing the drag in Dart lands the widget at a little over 40%
+of the distance asked for. The screen-space cursor only exists in the runner.
+
+The runner also has to be handed the gesture's *anchor*, not just told that a
+drag started. It is told only after the pointer has already travelled past the
+threshold, so anchoring on the cursor at that moment quietly discards everything
+moved in the first hop.
 
 ## Tests
 
@@ -331,11 +349,21 @@ answering `HTLEFT`/`HTTOPLEFT`/and so on either way.
 flutter test
 ```
 
-115 tests covering the parts where being wrong loses data: atomic writes and
+125 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and
 clamping, and the widget's card rendering.
+
+Two of them exist because of bugs that only a person using the app would have
+found. A widget that claims to be draggable but cannot be is not something a test
+asserts unless somebody asks what "draggable" means: the tests here check that a
+drag is handed to the runner with the right anchor, that a scroll wins over a
+drag while the list has more to read and the window wins once it does not, that
+the lock stops the hand-off, and that an edge grab is a resize. And the Settings
+test drives the real overflow menu, because the bug there was a `BuildContext`
+sitting above the `MaterialApp`'s Navigator — nothing about the code looked
+wrong, and the symptom was silence.
 
 ## Deliberately not built
 

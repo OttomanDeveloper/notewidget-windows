@@ -116,10 +116,11 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
   }
 
   void _openSettings() {
-    if (!mounted || _settingsOpen) return;
+    final navigator = _navigatorKey.currentContext;
+    if (!mounted || _settingsOpen || navigator == null) return;
     setState(() => _settingsOpen = true);
     showDialog<void>(
-      context: context,
+      context: navigator,
       builder: (context) => SettingsDialog(
         controller: _settings,
         shell: widget.shell,
@@ -131,6 +132,16 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
   }
 
   Future<void> _export() async {
+    // Captured before the first await, and never looked up again afterwards.
+    //
+    // Two reasons, both learned the hard way: there is no ScaffoldMessenger
+    // above the MaterialApp this State returns, so ScaffoldMessenger.of(context)
+    // throws and the "Exported N notes" confirmation is lost while the file
+    // still writes; and reaching for a context after an await is unsafe because
+    // the widget behind it may be gone.
+    final below = _navigatorKey.currentContext;
+    final messenger = below == null ? null : ScaffoldMessenger.of(below);
+
     final stamp = DateTime.now().toIso8601String().substring(0, 19).replaceAll(':', '-');
     final path = await widget.shell.saveFile(
       suggestedName: 'winnotes-backup-$stamp.txt',
@@ -138,8 +149,8 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
     if (path == null) return;
     final text = _backup.export(_notes.notes);
     await File(path).writeAsString(text);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    if (!mounted || messenger == null) return;
+    messenger.showSnackBar(
       SnackBar(content: Text('Exported ${_notes.notes.length} notes.')),
     );
   }
@@ -168,9 +179,11 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
   }
 
   Future<bool> _confirmMerge(int count) async {
-    if (!mounted) return false;
+    final navigator = _navigatorKey.currentContext;
+    if (!mounted || navigator == null) return false;
     final result = await showDialog<bool>(
-      context: context,
+      // Below the Navigator, unlike this State's own context. See _navigatorKey.
+      context: navigator,
       builder: (context) => AlertDialog(
         title: Text('Add $count notes?'),
         content: const Text(
@@ -224,6 +237,16 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
     return widget.launch.isSystemDark ? Brightness.dark : _systemBrightness;
   }
 
+  /// Navigator handle for anything this State needs to push over the app.
+  ///
+  /// This State's own [context] sits *above* the MaterialApp it returns, so it
+  /// has no Navigator ancestor and `showDialog(context: context)` throws rather
+  /// than showing anything. That is why Settings appeared to do nothing: the
+  /// exception was raised inside the popup's onSelected, the popup still closed,
+  /// and no dialog ever appeared. Holding the key gives a context that is
+  /// genuinely below the Navigator.
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -232,6 +255,7 @@ class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
         final brightness = _resolveBrightness();
         return MaterialApp(
           title: 'WinNotes',
+          navigatorKey: _navigatorKey,
           debugShowCheckedModeBanner: false,
           themeMode: ThemeMode.light,
           theme: buildWinNotesTheme(

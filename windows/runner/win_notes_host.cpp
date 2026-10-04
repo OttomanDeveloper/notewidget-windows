@@ -558,9 +558,49 @@ void Host::HandleMethodCall(
     return;
   }
 
+  if (method == "widget.beginMove") {
+    if (shell_ != nullptr) {
+      shell_->PostBeginMove(GetDouble(args, "anchorX", 0.0),
+                            GetDouble(args, "anchorY", 0.0));
+    }
+    result->Success(flutter::EncodableValue());
+    return;
+  }
+
+  if (method == "widget.beginResize") {
+    if (shell_ != nullptr) {
+      shell_->PostBeginResize(static_cast<int>(GetInt(args, "edge", 0)),
+                              GetDouble(args, "anchorX", 0.0),
+                              GetDouble(args, "anchorY", 0.0));
+    }
+    result->Success(flutter::EncodableValue());
+    return;
+  }
+
   if (method == "widget.setGeometry") {
     if (shell_ != nullptr) shell_->PostSetBounds(RectFrom(args));
     result->Success(flutter::EncodableValue());
+    return;
+  }
+
+  if (method == "widget.getBounds") {
+    // Where the window actually is right now.
+    //
+    // Dart cannot work this out for itself on a first run: widget_state.json
+    // does not exist yet, so its idea of the geometry is empty and a drag has
+    // nothing to move relative to. The runner is the only thing that knows the
+    // real placement, including the default it chose itself.
+    if (shell_ == nullptr) {
+      result->Success(flutter::EncodableValue());
+      return;
+    }
+    const RECT r = shell_->bounds();
+    result->Success(flutter::EncodableValue(flutter::EncodableMap{
+        {flutter::EncodableValue("left"), flutter::EncodableValue(r.left)},
+        {flutter::EncodableValue("top"), flutter::EncodableValue(r.top)},
+        {flutter::EncodableValue("width"), flutter::EncodableValue(r.right - r.left)},
+        {flutter::EncodableValue("height"), flutter::EncodableValue(r.bottom - r.top)},
+    }));
     return;
   }
 

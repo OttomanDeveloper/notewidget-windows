@@ -35,6 +35,23 @@ constexpr UINT kWmShow = WM_APP + 2;
 constexpr UINT kWmHide = WM_APP + 3;
 constexpr UINT kWmSetBounds = WM_APP + 4;
 constexpr UINT kWmToggleVisible = WM_APP + 5;
+constexpr UINT kWmBeginMove = WM_APP + 6;
+constexpr UINT kWmBeginResize = WM_APP + 7;
+
+// Edges for kWmBeginResize. Plain integers rather than HT* values: HTLEFT and
+// friends collide with the hit-test codes, and this is a different vocabulary
+// for the same idea.
+enum EdgeCode {
+  kEdgeNone = 0,
+  kEdgeLeft = 1,
+  kEdgeRight = 2,
+  kEdgeTop = 3,
+  kEdgeBottom = 4,
+  kEdgeTopLeft = 5,
+  kEdgeTopRight = 6,
+  kEdgeBottomLeft = 7,
+  kEdgeBottomRight = 8,
+};
 // Must match gActivateInstanceMessage in win_notes_host.cpp, which posts it.
 constexpr UINT kWmActivateInstance = WM_APP + 40;
 
@@ -283,6 +300,65 @@ void Window::SetPositionLocked(bool locked) {
   position_locked_ = locked;
 }
 
+// --- Move and resize loops ---------------------------------------------------
+
+namespace {
+// The same floor SetBounds already enforces, restated here because the loop
+// clamps before it gets there: clamping late would let a drag reach zero and
+// bounce back, which reads as the widget fighting the pointer.
+constexpr int kMinWidgetW = kMinWidgetWidth;
+constexpr int kMinWidgetH = kMinWidgetHeight;
+
+// Not a screen limit, just a backstop so a single fast flick cannot leave a
+// widget wider than any display could ever show.
+constexpr int kMaxWidgetW = 4000;
+constexpr int kMaxWidgetH = 4000;
+}  // namespace
+
+void Window::PostBeginMove(double anchor_x, double anchor_y) {
+  pending_anchor_valid_ = true;
+  pending_anchor_x_ = anchor_x;
+  pending_anchor_y_ = anchor_y;
+  if (window_ != nullptr) PostMessageW(window_, kWmBeginMove, 0, 0);
+}
+
+void Window::PostBeginResize(int edge, double anchor_x, double anchor_y) {
+  pending_anchor_valid_ = true;
+  pending_anchor_x_ = anchor_x;
+  pending_anchor_y_ = anchor_y;
+  if (window_ != nullptr) PostMessageW(window_, kWmBeginResize, (WPARAM)edge, 0);
+}
+
+// Where the pointer actually was when the gesture started.
+//
+// Dart supplies the anchor because the runner cannot recover it: the drag is
+// only recognised once the pointer has already travelled past the threshold, so
+// anchoring on the cursor here would silently discard everything moved in that
+// first hop. That is about 10% of a short drag and more of a slow one. Dart's
+// anchor is view-relative and in logical pixels, so it is converted against the
+// window origin and this window's own DPI scale.
+void Window::SeedLoopAnchor() {
+  RECT r = bounds();
+  const double scale = ScaleForWindow(window_, 96) / 96.0;
+  loop_start_cursor_.x =
+      r.left + static_cast<LONG>(std::lround(pending_anchor_x_ * scale));
+  loop_start_cursor_.y =
+      r.top + static_cast<LONG>(std::lround(pending_anchor_y_ * scale));
+  loop_start_bounds_ = bounds();
+  pending_anchor_valid_ = false;
+}
+
+void Window::EndLoop() {
+  move_loop_ = false;
+  resize_loop_ = false;
+  loop_edge_ = 0;
+  if (window_ != nullptr) ReleaseCapture();
+  // A monitor may have appeared or vanished while the pointer was down.
+  ClampToReachableScreen();
+  RefreshRoundedRegion();
+  NotifyGeometry();
+}
+
 void Window::RefreshRoundedRegion() {
   if (window_ == nullptr) return;
   if (rounded_corners_ && IsWidgetRole(params_.role)) {
@@ -371,41 +447,32 @@ void Window::NotifyGeometry() {
 // --- Hit testing and dragging ------------------------------------------------
 
 LRESULT Window::HitTest(POINT screen_pt) const {
-  if (!IsWidgetRole(params_.role) || window_ == nullptr) {
-    return HTCLIENT;
-  }
-  RECT r{};
-  GetWindowRect(window_, &r);
-  const int x = screen_pt.x - r.left;
-  const int y = screen_pt.y - r.top;
-  const int w = r.right - r.left;
-  const int h = r.bottom - r.top;
-
-  // A grab band along the edges for resizing. Everything inside it stays
-  // clickable so notes remain selectable right up to the border.
-  const int band = ScaleForWindow(window_, 8);
-
-  const bool left = x < band;
-  const bool right = x >= w - band;
-  const bool top = y < band;
-  const bool bottom = y >= h - band;
-
-  if (top && left) return HTTOPLEFT;
-  if (top && right) return HTTOPRIGHT;
-  if (bottom && left) return HTBOTTOMLEFT;
-  if (bottom && right) return HTBOTTOMRIGHT;
-  if (left) return HTLEFT;
-  if (right) return HTRIGHT;
-  if (top) return HTTOP;
-  if (bottom) return HTBOTTOM;
-
-  // Drag the card by its body. HCAPTION lets Windows drive the drag loop,
-  // including the snap-to-edge behaviour, without us reimplementing it.
+  // Everything on the widget is HTCLIENT, including the whole body, and this is
+  // load-bearing rather than a simplification.
   //
-  // Locked, the body reports HTCLIENT instead so the pointer reaches Flutter and
-  // a drag simply moves nothing. Resizing stays available either way.
-  if (position_locked_) return HTCLIENT;
-  return HTCAPTION;
+  // The obvious way to make a frameless window draggable is to answer
+  // HTCAPTION for its body and let Windows run the move loop. That cannot work
+  // here, for two independent reasons:
+  //
+  //   * The Flutter view covers the client area, so the system hit-tests the
+  //     child and never consults this. Reporting HTCAPTION was dead code: the
+  //     widget could not be dragged, and asking this handler directly returned a
+  //     value that never influenced a real click.
+  //   * Even when it does reach the window, DefWindowProc only starts the move
+  //     or size loop for a window with WS_CAPTION or WS_THICKFRAME. This is a
+  //     borderless WS_POPUP with neither, so the loop never began.
+  //
+  // And reporting HTCAPTION over the body would be actively wrong anyway,
+  // because the same pixels have to deliver taps: the widget's cards are
+  // selectable and a double-click opens the editor. Windows hit-tests exactly
+  // one target per pixel, so caption-or-taps is a choice and taps are the one
+  // worth making.
+  //
+  // Dragging and resizing are therefore decided in Dart, from the pointer the
+  // widget already receives, and applied through widget.setGeometry. That also
+  // puts both gestures next to the position lock that already governs them.
+  (void)screen_pt;
+  return HTCLIENT;
 }
 
 // --- Window procedure --------------------------------------------------------
@@ -456,31 +523,102 @@ LRESULT Window::HandleMessage(HWND window, UINT message, WPARAM wparam,
     }
 
     case WM_NCLBUTTONDOWN: {
-      if (!widget) break;
-      const int hit = LOWORD(lparam);
-      const bool resizing = hit == HTLEFT || hit == HTRIGHT || hit == HTTOP ||
-                            hit == HTBOTTOM || hit == HTTOPLEFT ||
-                            hit == HTTOPRIGHT || hit == HTBOTTOMLEFT ||
-                            hit == HTBOTTOMRIGHT;
-      const bool dragging = hit == HTCAPTION;
-      if (!resizing && !dragging) break;
+      // Nothing to do. The widget is HTCLIENT everywhere, so a body drag never
+      // arrives here as a non-client message; only the system frame, which a
+      // borderless popup does not have, would. Left in place so an unexpected
+      // hit falls through to the default handler rather than being swallowed.
+      break;
+    }
 
-      // Let Windows drive the loop. It handles capture, cursor changes,
-      // double-click maximise and the edge-snap behaviour that a hand-rolled
-      // move loop always gets subtly wrong.
-      resizing_ = resizing;
-      dragging_ = dragging;
-      drag_start_screen_ = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-      drag_start_bounds_ = bounds();
-      LRESULT result = DefWindowProcW(window, message, wparam, lparam);
-      resizing_ = false;
-      dragging_ = false;
+    case kWmBeginMove: {
+      if (!widget || window_ == nullptr || position_locked_) break;
+      if (pending_anchor_valid_) {
+        SeedLoopAnchor();
+      } else {
+        GetCursorPos(&loop_start_cursor_);
+        loop_start_bounds_ = bounds();
+      }
+      move_loop_ = true;
+      resize_loop_ = false;
+      loop_edge_ = 0;
+      SetCapture(window_);
+      return 0;
+    }
 
-      // A monitor may have appeared or vanished while the mouse was down.
-      ClampToReachableScreen();
-      RefreshRoundedRegion();
-      NotifyGeometry();
-      return result;
+    case kWmBeginResize: {
+      if (!widget || window_ == nullptr) break;
+      if (pending_anchor_valid_) {
+        SeedLoopAnchor();
+      } else {
+        GetCursorPos(&loop_start_cursor_);
+        loop_start_bounds_ = bounds();
+      }
+      move_loop_ = false;
+      resize_loop_ = true;
+      loop_edge_ = static_cast<int>(wparam);
+      SetCapture(window_);
+      return 0;
+    }
+
+    case WM_MOUSEMOVE: {
+      if (!move_loop_ && !resize_loop_) break;
+      // No "is the button still down" check here. The window holds the capture,
+      // so WM_LBUTTONUP is addressed to this proc and cannot be stolen, and the
+      // obvious way to ask anyway - GetAsyncKeyState(VK_LBUTTON) - does not
+      // report injected mouse buttons, so it ends every synthetic drag on the
+      // first move. That is a harness case, but the lesson generalises: a guard
+      // that can end a real drag by mistake is worse than the leak it prevents.
+      POINT now{};
+      GetCursorPos(&now);
+      const int dx = now.x - loop_start_cursor_.x;
+      const int dy = now.y - loop_start_cursor_.y;
+      RECT b = loop_start_bounds_;
+
+      if (move_loop_) {
+        b.left += dx;
+        b.top += dy;
+        b.right += dx;
+        b.bottom += dy;
+      } else {
+        const bool left = loop_edge_ == kEdgeLeft || loop_edge_ == kEdgeTopLeft ||
+                          loop_edge_ == kEdgeBottomLeft;
+        const bool right = loop_edge_ == kEdgeRight || loop_edge_ == kEdgeTopRight ||
+                           loop_edge_ == kEdgeBottomRight;
+        const bool top = loop_edge_ == kEdgeTop || loop_edge_ == kEdgeTopLeft ||
+                         loop_edge_ == kEdgeTopRight;
+        const bool bottom = loop_edge_ == kEdgeBottom ||
+                            loop_edge_ == kEdgeBottomLeft ||
+                            loop_edge_ == kEdgeBottomRight;
+        if (left) b.left += dx;
+        if (right) b.right += dx;
+        if (top) b.top += dy;
+        if (bottom) b.bottom += dy;
+
+        // Clamped, so a fast flick cannot drag the widget off the screen or
+        // collapse it to a sliver nobody can find again.
+        int w = b.right - b.left;
+        int h = b.bottom - b.top;
+        w = std::clamp(w, kMinWidgetW, kMaxWidgetW);
+        h = std::clamp(h, kMinWidgetH, kMaxWidgetH);
+        // Re-derive the origin so a drag past a limit pushes the far edge out
+        // rather than sliding the near one through it.
+        if (left) b.left = b.right - w;
+        if (top) b.top = b.bottom - h;
+        if (right) b.right = b.left + w;
+        if (bottom) b.bottom = b.top + h;
+      }
+
+      SetWindowPos(window_, nullptr, b.left, b.top, b.right - b.left,
+                   b.bottom - b.top, SWP_NOZORDER | SWP_NOACTIVATE);
+      return 0;
+    }
+
+    case WM_LBUTTONUP:
+    case WM_CAPTURECHANGED:
+    case WM_CANCELMODE: {
+      if (!move_loop_ && !resize_loop_) break;
+      EndLoop();
+      return 0;
     }
 
     case WM_ERASEBKGND:

@@ -90,6 +90,18 @@ class Window {
   void SetPositionLocked(bool locked);
   bool position_locked() const { return position_locked_; }
 
+  // Starts a native move or resize loop against the current cursor.
+  //
+  // Flutter hands Dart only view-relative pointer positions, and a window that
+  // follows the cursor shrinks its own reported delta: the widget lands at
+  // roughly 40% of the drag that was asked for, however carefully it is
+  // computed in Dart. The screen-space position only exists here, so the loop
+  // that actually moves the window has to live here too. Dart decides *which*
+  // gesture it is and says so; this tracks the cursor.
+  void PostBeginMove(double anchor_x, double anchor_y);
+  void PostBeginResize(int edge, double anchor_x, double anchor_y);
+  void SeedLoopAnchor();
+
   RECT bounds() const;
   void SetBounds(const RECT& bounds);
   void SetTitle(const std::wstring& title);
@@ -136,6 +148,19 @@ class Window {
   RECT drag_start_bounds_{};
   int resize_edge_ = 0;  // Which edge/corner is being dragged; 0 when idle.
   bool resizing_ = false;
+
+  // Live move or resize loop, started from Dart and driven from here.
+  bool move_loop_ = false;
+  bool resize_loop_ = false;
+  int loop_edge_ = 0;
+  POINT loop_start_cursor_{};
+  RECT loop_start_bounds_{};
+  void EndLoop();
+
+  // Gesture anchor handed over from Dart, view-relative and in logical pixels.
+  bool pending_anchor_valid_ = false;
+  double pending_anchor_x_ = 0.0;
+  double pending_anchor_y_ = 0.0;
 
   std::unique_ptr<flutter::FlutterViewController> controller_;
 };

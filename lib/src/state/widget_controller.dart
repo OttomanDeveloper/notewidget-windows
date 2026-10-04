@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 
@@ -96,6 +97,20 @@ class WidgetController extends ChangeNotifier {
     _state = await _widgetRepo.load();
     _selectedId = _selectionRepo.readSelection();
     await _reloadNotes();
+
+    // Ask the runner where the window really is. A first run has no saved
+    // geometry, and without this the widget's idea of its own position stays
+    // empty - so the first drag of a new install would have nothing to move
+    // relative to and would silently do nothing.
+    final live = await _shell.widgetBounds();
+    if (live != null) {
+      _state = _state.copyWith(
+        left: live.left,
+        top: live.top,
+        width: live.width,
+        height: live.height,
+      );
+    }
 
     // An empty widget is never shown, since there would be nothing to look at.
     _widgetVisible = hasAnyNoteWithText;
@@ -216,6 +231,22 @@ class WidgetController extends ChangeNotifier {
     _widgetVisible = visible;
     notifyListeners();
   }
+
+  /// Starts the runner-side move loop, which tracks the cursor in screen space
+  /// until the button comes up.
+  ///
+  /// The drag cannot be computed on this side of the channel. Flutter reports
+  /// pointer positions relative to the view, so as soon as the window follows
+  /// the cursor the reported delta shrinks; adding it to the start position
+  /// lands the widget at a little over 40% of the distance asked for, and the
+  /// error is not a mistake that can be corrected, it is missing information.
+  Future<void> beginMove(Offset anchor) => _shell.beginWidgetMove(anchor);
+
+  /// Starts the runner-side resize loop for [edge]. Same reasoning as
+  /// [beginMove], and the runner also clamps the result to a size the widget
+  /// can still be found and read at.
+  Future<void> beginResize(ResizeEdge edge, Offset anchor) =>
+      _shell.beginWidgetResize(edge, anchor);
 
   Future<void> flush() => _widgetRepo.flush();
 

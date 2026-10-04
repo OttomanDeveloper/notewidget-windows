@@ -403,4 +403,195 @@ void main() {
     expect(find.textContaining('Locked in place'), findsNothing,
         reason: 'dragging works by default, so there is nothing to explain');
   });
+
+  /// Records the drag hand-offs the surface makes, and nothing else.
+  ///
+  /// The hand-off is the whole contract with the runner: Dart decides what the
+  /// gesture is, the runner tracks the cursor in screen space. So "did a
+  /// hand-off happen, and with what anchor" is exactly the observable that
+  /// matters, and it is observable without a live window.
+  List<MethodCall> recordHandOffs() {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('dev.winnotes/shell'),
+      (call) async {
+        if (call.method == 'widget.beginMove' || call.method == 'widget.beginResize') {
+          calls.add(call);
+        }
+        return null;
+      },
+    );
+    return calls;
+  }
+
+  Future<void> dragBody(WidgetTester tester, {double dy = 12}) async {
+    final gesture = await tester.startGesture(const Offset(180, 120));
+    // Four steps past the 8px threshold, the way a real drag arrives.
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(Offset(0, dy));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+  }
+
+  testWidgets('a drag is handed to the runner with its anchor', (tester) async {
+    // The bug this guards: the widget reported HTCAPTION for its body and
+    // waited for Windows to run a move loop. There was no loop - the window is a
+    // borderless WS_POPUP with neither WS_CAPTION nor WS_THICKFRAME - and the
+    // Flutter view covered the client area, so the hit test was never consulted
+    // either. The widget could not be moved or resized at all.
+    final calls = recordHandOffs();
+    final controller = await tester.runAsync(
+      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+    );
+    addRelease(tester, controller!);
+
+    // One note, so the list has nothing to scroll and the drag is unambiguous.
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    await dragBody(tester);
+
+    final moves = calls.where((c) => c.method == 'widget.beginMove').toList();
+    expect(moves, hasLength(1),
+        reason: 'an unlocked widget with nothing to scroll must hand the drag '
+            'to the runner exactly once');
+    // The anchor travels with it: the runner is told about a drag only after the
+    // pointer has already travelled, so anchoring on the cursor at that moment
+    // would throw away the whole first hop.
+    final anchor = moves.single.arguments as Map;
+    expect(anchor['anchorX'], 180.0);
+    expect(anchor['anchorY'], 120.0);
+  });
+
+  testWidgets('a scroll wins over a drag while there is more list to read',
+      (tester) async {
+    // Drags and scrolls are the same gesture shape. Deciding by the scroll
+    // extent rather than by whichever notification arrives first is what makes
+    // this reliable; getting the direction backwards hands every upward drag to
+    // the window, which is the direction people most often use to scroll.
+    final calls = recordHandOffs();
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        for (var i = 0; i < 30; i++)
+          note('n$i', 'Note $i', 'body $i', minute: -i),
+      ]),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+
+    final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+    expect(scrollable.position.maxScrollExtent, greaterThan(0),
+        reason: 'the test is meaningless unless the list really does overflow');
+
+    // At the top of the list, dragging up has to scroll.
+    await dragBody(tester, dy: -12);
+    expect(calls.where((c) => c.method == 'widget.beginMove'), isEmpty,
+        reason: 'stealing the scroll would make a long list unreadable');
+
+    // Once there is nothing left below, the same gesture brings the window.
+    // Jumping the scroll position arms the debounced writer, so the flush has to
+    // happen under the real clock: a widget test's fake clock never advances the
+    // real event loop, and the pending timer fails the test on the way out.
+    await tester.runAsync(() async {
+      scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+      // Past both the 250ms trailing debounce and the 1500ms write ceiling.
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+    });
+    await tester.pump();
+
+    await dragBody(tester, dy: -12);
+    expect(calls.where((c) => c.method == 'widget.beginMove'), hasLength(1),
+        reason: 'at the end of the list, the widget should come with the drag');
+  });
+
+  testWidgets('at the top of the list, dragging down moves the widget',
+      (tester) async {
+    // The other half of the same rule: dragging down at the top has nothing to
+    // scroll, so it belongs to the window rather than being swallowed.
+    final calls = recordHandOffs();
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        for (var i = 0; i < 30; i++)
+          note('n$i', 'Note $i', 'body $i', minute: -i),
+      ]),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    await dragBody(tester, dy: 12);
+
+    expect(calls.where((c) => c.method == 'widget.beginMove'), hasLength(1));
+  });
+
+  testWidgets('a locked widget is not handed to the runner', (tester) async {
+    final calls = recordHandOffs();
+    final controller = await tester.runAsync(
+      () => makeController(
+        tester,
+        [note('a', 'Groceries', 'milk')],
+        tweakSettings: (s) =>
+            s.update((v) => v.copyWith(widgetPositionLocked: true)),
+      ),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+    await dragBody(tester);
+
+    expect(calls, isEmpty,
+        reason: 'a locked widget must not start a drag the runner would act on');
+  });
+
+  testWidgets('grabbing an edge hands a resize to the runner, with the edge',
+      (tester) async {
+    final calls = recordHandOffs();
+    final controller = await tester.runAsync(
+      () => makeController(tester, [
+        for (var i = 0; i < 30; i++)
+          note('n$i', 'Note $i', 'body $i', minute: -i),
+      ]),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+
+    // Bottom edge, well clear of the corners. The band has to be wider than the
+    // window's rounded corner, because the native region clips those pixels away
+    // and a grab aimed at the literal corner arrives at nothing.
+    final gesture = await tester.startGesture(const Offset(180, 415));
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(0, 12));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    final resizes = calls.where((c) => c.method == 'widget.beginResize').toList();
+    expect(resizes, hasLength(1), reason: 'an edge grab is a resize');
+    expect((resizes.single.arguments as Map)['edge'], 4,
+        reason: "4 is the runner's code for the bottom edge");
+    expect(calls.where((c) => c.method == 'widget.beginMove'), isEmpty);
+  });
+
+  testWidgets('a press that does not move is not a drag', (tester) async {
+    // Cards have to stay tappable, so a press and a release with no travel must
+    // never turn into a drag.
+    final calls = recordHandOffs();
+    final controller = await tester.runAsync(
+      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+    );
+    addRelease(tester, controller!);
+
+    await pumpSurface(tester, controller, width: 360, height: 420);
+
+    final gesture = await tester.startGesture(const Offset(180, 120));
+    await gesture.moveBy(const Offset(2, 3));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(calls, isEmpty, reason: 'below the threshold this is just a tap');
+  });
 }
