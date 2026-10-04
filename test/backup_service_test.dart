@@ -57,6 +57,27 @@ void main() {
       expect(text, contains('Milk'));
       expect(text, contains('Notes: 1'));
     });
+
+    test('a whitespace-only body comes back empty, not as blank lines', () {
+      // Deliberate, and previously only asserted in prose. A body of nothing but
+      // spaces or newlines is not text, and the importer cannot tell it from the
+      // blank line the exporter writes after the title - so it trims to empty
+      // rather than inventing content. Pinned so the normalisation is a decision
+      // someone can rely on, not a surprise found in a backup years later.
+      for (final body in ['', ' ', '   ', '\n', '  \n  ']) {
+        final restored =
+            backup.import(backup.export([note('a', 'T', body)])).single;
+        expect(restored.body, '',
+            reason: 'body ${body.replaceAll('\n', r'\n')} should normalise '
+                'to empty');
+      }
+      // And a body with real text in it keeps its own whitespace, so this is a
+      // whitespace rule and not a "short bodies are dropped" rule.
+      expect(
+        backup.import(backup.export([note('a', 'T', '  a  ')])).single.body,
+        '  a  ',
+      );
+    });
   });
 
   group('bodies containing a divider', () {

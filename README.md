@@ -330,12 +330,14 @@ lib/
 windows/runner/              native host: windows, tray, hotkey, autostart
 installer/winnotes.iss       setup.exe definition
 assets/brand/                logo sources and derived assets
+docs/                        pattern docs: storage, widget, testing
 docs/images/                 README screenshots
+AGENTS.md                    working agreement: rules, docs index, known bugs
 tool/brand/                  logo generator
 tool/release/                packaging: builds, verifies, zips, compiles setup.exe
 tool/screenshots/            screenshot capture, hero composition, input probe
 .github/workflows/           CI on every push, release on a version tag
-test/                        163 tests
+test/                        164 tests
 ```
 
 ### How the two windows work
@@ -403,7 +405,7 @@ it could not be typed into.
 flutter test
 ```
 
-163 tests covering the parts where being wrong loses data: atomic writes and
+164 tests covering the parts where being wrong loses data: atomic writes and
 concurrent readers, the refusal to overwrite unreadable notes, retrying a write
 the filesystem would not accept, undo ordering, search, the plain-text backup
 format including bodies that contain a divider, settings validation and
@@ -459,6 +461,15 @@ instead of in public.
 Patches are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the build
 setup, the two design rules most mistakes break (one writer per file, and the
 surfaces never talking directly), and how releases are cut.
+
+Before changing anything, read **[AGENTS.md](AGENTS.md)**. It is a page long, and
+it points at the three docs worth your time:
+[storage](docs/storage_pattern.md) (one writer per file, atomic replace, recovery
+that never destroys), [widget](docs/widget_pattern.md) (why the widget hit-tests
+as `HTCLIENT` everywhere, and how it borrows the keyboard), and
+[testing](docs/testing_pattern.md) (what the suite is allowed to claim, and the
+traps that have already cost time). Each ends with a table naming the tests that
+pin its rules.
 
 ## Licence
 

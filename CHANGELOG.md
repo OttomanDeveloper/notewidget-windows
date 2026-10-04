@@ -45,6 +45,40 @@
   a click near its edge would otherwise resize the window instead of placing the
   caret.
 
+### Documentation
+
+- **`AGENTS.md` and three pattern docs.** `docs/storage_pattern.md`,
+  `docs/widget_pattern.md` and `docs/testing_pattern.md`, each documenting one
+  seam and ending with a table naming the tests that pin its rules.
+
+  Written because the hard-won parts of this project lived in code comments,
+  which you only read if you are already in the file that has the bug. Two
+  shipped bugs are now explained rather than merely fixed: the widget could not
+  be dragged for its entire life because `HTCAPTION` over the body is dead code
+  (the Flutter view covers the client area, so it is never consulted; and
+  `DefWindowProc` will not start the move loop without `WS_CAPTION` or
+  `WS_THICKFRAME`), and the reads had no retry ladder because `dart:io` cannot
+  hold an exclusive lock, so no Dart-only test could have reproduced a scanner.
+
+  Deliberately **not** thirteen documents. There is no backend, sync,
+  permissions, localisation, region handling or database here, so those
+  concerns would have had no subject matter.
+
+- **`AGENTS.md` records four known divergences and one known bug.** The most
+  important is the first: the plain-text export is written with
+  `File.writeAsString` from the UI layer, so it is **not atomic** — an
+  interrupted export leaves a truncated file, and that file is what someone
+  reaches for when everything else has failed. Documented rather than fixed,
+  because fixing it is a behaviour question and this is a documentation change.
+  The first-launch widget bug is recorded as **unrooted** rather than quietly
+  left as folklore.
+
+- **A whitespace-only note body is now pinned as normalising to empty** through
+  the plain-text backup round trip, while a body with text keeps its own
+  whitespace. It was true before and asserted nowhere.
+
+164 tests, `flutter analyze` clean.
+
 ### Fixed
 
 - **Antivirus can no longer stop the app from starting.** This was the worst bug
