@@ -40,14 +40,20 @@ class WidgetNoteCard extends StatelessWidget {
 
   /// How much vertical room a rendered Markdown body gets on the card.
   ///
-  /// Sized from the widget density line box rather than written as a magic
-  /// number, so changing the density in `markdown_text.dart` moves this with it
-  /// instead of leaving the card clipping at a height that no longer means
-  /// anything. Two lines on a compact card and seven on a large one - the same
-  /// budget the plain-text preview has always had.
-  static const double _bodyLine = 13 * 1.35;
-  static const double _compactBodyHeight = _bodyLine * 2;
-  static const double _largeBodyHeight = _bodyLine * 7;
+  /// Two lines on a compact card and seven on a large one — the same budget the
+  /// plain-text preview has always had. Both come from
+  /// [MarkdownText.budgetForLines] so the fade band is added once, in one place,
+  /// rather than each surface re-deciding how much of its last line to sacrifice.
+  static final double _compactBodyHeight = MarkdownText.budgetForLines(
+    fontSize: 13,
+    lineHeight: 1.35,
+    lines: 2,
+  );
+  static final double _largeBodyHeight = MarkdownText.budgetForLines(
+    fontSize: 13,
+    lineHeight: 1.35,
+    lines: 7,
+  );
   final bool dark;
 
   /// Whether the widget is big enough for the focused card to get the large

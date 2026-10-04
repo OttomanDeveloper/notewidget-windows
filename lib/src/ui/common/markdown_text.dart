@@ -146,6 +146,28 @@ class _Metrics {
         maxCodeLines: maxCodeLines,
         markerWidth: markerWidth,
       );
+
+  /// The same shape at a different body size.
+  ///
+  /// Ratios are kept and pixel values are scaled, so the result is the same
+  /// design at a different size rather than the same gaps crammed into a smaller
+  /// box. `maxCodeLines` is a line *count* and deliberately does not scale.
+  _Metrics scaledTo(double size) {
+    if (size == body) return this;
+    final k = size / body;
+    return _Metrics(
+      body: size,
+      lineHeight: lineHeight,
+      paragraphGap: paragraphGap * k,
+      blockGap: blockGap * k,
+      headingScale: headingScale,
+      minHeadingScale: minHeadingScale,
+      quoteIndent: quoteIndent * k,
+      codePadding: codePadding * k,
+      maxCodeLines: maxCodeLines,
+      markerWidth: markerWidth * k,
+    );
+  }
 }
 
 /// Parsed Markdown, memoised by source text.
@@ -201,6 +223,29 @@ class _ParseCache {
 /// widget card must not have: a card you can drag should not also start
 /// selecting text when someone drags across it.
 class MarkdownText extends StatelessWidget {
+  /// How much of a line the clamp's fade covers, in lines.
+  ///
+  /// Shared between [budgetForLines] and the shader, so the two cannot drift: if
+  /// the budget did not include the band the shader fades, the last readable
+  /// line would be eaten by the fade instead of being shown.
+  static const double _fadeLines = 0.55;
+
+  /// The box height that shows [lines] whole lines and fades in the next.
+  ///
+  /// The fade band is *added* to the requested lines rather than taken out of
+  /// them. Two lines means two lines you can read, plus a hint of what is below
+  /// — which is what the plain-text preview has always done with its ellipsis,
+  /// and what a reader expects "two lines" to mean. Sizing the box at exactly
+  /// two lines and fading its bottom 55% instead leaves the second line
+  /// unreadable, which looks like the renderer lost a line rather than like a
+  /// clamp.
+  static double budgetForLines({
+    required double fontSize,
+    required double lineHeight,
+    required int lines,
+  }) =>
+      fontSize * lineHeight * (lines + _fadeLines);
+
   const MarkdownText({
     super.key,
     required this.source,
@@ -212,6 +257,7 @@ class MarkdownText extends StatelessWidget {
     this.maxLines,
     this.maxHeight,
     this.headingScale,
+    this.fontSize,
   });
 
   final String source;
@@ -244,6 +290,17 @@ class MarkdownText extends StatelessWidget {
   /// line it costs is a line of content.
   final double? headingScale;
 
+  /// Overrides the density's body size, scaling every derived measurement with
+  /// it.
+  ///
+  /// For a surface with its own type scale. The editor's list rows are 12px
+  /// `bodySmall`, not the widget's 13px, and a renderer that hard-coded its size
+  /// would either fight the theme or silently ignore a change to it. Unitless
+  /// ratios — line height, heading scale — are kept; the pixel values are
+  /// multiplied, so a smaller surface gets proportionally tighter spacing rather
+  /// than the same gaps in a smaller box.
+  final double? fontSize;
+
   /// Renders a single line of inline formatting only, ignoring block structure.
   ///
   /// For titles. A title is one line by definition, so a `# ` in one is a
@@ -256,7 +313,6 @@ class MarkdownText extends StatelessWidget {
     required Color accent,
     required TextStyle style,
     int? maxLines,
-    int maxLinesForOverflow = 1,
   }) {
     final nodes = _ParseCache.of(source);
     final builder = _Builder(
@@ -267,9 +323,14 @@ class MarkdownText extends StatelessWidget {
         metrics: _Metrics.editor,
         density: MarkdownDensity.editor,
       ),
+      // The builder's own maxLines is what `_text` reads when no explicit line
+      // count is passed, so the caller's value is honoured here. It previously
+      // was not: `buildInlineLine` always passed a hard-coded 1, which meant a
+      // caller asking for two lines - the large widget card's title - silently
+      // got one.
       maxLines: maxLines,
     );
-    return builder.buildInlineLine(nodes, maxLinesForOverflow: maxLinesForOverflow);
+    return builder.buildInlineLine(nodes);
   }
 
   @override
@@ -277,9 +338,16 @@ class MarkdownText extends StatelessWidget {
     var metrics = _Metrics.of(density);
     if (headingScale != null) {
       // `_Metrics` is const-constructible precisely so a variant can be made
-      // without a subclass or a mutable field; copyWith exists for the same
-      // reason on every other knob here.
+      // without a subclass or a mutable field; the with* methods exist for the
+      // same reason on every other knob here.
       metrics = metrics.withHeadingScale(headingScale!);
+    }
+    if (fontSize != null && fontSize != metrics.body) {
+      // A surface can have its own type scale - the editor's list rows use the
+      // theme's `bodySmall`, not the widget's 13px - and a renderer that
+      // ignored that would either fight the theme or quietly ignore a change to
+      // it.
+      metrics = metrics.scaledTo(fontSize!);
     }
     final style = _Style(
       base: TextStyle(
@@ -316,17 +384,29 @@ class MarkdownText extends StatelessWidget {
       // sharp edge reads as a rendering fault rather than as "there is more".
       // Content shorter than the box ends above the fade and is unaffected,
       // because the child is top-aligned.
+      final fadeBand = metrics.body * metrics.lineHeight * _fadeLines;
       child = SizedBox(
         height: maxHeight,
         child: ClipRect(
           child: ShaderMask(
             blendMode: BlendMode.dstIn,
-            shaderCallback: (bounds) => const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00000000)],
-              stops: [0.0, 0.6, 1.0],
-            ).createShader(bounds),
+            shaderCallback: (bounds) {
+              final fadeFrom = bounds.height <= 0
+                  ? 1.0
+                  : ((bounds.height - fadeBand) / bounds.height)
+                      .clamp(0.0, 1.0)
+                      .toDouble();
+              return LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: const [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFFFFFFF),
+                  Color(0x00000000),
+                ],
+                stops: [0.0, fadeFrom, 1.0],
+              ).createShader(bounds);
+            },
             child: OverflowBox(
               alignment: Alignment.topLeft,
               minHeight: 0,
@@ -863,10 +943,7 @@ class _Builder {
   }
 
   /// A single line of inline formatting across [nodes], for titles.
-  Widget buildInlineLine(
-    List<md.Node> nodes, {
-    int maxLinesForOverflow = 1,
-  }) {
+  Widget buildInlineLine(List<md.Node> nodes) {
     final spans = <InlineSpan>[];
     for (final node in nodes) {
       spans.addAll(_inlineSpans(node, style));
@@ -874,10 +951,7 @@ class _Builder {
     if (spans.isEmpty) {
       return Text('', style: style.base, maxLines: maxLines);
     }
-    return _text(
-      TextSpan(style: style.base, children: spans),
-      lines: maxLinesForOverflow,
-    );
+    return _text(TextSpan(style: style.base, children: spans));
   }
 
   Widget _text(InlineSpan span, {int? lines}) {

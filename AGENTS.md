@@ -55,7 +55,7 @@ Verified against Flutter 3.47.5 stable, Dart SDK `^3.13.4`.
 | `PROJECT.md` | What the product is, and is not. The authority. |
 | `docs/storage_pattern.md` | One writer per file, atomic replace, debounce + ceiling, retry ladders, transient vs damaged, `.bak`, recovery that never destroys. |
 | `docs/widget_pattern.md` | `HTCLIENT` everywhere, Dart-decides/runner-performs, screen-space drags, scroll-vs-drag by extent, borrowing the keyboard, card sizing. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 332 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 341 tests, and the ten traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged. |
 
@@ -151,7 +151,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 332 passing
+flutter test             # 341 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md` that says **why**, not just

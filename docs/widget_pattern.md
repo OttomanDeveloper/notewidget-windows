@@ -260,18 +260,28 @@ the unrooted first-launch bug in `AGENTS.md` §4.
 every geometry change so a resize gesture cannot produce a window too small to
 read or to find.
 
-### 3.14 One renderer, two budgets
+### 3.14 One renderer, a budget per surface
 
-`lib/src/ui/common/markdown_text.dart` renders Markdown for **both** surfaces,
-and the only thing that differs between them is the density: a table of type
-sizes and spacing, `MarkdownDensity.widget` or `MarkdownDensity.editor`.
+`lib/src/ui/common/markdown_text.dart` renders Markdown for **every surface
+that shows note text**, and what differs between them is only a budget:
+
+| Surface | Density | Body | Budget | Headings |
+|---|---|---|---|---|
+| Widget card | `widget` | 13px | 2 lines compact, 7 large | flattened |
+| Editor list row preview | `widget` + `fontSize` | the row's `bodySmall` | 2 lines | flattened |
+| Editor preview pane | `editor` | 14.5px | unbounded | full scale |
+
+The list row is the reason a row is not a smaller widget card: it is 12px
+`bodySmall` in a 300px column, not 13px. `fontSize` therefore scales the whole
+metric set — ratios kept, pixel values multiplied — rather than overriding one
+number and inheriting the wrong gaps.
 
 This is the whole answer to the objection that ended "no Markdown" — *a Markdown
 editor would leave the widget still guessing how to render it*. It does not guess
 because it is not a different code path with a different implementation. It is
-the same walk of the same AST with a smaller budget, which means the widget and
-the preview cannot disagree about what a note says, and a change to what counts
-as supported lands on both at once.
+the same walk of the same AST with a smaller budget, which means no two surfaces
+can disagree about what a note says, and a change to what counts as supported
+lands on all of them at once.
 
 At widget density the renderer compresses rather than omits: code blocks clamp to
 three lines and say how many were hidden, and a table becomes one line per row
@@ -292,6 +302,18 @@ it has seven lines and is the surface you actually read a note on.
 Density is about the room available, not a belief that headings are unimportant.
 Both halves are pinned, because "headings are big everywhere" and "headings are
 flat everywhere" are equally wrong.
+
+**A row gets blocks, not just spans.** Rendering the row's preview inline-only
+would concatenate a task list's items with no marker at all — `Buy milkPost the
+thing` — which is *less* than the note said, the same failure the table flatten
+had (§3.15). Two lines at 12px is enough for two items of a list, so the row
+renders structure and clamps it.
+
+**"Two lines" means two lines you can read.** `MarkdownText.budgetForLines` adds
+the fade band to the requested lines rather than taking it out of them. Sizing the
+box at exactly two lines and fading its bottom 55% instead leaves the second line
+inside the fade and unreadable, which looks like the renderer lost a line rather
+than like a clamp. Verified on a release build at 4× zoom.
 
 The parse is memoised on the source string, 48 entries deep. The widget list
 re-renders on every scroll tick and the preview on every keystroke, so parsing
@@ -500,12 +522,13 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.11 | Card sizing and previews | `widget_surface_test` → *is larger than a compact card*, *renders every card compact*, *shows a preview even with no body*, *collapses line breaks so previews stay one paragraph*, *falls back to a placeholder when untitled* |
 | 3.12 | Hides when nothing has text | `widget_integration_test` → *no note with text means the widget is not shown*, *one note with text is enough to show it* |
 | 3.13 | Sizes clamped in the runner | **manual** - a 900 px haul against the 200×140 floor |
-| 3.14 | One renderer, two budgets | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane offers a switch instead of two cramped columns* |
+| 3.14 | One renderer, a budget per surface | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane offers a switch instead of two cramped columns*, *the budget scales with the surface type size* |
 | 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing* |
 | 3.16 | Clamped by height | `markdown_test` → *a compact card still clamps to its line budget* |
 | 3.17 | The widget yields to the editor | **guard** `widget_guard_test` → *nothing puts the widget above the editor*, *the scanner finds the code it is looking for in the first place*, *the guard bites: an editor with WS_EX_TOPMOST is rejected*, *the guard bites: demoting without raising the editor is rejected*, *the guard bites: an un-guarded SetAlwaysOnTop is rejected*, *the guard bites: no WM_ACTIVATE is rejected*, *the guard bites: a host with no activation handler is rejected*; **manual** - click the editor, then another app, on a release build: the widget's `WS_EX_TOPMOST` clears and returns |
 | 3.18 | The editor has a minimum size | **guard** `widget_guard_test` → *the floor is enforced*, *the floor is a named constant, scaled for DPI*, *the guard bites: no WM_GETMINMAXINFO at all is rejected*, *the guard bites: ptMinSize instead of ptMinTrackSize is rejected*, *the guard bites: an unscaled floor is rejected*, *the guard bites: claiming ptMaxPosition is rejected*; **manual** - drag the editor's corner and each edge past zero on a release build: stops at exactly 520×360, and maximise is untouched |
 | - | Markdown on a card | `markdown_test` → *a plain note is untouched by any of this*, *a markdown note renders rather than showing its source*, *a markdown title honours inline formatting*, *a finished markdown card is struck through* |
+| - | Markdown in a list row | `markdown_test` → *a plain row still shows its source*, *a markdown row renders its preview rather than its source*, *a markdown row keeps list structure in its preview*, *a markdown row renders its title inline*, *a markdown row stays inside the row height*, *a markdown row is no taller than a plain one*, *a title honours the line count it is given* |
 | — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |

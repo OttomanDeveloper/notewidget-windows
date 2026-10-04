@@ -37,10 +37,10 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**332 tests: 217 about behaviour, 50 about the rules themselves, 65 about
+**341 tests: 226 about behaviour, 50 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
-The 42 in `markdown_test` are the densest in the suite, because the renderer has
+The 51 in `markdown_test` are the densest in the suite, because the renderer has
 more ways to be quietly wrong than the rest of the app put together: an
 unrecognised node that drops a paragraph, a leaf span that loses its inherited
 style, a table whose rows are one level down, a clamp that does not clamp. Four

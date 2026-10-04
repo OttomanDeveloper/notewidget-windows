@@ -61,6 +61,34 @@
   cannot reach the editor through a back door.
 
 ### Added
+- **The notes list renders Markdown too.** Each row's title gets its inline
+  formatting and its preview is rendered rather than shown as source, so a row
+  reads the way the note looks instead of the way it was typed. A plain note is
+  untouched - the asterisks stay exactly where they were typed, because that note
+  never asked for otherwise.
+
+  A row is two lines in a 300px column, so it keeps the structure that fits and
+  drops the rest with the edge faded. It gets **blocks, not just spans**:
+  rendering the preview inline-only would have concatenated a task list's items
+  with no marker at all - "Buy milkPost the thing" - which is *less* than the note
+  said. That is the same failure the table flatten had, and it is now pinned by a
+  test.
+
+  The row has its own type scale rather than the widget's: a row is 12px
+  `bodySmall`, not 13px, so `MarkdownText` grew a `fontSize` override that scales
+  the whole metric set - ratios kept, pixel values multiplied - rather than
+  overriding one number and inheriting the wrong gaps. That is what keeps a
+  Markdown row exactly as tall as a plain one, so the list rhythm does not change
+  depending on whether a note happens to use Markdown.
+
+  Two fixes the rows turned up. `MarkdownText.inline` ignored the `maxLines` it
+  was given and always clipped at one, so the large widget card's two-line title
+  silently got one. And the clamp's fade covered a fixed 40% of the box, which at
+  a two-line budget swallowed most of the second line - a surface that showed one
+  line and a half was not showing the two it had been given. The fade band is now
+  added to the requested lines rather than taken out of them, which is what "two
+  lines" has to mean if a reader is to believe it.
+
 
 - **Markdown, per note.** A small switch beside the title turns it on for the
   note you are editing, and the body becomes a source field on the left with a
@@ -85,8 +113,8 @@
   gives your asterisks and hashes back exactly as they were. A note is still a
   title and a body in `notes.json`, not a document tree.
 
-  **One renderer, two budgets.** `PROJECT.md` resolved "plain text only, or
-  Markdown with a preview" in favour of plain text, on the reasoning that "a
+  **One renderer, a budget per surface.** `PROJECT.md` resolved "plain text only,
+  or Markdown with a preview" in favour of plain text, on the reasoning that "a
   Markdown editor would leave the widget still guessing how to render it". That
   was right about the problem and wrong about the size of the answer: the widget
   does not guess if it is given a renderer with a stated budget. At card density

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../data/note.dart';
 import '../../state/notes_controller.dart';
 import '../common/completion_toggle.dart';
+import '../common/markdown_text.dart';
 
 /// The list of notes, with search on top.
 ///
@@ -280,38 +281,101 @@ class _NoteListItem extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      note.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: markCompleted(
-                        theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                          color: done
-                              ? scheme.onSurfaceVariant.withValues(alpha: 0.75)
-                              : scheme.onSurface,
-                        ),
-                        completed: done,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    // Skipped entirely when there is no body, rather than
-                    // rendered as an empty line. See _preview.
-                    if (note.body.trim().isNotEmpty)
+                    // A Markdown note's title gets its inline formatting, the
+                    // same as on a widget card: a title is one line by
+                    // definition, so `#` in one is a mistake rather than a
+                    // heading, but `**` and backticks are someone being
+                    // emphatic.
+                    if (note.markdown)
+                      MarkdownText.inline(
+                        note.title,
+                        color: done
+                            ? scheme.onSurfaceVariant.withValues(alpha: 0.75)
+                            : scheme.onSurface,
+                        accent: scheme.primary,
+                        style: markCompleted(
+                          theme.textTheme.titleSmall?.copyWith(
+                            fontWeight:
+                                selected ? FontWeight.w600 : FontWeight.w500,
+                            color: done
+                                ? scheme.onSurfaceVariant
+                                    .withValues(alpha: 0.75)
+                                : scheme.onSurface,
+                          ),
+                          completed: done,
+                        )!,
+                        maxLines: 1,
+                      )
+                    else
                       Text(
-                        _preview(note),
-                        maxLines: 2,
+                        note.displayTitle,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: markCompleted(
-                          theme.textTheme.bodySmall?.copyWith(
+                          theme.textTheme.titleSmall?.copyWith(
+                            fontWeight:
+                                selected ? FontWeight.w600 : FontWeight.w500,
                             color: done
-                                ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
-                                : scheme.onSurfaceVariant,
-                            height: 1.35,
+                                ? scheme.onSurfaceVariant
+                                    .withValues(alpha: 0.75)
+                                : scheme.onSurface,
                           ),
                           completed: done,
                         ),
                       ),
+                    const SizedBox(height: 3),
+                    // Skipped entirely when there is no body, rather than
+                    // rendered as an empty line. See _preview.
+                    if (note.body.trim().isNotEmpty)
+                      if (note.markdown)
+                        // The same renderer as the widget card, at the row's own
+                        // type size and clamped to its own two lines.
+                        //
+                        // Clamped by height rather than by `maxLines`, for the
+                        // reason documented in markdown_text.dart: `maxLines`
+                        // bounds the lines inside one Text and says nothing
+                        // about how many blocks a note has, so a body of twenty
+                        // one-line paragraphs sailed past it.
+                        //
+                        // Headings are flattened to body size, same as a compact
+                        // card. A row is two lines in a 300px column, and a
+                        // body opening with `# Title` is already repeating the
+                        // row's own title above it.
+                        DefaultTextStyle(
+                          style: markCompleted(const TextStyle(),
+                                  completed: done) ??
+                              const TextStyle(),
+                          child: MarkdownText(
+                            source: note.body,
+                            color: done
+                                ? scheme.onSurfaceVariant.withValues(alpha: 0.6)
+                                : scheme.onSurfaceVariant,
+                            accent: scheme.primary,
+                            mutedColor: scheme.onSurfaceVariant
+                                .withValues(alpha: 0.75),
+                            density: MarkdownDensity.widget,
+                            fontSize:
+                                theme.textTheme.bodySmall?.fontSize ?? 12,
+                            headingScale: 1.0,
+                            maxHeight: _previewHeight(theme),
+                          ),
+                        )
+                      else
+                        Text(
+                          _preview(note),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: markCompleted(
+                            theme.textTheme.bodySmall?.copyWith(
+                              color: done
+                                  ? scheme.onSurfaceVariant
+                                      .withValues(alpha: 0.6)
+                                  : scheme.onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                            completed: done,
+                          ),
+                        ),
                   ],
                 ),
               ),
@@ -321,6 +385,19 @@ class _NoteListItem extends StatelessWidget {
       ),
     );
   }
+
+  /// Vertical room a rendered Markdown preview gets in a row.
+  ///
+  /// Two lines of the row's own body size at the same 1.35 line height the
+  /// plain-text preview uses, so a Markdown row is not taller than a plain one.
+  /// The fade band comes out of the *third* line — see
+  /// [MarkdownText.budgetForLines].
+  static double _previewHeight(ThemeData theme) =>
+      MarkdownText.budgetForLines(
+        fontSize: theme.textTheme.bodySmall?.fontSize ?? 12,
+        lineHeight: 1.35,
+        lines: 2,
+      );
 
   /// Falls back to the title when there is no body yet, so a note that has only
   /// been named still shows something useful in the preview slot.

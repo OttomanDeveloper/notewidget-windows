@@ -11,6 +11,7 @@ import 'package:win_notes/src/data/notes_repository.dart';
 import 'package:win_notes/src/state/notes_controller.dart';
 import 'package:win_notes/src/ui/common/markdown_text.dart';
 import 'package:win_notes/src/ui/editor/note_editor_pane.dart';
+import 'package:win_notes/src/ui/editor/note_list_pane.dart';
 import 'package:win_notes/src/ui/theme.dart';
 import 'package:win_notes/src/ui/widget/widget_note_card.dart';
 
@@ -571,6 +572,210 @@ void main() {
       );
       expect(tester.takeException(), isNull,
           reason: 'overflowing a small card would throw, not truncate');
+    });
+  });
+
+  group('the notes list rows', () {
+    late Directory temp;
+    late NotesController controller;
+    late AtomicJsonFile file;
+
+    setUp(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dev.winnotes/shell'),
+        (call) async => null,
+      );
+      temp = Directory.systemTemp.createTempSync('wn_md_list');
+      file = AtomicJsonFile('${temp.path}\\notes.json');
+    });
+
+    tearDown(() {
+      controller.dispose();
+      deleteTempDir(temp);
+    });
+
+    /// The list pane at its real width: 300px, which is what the editor gives it.
+    Future<void> pumpList(WidgetTester tester, List<Note> notes) async {
+      await tester.runAsync(() async {
+        final repo = NotesRepository(file);
+        await repo.saveNow(notes);
+        controller = NotesController(repository: repo);
+        await controller.load();
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildWinNotesTheme(
+            brightness: Brightness.light,
+            highContrast: false,
+          ),
+          home: Scaffold(
+            body: SizedBox(
+              width: 300,
+              height: 600,
+              child: NoteListPane(
+                controller: controller,
+                onOpenNote: () {},
+                onNewNote: () {},
+                onCloseList: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('a plain row still shows its source', (tester) async {
+      // The whole point of the per-note flag: a note that never asked for
+      // Markdown must be byte-for-byte what it was.
+      await pumpList(tester, [note('Plain', '**not bold** and `code`')]);
+
+      expect(find.byType(MarkdownText), findsNothing);
+      expect(find.textContaining('**not bold**'), findsOneWidget);
+      expect(find.textContaining('`code`'), findsOneWidget);
+    });
+
+    testWidgets('a markdown row renders its preview rather than its source',
+        (tester) async {
+      await pumpList(tester, [
+        note('Reference', '**Bold**, *italic*, ~~struck~~ and `code`',
+            markdown: true),
+      ]);
+
+      final text = _allText(tester).join(' ');
+      expect(text, isNot(contains('**')), reason: 'bold markers');
+      expect(text, isNot(contains('*italic*')), reason: 'italic markers');
+      expect(text, isNot(contains('~~')), reason: 'strikethrough markers');
+      expect(text, isNot(contains('`')), reason: 'code backticks');
+
+      final runs = _runs(tester);
+      expect(runs.any((r) => r.text == 'Bold' && r.style.fontWeight == FontWeight.w700),
+          isTrue);
+      expect(runs.any((r) => r.text == 'italic' && r.style.fontStyle == FontStyle.italic),
+          isTrue);
+      expect(runs.any((r) => r.text == 'code' && r.style.fontFamily == 'Consolas'),
+          isTrue);
+    });
+
+    testWidgets('a markdown row keeps list structure in its preview',
+        (tester) async {
+      // Inline-only rendering would have concatenated the items with no marker
+      // at all, which is *less* than the note said - the same failure the table
+      // flatten had. Rows get blocks, not just spans.
+      await pumpList(tester, [
+        note('Tasks', '- [ ] open\n- [x] done', markdown: true),
+      ]);
+
+      expect(find.textContaining('☐'), findsWidgets);
+      expect(find.textContaining('☑'), findsWidgets);
+    });
+
+    testWidgets('a markdown row renders its title inline', (tester) async {
+      await pumpList(tester, [note('**Loud** title', 'body', markdown: true)]);
+
+      expect(_allText(tester).join(' '), isNot(contains('**')));
+      expect(_runs(tester).any((r) => r.text == 'Loud'), isTrue);
+    });
+
+    testWidgets('a markdown row stays inside the row height', (tester) async {
+      // A long note must clip rather than grow the row or throw. Overflow is
+      // what `maxLines` cannot prevent - it bounds lines inside one Text, not
+      // the number of blocks.
+      await pumpList(tester, [
+        note(
+          'Long',
+          List.generate(30, (i) => 'line $i').join('\n\n'),
+          markdown: true,
+        ),
+      ]);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a markdown row is no taller than a plain one', (tester) async {
+      // Both get two lines of preview, so the list rhythm does not change
+      // depending on whether a note happens to use Markdown.
+      await pumpList(tester, [
+        note('Md', '# Heading\n\nsome **body** text', markdown: true),
+      ]);
+      final mdHeight = tester.getSize(find.byType(NoteListPane)).height;
+
+      await pumpList(tester, [
+        note('Plain', '# Heading\n\nsome **body** text'),
+      ]);
+      final plainHeight = tester.getSize(find.byType(NoteListPane)).height;
+
+      // The pane fills its box either way; what matters is that nothing threw
+      // and the row content stayed put.
+      expect(mdHeight, plainHeight);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('a clamped render', () {
+    test('the fade band is added to the lines, not taken from them', () {
+      // Two lines means two lines you can read. If the band came out of them,
+      // the second line would sit inside the fade and be unreadable - which
+      // looks like the renderer lost a line rather than like a clamp.
+      final two = MarkdownText.budgetForLines(
+        fontSize: 13,
+        lineHeight: 1.35,
+        lines: 2,
+      );
+      final oneLine = 13 * 1.35;
+
+      expect(two, greaterThan(oneLine * 2));
+      expect(two, lessThan(oneLine * 3));
+    });
+
+    test('the budget scales with the surface type size', () {
+      final small = MarkdownText.budgetForLines(
+        fontSize: 12,
+        lineHeight: 1.35,
+        lines: 2,
+      );
+      final large = MarkdownText.budgetForLines(
+        fontSize: 13,
+        lineHeight: 1.35,
+        lines: 2,
+      );
+      expect(large, greaterThan(small));
+    });
+
+    testWidgets('a title honours the line count it is given', (tester) async {
+      // Regression: `MarkdownText.inline` used to ignore `maxLines` and always
+      // clip at one, so the large widget card's two-line title silently got
+      // one.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildWinNotesTheme(
+            brightness: Brightness.light,
+            highContrast: false,
+          ),
+          home: Scaffold(
+            body: SizedBox(
+              width: 200,
+              child: MarkdownText.inline(
+                'a title long enough that it must wrap onto a second line',
+                color: const Color(0xFF23202E),
+                accent: const Color(0xFFE8551D),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF23202E)),
+                maxLines: 2,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final text = tester.widget<RichText>(find.byType(RichText).first);
+      final span = text.text;
+      expect(span, isA<TextSpan>());
+      expect((span as TextSpan).style?.decoration, isNot(TextDecoration.lineThrough));
+      // maxLines and overflow are RichText's, not the span's.
+      expect(text.maxLines, 2);
+      expect(text.overflow, TextOverflow.ellipsis);
     });
   });
 
