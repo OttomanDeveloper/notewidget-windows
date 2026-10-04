@@ -237,7 +237,7 @@ the editor's menu.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| **Keep the widget above other windows** | On | The widget stays on top of ordinary windows. Turn it off and it behaves like a normal window, so it can be covered. |
+| **Keep the widget above other windows** | On | The widget stays on top of ordinary windows. Turn it off and it behaves like a normal window, so it can be covered. It never covers the editor, though — see below. |
 | **Lock the widget in place** | Off | Dragging does nothing, so the widget stays exactly where you put it. If you drag a locked widget it tells you it is locked and where to change that, rather than ignoring you. Resizing from a corner still works either way. |
 
 Dragging works out of the box. The lock is there for when you have parked the
@@ -250,6 +250,14 @@ switch in Settings that nobody would think to look for.
 
 Both take effect the moment you flip them. The widget watches `settings.json`,
 so a change made here reaches the window without a restart.
+
+**The widget steps aside for the editor.** "Above other windows" is absolute in
+Windows — there is no in-between position where a window floats over your
+browser but tucks under WinNotes' own editor. So while the editor is the window
+you are working in, the widget stops being always-on-top and the editor comes
+forward; the moment you switch away or close the editor, the widget floats again.
+It yields rather than giving up the setting: with the editor closed it behaves
+exactly as configured.
 
 ## Where the notes live
 

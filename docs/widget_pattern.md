@@ -338,16 +338,62 @@ and a half-visible line behind a sharp edge reads as a rendering fault rather
 than as "there is more". Content shorter than the box ends above the fade and is
 untouched, because the child is top-aligned.
 
+### 3.17 The widget gets out of the editor's way
+
+Always-on-top is **absolute**. A window with `WS_EX_TOPMOST` is above every other
+window, full stop, so there is no Z-order position meaning "above other
+applications but below the editor". While the widget carries that flag it
+simply covers the editor, and no amount of raising the editor will help.
+
+So the widget **leaves the topmost band for as long as the editor is the
+foreground window**, and comes back to it the moment the editor stops being
+foreground — the user clicking the editor, switching to another application, or
+closing it. That is a yield rather than a downgrade of the setting: with the
+editor closed, the widget floats exactly as configured, which is the premise the
+whole product rests on.
+
+**Both halves are required, and the second one is not guessable.** Measured on a
+release build rather than read out of the documentation:
+
+| Action | editor z | widget z | result |
+|---|---|---|---|
+| widget topmost (before this rule) | 5 | 0 | widget covers the editor |
+| `HWND_NOTOPMOST` alone | 5 | **2** | still above the editor — *worse*: covers it **and** buries it |
+| `HWND_NOTOPMOST` + `HWND_TOP` on the editor | **2** | 3 | correct |
+
+`HWND_NOTOPMOST` does not send the widget to the bottom, despite what the
+documentation's wording suggests; it drops the widget to the top of the
+*ordinary* band, which is still above an ordinary editor. So the editor has to be
+brought forward at the same moment, or the fix trades one bug for a worse one.
+
+Also load-bearing: the editor is never given `WS_EX_TOPMOST` at creation
+(`StyleForRole`), and `SetAlwaysOnTop` stays widget-only, so the preference
+cannot reach the editor by a back door. `Host::ApplyWidgetTopmost` computes the
+effective value as `always_on_top_ && !editor_foreground_` and is the only place
+that applies it.
+
+**Verified by driving a release build**, because the whole failure is silent: a
+topmost widget over an editor looks like a widget over an editor, and there is
+nothing to crash. `docs/testing_pattern.md` §2 puts that in tier C, and
+`widget_guard_test` covers the part that can be in CI — that the editor is never
+topmost, that the setting cannot reach it, that activation is observed, and that
+`ApplyWidgetTopmost` raises the editor as well as demoting the widget.
+
 ---
 
 ## 4. The traps
 
-- **Do not give the widget its own Markdown path.** Two implementations is one
-  too many, and the disagreement between them is invisible until someone
-  notices the widget and the editor showing different notes (§3.14).
+- **Do not give the editor `WS_EX_TOPMOST`.** It is the one window the user is
+  deliberately looking at, and adding the flag looks like it would fix "the app
+  stays on top" when the app never did (§3.17).
+- **Do not demote the widget without raising the editor.** The widget lands above
+  the editor anyway, and takes the editor's place in front of it (§3.17).
 - **Do not make task-list boxes interactive.** They look like the completion
   circle and they are not it (§3.15).
 - **Do not clamp a rendered body with `maxLines`** (§3.16).
+- **Do not give the widget its own Markdown path.** Two implementations is one
+  too many, and the disagreement between them is invisible until someone
+  notices the widget and the editor showing different notes (§3.14).
 
 - **Do not reintroduce `HTCAPTION`.** It fails twice (§3.1) and it would break
   card taps even if it worked.
@@ -417,6 +463,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.14 | One renderer, two budgets | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane offers a switch instead of two cramped columns* |
 | 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing* |
 | 3.16 | Clamped by height | `markdown_test` → *a compact card still clamps to its line budget* |
+| 3.17 | The widget yields to the editor | **guard** `widget_guard_test` → *nothing puts the widget above the editor*, *the scanner finds the code it is looking for in the first place*, *the guard bites: an editor with WS_EX_TOPMOST is rejected*, *the guard bites: demoting without raising the editor is rejected*, *the guard bites: an un-guarded SetAlwaysOnTop is rejected*, *the guard bites: no WM_ACTIVATE is rejected*, *the guard bites: a host with no activation handler is rejected*; **manual** - click the editor, then another app, on a release build: the widget's `WS_EX_TOPMOST` clears and returns |
 | - | Markdown on a card | `markdown_test` → *a plain note is untouched by any of this*, *a markdown note renders rather than showing its source*, *a markdown title honours inline formatting*, *a finished markdown card is struck through* |
 | — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |

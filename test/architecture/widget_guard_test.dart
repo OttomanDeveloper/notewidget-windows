@@ -25,6 +25,125 @@ String _seedLoopBody(String source) =>
 void main() {
   final tree = SourceTree();
 
+  group('the widget gets out of the editor way', () {
+    // The real runner, read once, and then mutated one fault at a time.
+    late String windowSource;
+    late String hostSource;
+
+    setUpAll(() {
+      final tree = SourceTree();
+      windowSource = tree.read('windows/runner/win_notes_window.cpp');
+      hostSource = tree.read('windows/runner/win_notes_host.cpp');
+    });
+
+    List<String> faultsFor({String? window, String? host}) =>
+        findWidgetAboveEditorFaults(window ?? windowSource, host ?? hostSource);
+
+    test('nothing puts the widget above the editor', () {
+      final faults = faultsFor();
+
+      expect(
+        faults,
+        isEmpty,
+        reason: 'docs/widget_pattern.md §3.17.\n'
+            'A topmost window is above *every* window, so once the widget is '
+            'topmost there is no Z-order position that means "above other apps '
+            'but below the editor" - it simply covers the editor. That is the '
+            'complaint this rule exists for, and the reason it is a rule rather '
+            'than a preference.\n\n'
+            '${faults.join('\n')}',
+      );
+    });
+
+    test('the scanner finds the code it is looking for in the first place', () {
+      // A guard that passes because its regexes match nothing is the failure
+      // mode that reads most like enforcement. Every construct it depends on
+      // is asserted present, so "no faults" means "checked" rather than
+      // "silent".
+      expect(windowSource, contains('case WM_ACTIVATE'));
+      expect(windowSource, contains('void Window::StyleForRole'));
+      expect(windowSource, contains('void Window::SetAlwaysOnTop'));
+      expect(hostSource, contains('void Host::ApplyWidgetTopmost'));
+      expect(hostSource, contains('editor_->Raise()'));
+      expect(hostSource, contains('OnWindowActivationChanged'));
+    });
+
+    test('the guard bites: an editor with WS_EX_TOPMOST is rejected', () {
+      final faulty = windowSource.replaceAll(
+        '    *ex_style = 0;',
+        '    *ex_style = WS_EX_TOPMOST;',
+      );
+      expect(faulty, isNot(equals(windowSource)),
+          reason: 'the fixture did not apply; the guard proved nothing');
+
+      final faults = faultsFor(window: faulty);
+      expect(
+        faults.any((f) => f.contains('gives the editor WS_EX_TOPMOST')),
+        isTrue,
+        reason: faults.join('\n'),
+      );
+    });
+
+    test('the guard bites: demoting without raising the editor is rejected',
+        () {
+      // The half that is easy to leave out. Everything else about the yield can
+      // be right and the widget still ends up above the editor.
+      final faulty = hostSource.replaceAll('    editor_->Raise();', '');
+
+      final faults = faultsFor(host: faulty);
+      expect(
+        faults.any((f) => f.contains('does not raise the editor')),
+        isTrue,
+        reason: 'the missing Raise must be named specifically, not lumped in '
+            'with the other checks: it is the one that was measured rather '
+            'than assumed.\n\n${faults.join('\n')}',
+      );
+    });
+
+    test('the guard bites: an un-guarded SetAlwaysOnTop is rejected', () {
+      final faulty = windowSource.replaceAll(
+        'if (window_ == nullptr || !IsWidgetRole(params_.role)) return;',
+        'if (window_ == nullptr) return;',
+      );
+      expect(faulty, isNot(equals(windowSource)));
+
+      final faults = faultsFor(window: faulty);
+      expect(
+        faults.any((f) => f.contains('IsWidgetRole')),
+        isTrue,
+        reason: 'without the role check the always-on-top setting reaches the '
+            'editor through the back door.\n\n${faults.join('\n')}',
+      );
+    });
+
+    test('the guard bites: no WM_ACTIVATE is rejected', () {
+      final faulty = windowSource.replaceAll('case WM_ACTIVATE: {', 'case WM_NCPAINT: {');
+      expect(faulty, isNot(equals(windowSource)));
+      expect(
+        faultsFor(window: faulty).any((f) => f.contains('WM_ACTIVATE')),
+        isTrue,
+      );
+    });
+
+    test('the guard bites: a host with no activation handler is rejected', () {
+      final faulty = hostSource.replaceAll(
+        'void Host::OnWindowActivationChanged(SurfaceRole role, bool active) {',
+        'void Host::SomeOtherHandler(SurfaceRole role, bool active) {',
+      );
+      expect(faulty, isNot(equals(hostSource)),
+          reason: 'the fixture did not apply; the guard proved nothing');
+
+      expect(
+        faultsFor(host: faulty)
+            .any((f) => f.contains('does not define Host::OnWindowActivationChanged')),
+        isTrue,
+        reason: 'matching the bare name would have been satisfied by the '
+            'mention in a comment, so a renamed handler would have gone '
+            'unnoticed.',
+      );
+    });
+  });
+
   group('the widget is HTCLIENT everywhere', () {
     test('the runner never answers HTCAPTION', () {
       final hits = findCaptionHits(tree);

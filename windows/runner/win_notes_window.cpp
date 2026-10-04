@@ -558,6 +558,19 @@ LRESULT Window::HandleMessage(HWND window, UINT message, WPARAM wparam,
   const bool widget = IsWidgetRole(params_.role);
 
   switch (message) {
+    case WM_ACTIVATE: {
+      // Editor only. A topmost window is above *every* window, so once the
+      // widget is topmost there is no Z-order position that is "above other
+      // apps but below the editor" - the widget simply covers it. The host has
+      // to be told when the editor is the window someone is working in, so it
+      // can take the widget out of the topmost band while that lasts.
+      if (!widget && delegate_ != nullptr) {
+        delegate_->OnWindowActivationChanged(
+            params_.role, LOWORD(wparam) != WA_INACTIVE);
+      }
+      break;
+    }
+
     case WM_NCHITTEST: {
       if (!widget) break;
       return HitTest(POINT{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)});

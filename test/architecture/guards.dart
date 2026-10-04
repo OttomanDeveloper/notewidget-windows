@@ -207,6 +207,128 @@ List<String> findCaptionHits(SourceTree tree) {
   return violations;
 }
 
+/// Ways the widget can end up above the editor, or below where it belongs.
+///
+/// `docs/widget_pattern.md` §3.17. Two separate faults, and the second is the
+/// one that a partial fix leaves behind:
+///
+///  1. The editor being topmost. It is not — `StyleForRole` gives it no
+///     `WS_EX_TOPMOST` — so this is the easy half, and it is checked because
+///     "add the flag to the editor too" is such an obvious-looking wrong turn.
+///  2. Demoting the widget *without* raising the editor. Taking the widget out
+///     of the topmost band leaves it at the top of the ordinary band, which is
+///     still above the editor — measured on a release build, not assumed from
+///     the documentation. So the widget covers the editor *and* buries it, and
+///     the symptom looks worse than before the fix rather than better.
+///
+/// Returns a list of human-readable faults; empty means the rule holds.
+///
+/// Takes the two runner sources as text rather than a [SourceTree], so a fault
+/// can be injected without editing the repository. A guard that can only be
+/// tested by breaking the real thing is a guard that gets left untested.
+List<String> findWidgetAboveEditorFaults(String window, String host) {
+  final faults = <String>[];
+
+  /// The body of `signature`, or an empty string if it cannot be found.
+  ///
+  /// The parameter list is matched loosely and skipped: the signatures here are
+  /// long, and a guard that has to be updated every time a parameter is added
+  /// is a guard that will be deleted instead. An empty result is itself treated
+  /// as a fault, so a regex that quietly stops matching fails loudly rather than
+  /// reporting a clean bill of health.
+  ///
+  /// The closing brace is anchored to column 0 on purpose. Every nested block in
+  /// this runner is indented, so column 0 is the end of the function and
+  /// nothing else.
+  String body(String source, String signature) {
+    final pattern =
+        '${RegExp.escape(signature)}\\s*\\([^)]*\\)\\s*\\{(.*?)\\n\\}';
+    return RegExp(pattern, dotAll: true).firstMatch(source)?.group(1) ?? '';
+  }
+
+  // 1. The editor must never be created topmost.
+  final style = body(window, 'void Window::StyleForRole');
+  final editorBranch = style.split('} else {').length > 1
+      ? style.split('} else {').last
+      : '';
+  if (editorBranch.isEmpty) {
+    faults.add(
+      'StyleForRole has no editor branch, so the rule cannot be checked. '
+      'If the roles were merged this guard is now vacuous.',
+    );
+  } else if (RegExp(r'WS_EX_TOPMOST').hasMatch(editorBranch)) {
+    faults.add(
+      'StyleForRole gives the editor WS_EX_TOPMOST. The editor is the window '
+      'someone is deliberately looking at; it must behave like any other '
+      'application window and sit behind other applications when they are '
+      'raised.',
+    );
+  }
+
+  // 2. SetAlwaysOnTop must stay widget-only, or toggling the setting would
+  //    reach the editor through the back door.
+  final alwaysOnTop = body(window, 'void Window::SetAlwaysOnTop');
+  if (alwaysOnTop.isEmpty) {
+    faults.add('Window::SetAlwaysOnTop has gone; the guard cannot check it.');
+  } else if (!RegExp(r'IsWidgetRole').hasMatch(alwaysOnTop)) {
+    faults.add(
+      'Window::SetAlwaysOnTop no longer checks IsWidgetRole, so the '
+      'always-on-top setting can reach the editor.',
+    );
+  }
+
+  // 3. The host must react to the editor being foreground at all.
+  //
+  // Matched as the *definition*, not the bare name. A loose `contains` would be
+  // satisfied by the mention in a comment, so renaming the handler would leave
+  // the guard reporting a rule that is no longer implemented.
+  if (!RegExp(r'case WM_ACTIVATE').hasMatch(window)) {
+    faults.add(
+      'win_notes_window.cpp handles no WM_ACTIVATE, so the host is never told '
+      'when the editor becomes the foreground window and the widget cannot '
+      'get out of its way.',
+    );
+  }
+  if (!RegExp(r'void Host::OnWindowActivationChanged\s*\(').hasMatch(host)) {
+    faults.add(
+      'win_notes_host.cpp does not define Host::OnWindowActivationChanged; the '
+      'widget-above-editor rule is not implemented on the host side.',
+    );
+  }
+
+  // 4. Both halves of the yield, together, in the same function.
+  final apply = body(host, 'void Host::ApplyWidgetTopmost');
+  if (apply.isEmpty) {
+    faults.add(
+      'Host::ApplyWidgetTopmost has gone. If the yield is now inline, move it '
+      'back so this guard has something to check.',
+    );
+  } else {
+    final demotes = RegExp(r'SetAlwaysOnTop').hasMatch(apply);
+    final raises = RegExp(r'editor_->Raise\(\)').hasMatch(apply);
+    if (!demotes) {
+      faults.add(
+        'Host::ApplyWidgetTopmost never calls SetAlwaysOnTop, so the widget '
+        'cannot leave the topmost band.',
+      );
+    }
+    if (!raises) {
+      faults.add(
+        'Host::ApplyWidgetTopmost does not raise the editor.\n'
+        'This is the half that is easy to leave out and impossible to guess. '
+        'Dropping the widget out of the topmost band leaves it at the top of '
+        'the *ordinary* band, which is still above the editor, so without the '
+        'Raise the widget covers the editor and buries it at the same time.\n'
+        'Verified by measurement on a release build: demote alone put the '
+        'widget at z=2 with the editor at z=5; demote plus raise put the '
+        'editor at z=2 and the widget at z=3.',
+      );
+    }
+  }
+
+  return faults;
+}
+
 /// SDK packages, which are named in `dependencies` but are not dependencies.
 ///
 /// `flutter:` is listed there because that is where it belongs; counting it as a

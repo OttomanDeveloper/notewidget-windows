@@ -37,7 +37,7 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**319 tests: 217 about behaviour, 37 about the rules themselves, 65 about
+**326 tests: 217 about behaviour, 44 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
 The 42 in `markdown_test` are the densest in the suite, because the renderer has
@@ -185,6 +185,24 @@ pay again.
   from a small screenshot.** Weight, slant and a 1px rule all read as extra
   punctuation at card size. Zoom the crop 4× with nearest-neighbour, or assert
   on the span in a test.
+- **Two probes of this one measured nothing at all, and both looked plausible.**
+  `SetForegroundWindow` is silently ignored from a process that is not already
+  the foreground one, so a Z-order probe that calls it and reads the result
+  reports "nothing changed" no matter what the code does. And `EnumWindows`
+  order is not a usable Z-order once shell and ghost windows are in the list.
+  Drive activation with real synthetic clicks on a real title bar and read
+  `GetForegroundWindow()`; never conclude anything from a Z-order index.
+- **Never identify a WinNotes window by its size.** A previous probe left the
+  widget wider than the editor and the editor minimised at `-32000`, and the
+  probe cheerfully measured the widget while believing it had the editor. Match
+  on title: `WinNotes` is the editor, `WinNotes Widget` is the widget. Also
+  check `WindowFromPoint` before clicking — a maximised window will swallow the
+  click and the probe reports a focus change that never happened.
+- **`Add-Type -ReferencedAssemblies` replaces PowerShell's defaults.** It does
+  not add to them, so a helper that needs `System.Drawing` or `System.Collections`
+  fails to compile with errors about types that obviously exist. Keep P/Invoke
+  helpers free of both (return arrays, not `List<T>`) and do the drawing in
+  PowerShell, where `System.Drawing` is already loaded.
 - **Never gate the ZIP on `WinNotes.exe`** — the executable is `win_notes.exe`.
 - **The build fails with LNK1104 if the app is running** from
   `build\...\Release\win_notes.exe`. Stop it first.

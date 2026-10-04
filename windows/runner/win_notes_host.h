@@ -33,6 +33,7 @@ class Host : public WindowHostDelegate {
   void OnWindowGeometryChanged(SurfaceRole role, const RECT& bounds) override;
   void OnWindowCloseRequested(SurfaceRole role) override;
   void OnWindowDocked(SurfaceRole role, const RECT& bounds) override;
+  void OnWindowActivationChanged(SurfaceRole role, bool active) override;
   void OnInstanceActivated(bool open_editor) override;
 
  private:
@@ -56,6 +57,16 @@ class Host : public WindowHostDelegate {
               std::unique_ptr<flutter::EncodableValue> args = nullptr);
   void OnTrayCommand(TrayCommand command);
 
+  // Puts the widget in the topmost band, or takes it back out, so that it never
+  // sits above the editor while the editor is the window someone is working in.
+  //
+  // Both halves are needed. Dropping the widget out of the topmost band on its
+  // own leaves it at the top of the *ordinary* band, which is still above the
+  // editor - measured, not assumed. The editor therefore has to be brought
+  // forward at the same time, or the widget ends up covering the editor *and*
+  // burying it.
+  void ApplyWidgetTopmost();
+
   void HandleMethodCall(SurfaceRole role, const std::string& method,
                         const flutter::EncodableMap* args,
                         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
@@ -76,6 +87,13 @@ class Host : public WindowHostDelegate {
   HANDLE instance_mutex_ = nullptr;
   HWND previous_instance_window_ = nullptr;
   bool owns_mutex_ = false;
+
+  // The user's always-on-top preference, remembered rather than applied on
+  // arrival, because the widget has to be able to leave the topmost band and
+  // come back to it without asking Dart again.
+  bool always_on_top_ = true;
+  // True only while the editor is the foreground window.
+  bool editor_foreground_ = false;
 };
 
 }  // namespace winnotes

@@ -25,6 +25,13 @@ class WindowHostDelegate {
   virtual void OnWindowCloseRequested(SurfaceRole role) = 0;
   // Fired for the widget when the user drops it against a screen edge.
   virtual void OnWindowDocked(SurfaceRole role, const RECT& bounds) = 0;
+  // The window gained or lost the foreground.
+  //
+  // Only ever fired for the editor. The widget is WS_EX_NOACTIVATE, so it can
+  // become the foreground window exactly once - while it is borrowing the
+  // keyboard to compose a note - and the host has no use for that; it is
+  // notified of compose mode directly instead.
+  virtual void OnWindowActivationChanged(SurfaceRole role, bool active) = 0;
   // A second launch pointed at this instance; bring it forward.
   //
   // [open_editor] carries the intent of the launch that found us, because it is

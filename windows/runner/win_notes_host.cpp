@@ -436,7 +436,12 @@ void Host::OnWindowHidden(SurfaceRole role) {
     // Closing the editor hands focus back to the widget rather than leaving a
     // gap on screen where something used to be.
   } else {
-    if (shell_ != nullptr && shell_->visible()) shell_->Raise();
+    if (shell_ != nullptr && shell_->visible()) {
+      // Hidden rather than deactivated, so no WM_ACTIVATE is coming.
+      editor_foreground_ = false;
+      ApplyWidgetTopmost();
+      shell_->Raise();
+    }
   }
 }
 
@@ -446,8 +451,38 @@ void Host::OnWindowGeometryChanged(SurfaceRole role, const RECT& bounds) {
          std::make_unique<flutter::EncodableValue>(EncodeRect(bounds)));
 }
 
+void Host::OnWindowActivationChanged(SurfaceRole role, bool active) {
+  if (role != SurfaceRole::kEditor) return;
+  editor_foreground_ = active;
+  ApplyWidgetTopmost();
+}
+
+void Host::ApplyWidgetTopmost() {
+  if (shell_ == nullptr) return;
+
+  // The widget is always-on-top by preference, and always-on-top is absolute:
+  // there is no Z-order position that means "above other applications but below
+  // the editor". So while the editor is the window someone is working in, the
+  // widget leaves the topmost band entirely and the editor is brought forward
+  // instead. The moment the editor stops being the foreground window the widget
+  // goes back to floating, which is what makes this a yield rather than a
+  // downgrade of the setting.
+  const bool on_top = always_on_top_ && !editor_foreground_;
+  shell_->SetAlwaysOnTop(on_top);
+
+  if (!on_top && editor_foreground_ && editor_ != nullptr) {
+    editor_->Raise();
+  }
+}
+
 void Host::OnWindowCloseRequested(SurfaceRole role) {
   if (role == SurfaceRole::kEditor && shell_ != nullptr && shell_->visible()) {
+    // The editor is about to stop being the foreground window without ever
+    // sending WM_ACTIVATE, because it is being hidden rather than deactivated.
+    // Without this the widget would stay out of the topmost band until the user
+    // happened to click something else.
+    editor_foreground_ = false;
+    ApplyWidgetTopmost();
     shell_->Raise();
   }
 }
@@ -538,7 +573,11 @@ void Host::HandleMethodCall(
 
   if (method == "widget.configure") {
     if (shell_ != nullptr) {
-      shell_->SetAlwaysOnTop(GetBool(args, "alwaysOnTop", true));
+      // Remembered rather than applied directly: the widget has to be able to
+      // leave the topmost band while the editor is in use and come back to this
+      // same preference afterwards.
+      always_on_top_ = GetBool(args, "alwaysOnTop", true);
+      ApplyWidgetTopmost();
       shell_->SetWidgetOpacity(static_cast<int>(GetInt(args, "opacity", 100)));
       shell_->SetRoundedCorners(GetBool(args, "rounded", true));
       // Draggable unless Dart says otherwise. A platform message that predates the

@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The widget no longer sits on top of the editor.** Always-on-top is absolute:
+  a window carrying `WS_EX_TOPMOST` is above every other window, so once the
+  widget had that flag there was no position in the Z-order meaning "above other
+  applications but below the editor" — it simply covered the editor, and
+  nothing in the app could raise the editor above it. The widget now leaves the
+  topmost band for exactly as long as the editor is the foreground window, and
+  comes back to it the moment the editor stops being foreground. A yield, not a
+  downgrade: with the editor closed the widget floats exactly as configured.
+
+  The obvious half of this fix is wrong, and measuring it on a release build is
+  the only reason it was not shipped wrong. Taking the widget out of the
+  topmost band on its own leaves it at the top of the *ordinary* band — still
+  above an ordinary editor — so the widget ends up covering the editor **and**
+  burying it behind itself, which looks worse than the bug being fixed. The
+  editor has to be brought forward in the same moment. Measured: demote alone
+  put the widget at z=2 with the editor at z=5; demote-and-raise put the editor
+  at z=2 and the widget at z=3.
+
+  Two related invariants are now guarded in `widget_guard_test`, because both
+  are silent and both are easy to undo by accident: the editor is never created
+  `WS_EX_TOPMOST`, and `SetAlwaysOnTop` stays widget-only so the preference
+  cannot reach the editor through a back door.
+
 ### Added
 
 - **Markdown, per note.** A small switch beside the title turns it on for the
