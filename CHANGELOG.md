@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `changelog_guard_test`: fails on an entry longer than one bullet.
+
 ## 1.2.0
 
 ### Fixed

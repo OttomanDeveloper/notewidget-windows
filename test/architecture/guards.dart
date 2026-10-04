@@ -410,6 +410,118 @@ List<String> findEditorMinSizeFaults(String window) {
   return faults;
 }
 
+/// The most lines a `CHANGELOG.md` bullet may occupy, counting the `- `.
+///
+/// Three is roughly a lead sentence and two wrapped lines. Enough to say what
+/// changed and where; not enough to argue for it.
+const int kChangelogBulletLines = 3;
+
+/// Faults in the `## Unreleased` section of the changelog.
+///
+/// `AGENTS.md` §0.6: one bullet per change, saying what changed. The reasoning
+/// belongs in `PROJECT.md` or a pattern doc.
+///
+/// Two faults, and the second is the one that matters:
+///
+///  1. A bullet longer than [kChangelogBulletLines].
+///  2. **An indented line following a blank line with no bullet above it.**
+///     That is the fingerprint of an entry written as an essay: a wrapped
+///     bullet, a blank line, then a second paragraph still indented under it.
+///     Terse entries cannot produce it, because a wrapped bullet has no blank
+///     line inside it. So this catches multi-paragraph entries without needing
+///     to judge the prose.
+///
+/// Only the `Unreleased` section is judged. Released sections are historical
+/// record, and rewriting a shipped changelog to match a newer house style is a
+/// worse trade than inconsistent formatting.
+///
+/// Takes the text rather than a [SourceTree] so a violation can be injected
+/// without editing the repository — which is the only way to prove the scanner
+/// still bites.
+List<String> findChangelogFaults(String markdown) {
+  final lines = markdown.split('\n');
+
+  var start = -1;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].trim() == '## Unreleased') {
+      start = i;
+      break;
+    }
+  }
+  // Nothing being written yet is not a fault. An absent section is the normal
+  // state between releases, and failing on it would mean the guard could only
+  // ever be satisfied by leaving something in the file.
+  if (start < 0) return const [];
+
+  var end = lines.length;
+  for (var i = start + 1; i < lines.length; i++) {
+    if (RegExp(r'^##\s').hasMatch(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+
+  final faults = <String>[];
+  var bulletLines = 0;
+  var bulletAt = 0;
+  var afterBlank = false;
+
+  void closeBullet() => bulletLines = 0;
+
+  for (var i = start + 1; i < end; i++) {
+    final line = lines[i];
+
+    if (RegExp(r'^#{2,3}\s').hasMatch(line)) {
+      closeBullet();
+      afterBlank = false;
+      continue;
+    }
+
+    if (line.trim().isEmpty) {
+      closeBullet();
+      afterBlank = true;
+      continue;
+    }
+
+    if (RegExp(r'^-\s').hasMatch(line)) {
+      closeBullet();
+      bulletAt = i;
+      bulletLines = 1;
+      afterBlank = false;
+      continue;
+    }
+
+    if (RegExp(r'^\s+\S').hasMatch(line)) {
+      if (afterBlank) {
+        faults.add(
+          'CHANGELOG.md:${i + 1}  an indented line with no bullet above it.\n'
+          '    A blank line ends a bullet. Text still indented under it is a '
+          'second paragraph, which §0.6 does not allow: one bullet says what '
+          'changed. Put the reasoning in PROJECT.md or a pattern doc.',
+        );
+      }
+      bulletLines++;
+      if (bulletLines > kChangelogBulletLines) {
+        faults.add(
+          'CHANGELOG.md:${bulletAt + 1}  a bullet of $bulletLines lines; the '
+          'limit is $kChangelogBulletLines including the `- `.\n'
+          '    Say what changed and stop. If it needs more, the entry is '
+          'describing a decision rather than a change, and the decision '
+          'belongs in PROJECT.md.',
+        );
+        closeBullet();
+      }
+      continue;
+    }
+
+    // Column-zero prose that is not a bullet: not part of the entry format.
+    closeBullet();
+    afterBlank = false;
+  }
+
+  return faults;
+}
+
 /// SDK packages, which are named in `dependencies` but are not dependencies.
 ///
 /// `flutter:` is listed there because that is where it belongs; counting it as a

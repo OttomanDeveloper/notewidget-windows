@@ -33,6 +33,21 @@ and pointers, not essays. Detail lives in `docs/*.md`.
    people's `settings.json`. Renaming one silently resets anyone who chose it;
    add palettes instead. The default is index zero, not a named constant, for
    the same reason — a file written before the setting existed resolves to it.
+6. **`CHANGELOG.md` gets a bullet saying what changed. Nothing else.** One
+   bullet per change, grouped under `### Added`, `### Changed`, `### Fixed` or
+   `### Removed`, and **at most three lines including the `- ` itself**. No
+   rationale, no history, no "why we reverted the default last time", no
+   second and third paragraph. The reasoning is not thrown away — it goes in
+   `PROJECT.md` for a product decision and in `docs/*_pattern.md` for a
+   technical one, which is where someone will look for it and where it does not
+   compete with the install instructions.
+   **Why:** a changelog is read on a release page by someone deciding whether
+   to upgrade, in the thirty seconds before they click. An entry that argues
+   with itself is three paragraphs of reading for one line of information. And
+   an essay is indistinguishable from a code change nobody reviewed, because the
+   only place the reasoning lives is the place nobody reads.
+   **Enforced** by `changelog_guard_test`, because a style rule stated once and
+   never checked is how the last one got reversed.
 
 ---
 
@@ -55,9 +70,9 @@ Verified against Flutter 3.47.5 stable, Dart SDK `^3.13.4`.
 | `PROJECT.md` | What the product is, and is not. The authority. |
 | `docs/storage_pattern.md` | One writer per file, atomic replace, debounce + ceiling, retry ladders, transient vs damaged, `.bak`, recovery that never destroys. |
 | `docs/widget_pattern.md` | `HTCLIENT` everywhere, Dart-decides/runner-performs, screen-space drags, scroll-vs-drag by extent, borrowing the keyboard, card sizing. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 341 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 349 tests, and the ten traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
-| `CHANGELOG.md` | `## Unreleased` holds work not yet tagged. |
+| `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
 Read the relevant pattern doc **before** touching that seam. Each ends with a
 table naming the tests that pin its rules; a rule with no test name in that
@@ -83,7 +98,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 50 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 58 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -91,6 +106,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 | `storage_guard_test` | the watcher attached to the file instead of the directory; the export not going through the atomic writer; `.bak` taken after the replace instead of before |
 | `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode; the editor created topmost; `SetAlwaysOnTop` reachable for the editor; no `WM_ACTIVATE`; the widget demoted **without** the editor being raised; no `WM_GETMINMAXINFO`; the editor's minimum size written unscaled, as `ptMinSize`, or alongside `ptMaxPosition` |
 | `docs_test` | a rule in §3 of a pattern doc with no row in its test table; a cited test that no longer exists; a cited guard that does not exist; this file claiming a fixed rule is still broken |
+| `changelog_guard_test` | a `CHANGELOG.md` entry longer than one bullet, or a second paragraph hung off the same bullet (§0.6) |
 | `dependency_guard_test` | a runtime dependency in `pubspec.yaml` that is not on the enumerated list in §0.4; an approved list that has quietly grown into "anything goes" |
 
 The guard has **no allowlist**, on purpose. If a write genuinely cannot go
@@ -151,11 +167,13 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 341 passing
+flutter test             # 349 passing
 ```
 
-Then: a `## Unreleased` entry in `CHANGELOG.md` that says **why**, not just
-what. Every rule added to a pattern doc gets its row in that doc's §7 table.
+Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying
+what changed** (§0.6 — not why; the *why* goes in `PROJECT.md` or a pattern doc,
+and `changelog_guard_test` fails the long version). Every rule added to a
+pattern doc gets its row in that doc's §7 table.
 
 Builds fail with **LNK1104** if `win_notes.exe` is running from
 `build\...\Release\`. Stop it first.
