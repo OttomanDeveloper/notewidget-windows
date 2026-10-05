@@ -56,8 +56,9 @@ rebuild the list of every note.
 
 ### 3.1 A provider constructs; a widget reads
 
-Nothing under `lib/src/ui/` constructs a repository or a controller. There are 10
-such sites today, in two files, and they are the reason the two surfaces have
+Nothing under presentation screens/widgets constructs a repository or a controller. There were 10
+such sites on 2026-10-05, in two files, and they are the reason the two surfaces had
+drifted: `_resolveBrightness` existed in three copies across `EditorApp` and
 drifted: `_resolveBrightness` exists in three copies across `EditorApp` and
 `WidgetApp`, and they disagree about what "system" brightness means when no system
 brightness has been reported. That is what duplication of construction looks like
@@ -80,7 +81,7 @@ per-isolate rule is asserted by
 
 ### 3.3 Providers are `Notifier`, not `ChangeNotifier`
 
-The three controllers in `lib/src/state/` were `ChangeNotifier` subclasses totalling
+The three controllers in the feature providers dirs were `ChangeNotifier` subclasses totalling
 989 lines. They are now Riverpod `AsyncNotifier`s — rewritten, not wrapped.
 
 The reason was `AsyncValue`, and it paid for the rewrite:
@@ -167,37 +168,30 @@ because a `WidgetRef` cannot survive an `await` or be read inside `dispose` — 
 nearest preceding `class` line. That is an approximation and it is stated in
 `guards.dart`; it would be wrong in a codebase whose classes nest.
 
-### 3.6 A provider is small enough to read in one sitting — and two are not
+### 3.6 A provider is small enough to read in one sitting
 
 `hellobiller` caps its providers and splits anything larger into a main provider
-plus satellites. The same cap here, at **200 lines** per provider file.
+plus satellites. The same cap here, at **300 lines, code only** per provider file
+(`docs/flutter_architecture_pattern.md` §2: imports, blanks and comments do not
+count).
 
-**The migration did not meet it, and the honest reason is ordering.** The two
-large files were the two the rewrite had to get right first, and the split was
-written as a follow-up rather than as part of the same change:
+Met everywhere. The notes state model (`NotesState`, `PendingUndo`,
+`CorruptDataFileError`, `RecoveryOutcome`) lives in `notes_state.dart` beside the
+notifier rather than inside it, which is what brought `notes_controller.dart`
+from 333 code-only lines to 258:
 
-| File | Lines | Over by |
+| File | Code-only | Over by |
 |---|---|---|
-| `settings_controller.dart` | 267 | 67 |
-| `providers.dart` | 133 | — |
-| `widget_controller.dart` | 413 | 213 |
-| `notes_controller.dart` | 637 | 437 |
+| `features/settings/presentation/providers/settings_controller.dart` | 146 | — |
+| `core/utils/app_providers.dart` | 57 | — |
+| `features/widget/presentation/providers/widget_controller.dart` | 234 | — |
+| `features/notes/presentation/providers/notes_controller.dart` | 258 | — |
+| `features/notes/presentation/providers/notes_state.dart` | 75 | — |
 
-The split that was intended for notes is `notesProvider` for the list, selection
-and search, and a separate one for corrupt-file recovery — because recovery is the
-part that most needs a test of its own, and it currently cannot have one without
-also constructing the whole list.
-
-It is in `AGENTS.md` §4 as a divergence rather than quietly reworded here, because
-lowering the cap to 650 to match the code would make this section a description of
-what happened instead of a rule.
-
-What *is* enforced is the direction that was still open. A cap nobody checks is a
-number in a document, and two files over it is a very short way from being three —
-so `provider_guard_test` fails on a **third**, and fails again if either of the two
-recorded files comes under the cap without the record being updated in the same
-change. That makes the breach bounded rather than fixed: it cannot widen while
-someone is working on the split, and it cannot be quietly forgotten after.
+What *is* enforced has not changed shape, only direction. A cap nobody checks is
+a number in a document, so `provider_guard_test` fails on the *first* file over
+the cap, and the `known` set in that test stays empty rather than being deleted
+so the next breach has a named place to go.
 
 ### 3.7 Repositories are plain classes; controllers are providers
 
@@ -242,7 +236,7 @@ native window holding the keyboard with no field visible to type into.
 4. If it is one frame long, use a `ValueNotifier` **and a listener**. Writing the
    field is not enough; see §3.4.
 5. Never keep a `WidgetRef` past an `await` or into `dispose`; see §3.8.
-6. Keep the provider under 200 lines; split before you cross it.
+6. Keep the provider under 300 lines, code only; split before you cross it.
 
 ---
 
@@ -275,12 +269,12 @@ Recorded so nobody discovers it later and thinks the migration was a mistake:
 ## 6. Layer isolation
 
 ```
-ui/  ──>  state/  ──>  data/  ──>  core/
- └─────────┴───────────┴──>  platform/shell_channel.dart
+features/*/presentation/  ──>  features/*/data/ + domain/  ──>  core/
+  └──────────────────────────────>  core/platform/shell_channel.dart
 ```
 
-Unchanged from `AGENTS.md` §3. Providers live in `state/` and are constructed from
-it; `ui/` never reaches past `state/` to build one.
+Unchanged from `AGENTS.md` §3. Providers live in `presentation/providers/` and
+are constructed from it; screens and widgets never build one.
 
 ---
 
@@ -288,12 +282,12 @@ it; `ui/` never reaches past `state/` to build one.
 
 | § | Rule | Pinned by |
 |---|---|---|
-| 3.1 | Providers construct; widgets read | **guard** `isolate_guard_test` * no widget constructs a repository or a controller*; *the scanner still finds the six types it claims to*; *the theme provider is under ui/, not state/* |
+| 3.1 | Providers construct; widgets read | **guard** `isolate_guard_test` * no widget constructs a repository or a controller*; *the scanner still finds the six types it claims to*; *the theme provider is under core/theme/, not the app graph* |
 | 3.2 | One container per isolate | **guard** `isolate_guard_test` * main() builds the scope and passes no state to either root*; **manual** - a probe reading both windows at once |
 | 3.3 | Notifier, not ChangeNotifier | `notes_controller_test`, `widget_integration_test` |
 | 3.4 | No `setState`, and a `ValueNotifier` has a listener | **guard** `no_set_state_test` * lib/ has no setState calls at all*; *the scanner still finds them, or the rule above is vacuous*; *the two replacements are the only two*; *every ValueNotifier is listened to, or nothing rebuilds* |
 | 3.5 | No dependency by parameter | **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*; *the scanner still matches the names it claims to*; *a value is not a dependency*; *a load result is not an injected dependency*; *callbacks are allowed, and are what the roots pass* |
-| 3.6 | A provider is under 200 lines | **guard** `provider_guard_test` * no more provider files are over the cap than are already recorded*, *the scanner measures what it claims to measure* — the two breaches stay named and the count cannot grow |
+| 3.6 | A provider is under 300 lines, code only | **guard** `provider_guard_test` * no more provider files are over the cap than are already recorded*, *the scanner measures what it claims to measure* — the record is empty and the count cannot grow |
 | 3.7 | Repositories stay plain | `storage_guard_test` |
 | 3.8 | A `WidgetRef` is not held across an `await` or into `dispose` | **guard** `isolate_guard_test` * the flush-on-teardown hazard is still named* |
 

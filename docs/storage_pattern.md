@@ -478,7 +478,7 @@ cited test stops existing.
 | — | Backup format | `backup_service_test` → all five groups |
 | — | Whitespace-only body normalises | `backup_service_test` → *a whitespace-only body comes back empty, not as blank lines* |
 | — | Lock behaviour | `notes_controller_test` → the `_ExclusiveLock` FFI helper (§4) |
-| — | `dart:io` confined to `core/`+`data/` | **guard** `layer_test` → *no file operation appears in ui/, state/ or platform/* |
+| — | `dart:io` confined to `utils/`+`data/` | **guard** `layer_test` → *no file operation appears in presentation, theme or platform/* |
 | — | `accentPalette` omitted when unset | `palette_test` → *omitted from the file entirely when never chosen* |
 | — | Unknown palette id is kept, not rewritten | `palette_test` → *an unknown value in the file is kept, not silently rewritten* |
 

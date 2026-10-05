@@ -1,0 +1,53 @@
+import 'package:flutter/material.dart';
+
+/// The tick inside the completion circle.
+///
+/// One painter per file, with `shouldRepaint` answering only on real change.
+class CompletionPainter extends CustomPainter {
+  const CompletionPainter({required this.color, required this.visible});
+
+  final Color color;
+  final bool visible;
+
+  /// Hoisted out of `paint()` so a repaint allocates nothing.
+  ///
+  /// `flutter_architecture_pattern.md` §8 asks for exactly this: create `Paint`,
+  /// `Path` and `TextPainter` once as fields, never inside `paint()`. `paint()` runs
+  /// on the raster thread every frame the box changes size or is repainted, so a
+  /// `Paint` and a `Path` per call is garbage per frame for a three-segment tick.
+  ///
+  /// Mutable rather than `final`, because both objects need size-dependent values —
+  /// the stroke weight and the three points are all fractions of the box, so they
+  /// cannot be set at construction. Reused-and-updated is the answer; the alternative
+  /// is either an allocation per frame or a fixed stroke weight that stops matching
+  /// the ring when the widget is resized, which is the thing the fractions are for.
+  static final Paint _paint = Paint()..style = PaintingStyle.stroke;
+  static final Path _path = Path();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!visible) return;
+
+    _paint
+      ..color = color
+      // Proportional to the box, so the tick keeps its weight when the widget
+      // is resized rather than turning into a hairline or a blob.
+      ..strokeWidth = size.width * 0.11
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    // Two segments, in fractions of the box, so the tick stays centred in the
+    // ring at every size the widget can be resized to. `reset` rather than a fresh
+    // Path, for the reason above.
+    _path
+      ..reset()
+      ..moveTo(size.width * 0.26, size.height * 0.52)
+      ..lineTo(size.width * 0.43, size.height * 0.69)
+      ..lineTo(size.width * 0.75, size.height * 0.33);
+    canvas.drawPath(_path, _paint);
+  }
+
+  @override
+  bool shouldRepaint(CompletionPainter old) =>
+      old.color != color || old.visible != visible;
+}

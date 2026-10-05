@@ -15,15 +15,17 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:win_notes/src/core/app_paths.dart';
-import 'package:win_notes/src/core/atomic_json_file.dart';
-import 'package:win_notes/src/data/note.dart';
-import 'package:win_notes/src/data/notes_repository.dart';
-import 'package:win_notes/src/platform/shell_channel.dart';
-import 'package:win_notes/src/state/notes_controller.dart';
-import 'package:win_notes/src/state/providers.dart';
-import 'package:win_notes/src/state/settings_controller.dart';
-import 'package:win_notes/src/state/widget_controller.dart';
+import 'package:win_notes/core/utils/app_paths.dart';
+import 'package:win_notes/core/utils/atomic_json_file.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/features/notes/data/notes_repository.dart';
+import 'package:win_notes/core/platform/shell_channel.dart';
+import 'package:win_notes/features/notes/presentation/providers/notes_controller.dart';
+import 'package:win_notes/features/notes/domain/repositories.dart';
+import 'package:win_notes/features/notes/presentation/providers/notes_providers.dart';
+import 'package:win_notes/core/utils/app_providers.dart';
+import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
+import 'package:win_notes/features/widget/presentation/providers/widget_controller.dart';
 
 /// A container over a temporary profile directory, plus the plumbing to shut it down
 /// in the right order.

@@ -1,7 +1,7 @@
 /// `AGENTS.md` §0.10 and `docs/isolate_pattern.md`: the two surfaces build the same
 /// graph, from one place.
 ///
-/// This was a countdown. Ten constructions inside `lib/src/ui/` on 2026-10-05, five
+/// This was a countdown. Ten constructions inside presentation roots on 2026-10-05, five
 /// in `EditorApp` and five in `WidgetApp`. Every one reached zero.
 ///
 /// The reason it mattered was never tidiness. Each root built its own copy of the
@@ -12,7 +12,7 @@
 /// only symptom would be a widget that no longer matched the editor.
 ///
 /// That is fixed, and the reason it is fixed rather than merely recorded is in the
-/// guards below: one graph is built from one declaration in `lib/src/state/`, and
+/// guards below: one graph is built from one declaration in `lib/core/utils/`, and
 /// this check makes a second one impossible to reintroduce without a red build.
 library;
 
@@ -32,7 +32,7 @@ void main() {
         isEmpty,
         reason: 'AGENTS.md §0.10.\n\n'
             '${live.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
-            '    Construction belongs in lib/src/state/providers.dart, so both '
+            '    Construction belongs in lib/core/utils/app_providers.dart, so both '
             'surfaces get the same graph. A repository that changes its constructor '
             'is then one edit instead of two.',
       );
@@ -97,8 +97,8 @@ void main() {
       // than the file, because `EditorEventRouter` in the same file legitimately
       // takes a `Widget child` - that is a value, not state.
       for (final root in {
-        'lib/src/ui/editor/editor_app.dart': 'EditorApp',
-        'lib/src/ui/widget/widget_app.dart': 'WidgetApp',
+        'lib/features/notes/presentation/screens/editor_app/editor_app.dart': 'EditorApp',
+        'lib/features/widget/presentation/screens/widget_app/widget_app.dart': 'WidgetApp',
       }.entries) {
         final source = tree.read(root.key);
         final declaration = RegExp(
@@ -125,9 +125,9 @@ void main() {
       // The actual fix for §4.7: one place decides what a `ThemeData` is, and both
       // surfaces ask it. Three copies of a brightness resolver is not a style
       // problem; two of them already disagreed.
-      final editor = tree.read('lib/src/ui/editor/editor_app.dart');
-      final widgetApp = tree.read('lib/src/ui/widget/widget_app.dart');
-      final themeScope = tree.read('lib/src/ui/theme_scope.dart');
+      final editor = tree.read('lib/features/notes/presentation/screens/editor_scope/editor_scope.dart');
+      final widgetApp = tree.read('lib/features/widget/presentation/screens/widget_scope/widget_scope.dart');
+      final themeScope = tree.read('lib/features/settings/presentation/providers/settings_providers.dart');
 
       expect(
         themeScope.contains('widgetSurfaceThemeProvider'),
@@ -183,19 +183,19 @@ void main() {
       );
     });
 
-    test('the theme provider is under ui/, not state/', () {
-      // `state/` must not reach up into `ui/`, so a provider that needs
+    test('the theme provider is under core/theme/, not the app graph', () {
+      // `core/utils` must not reach into theme files, so a provider that needs
       // `theme.dart` cannot live beside the repositories. Asserted because the
-      // natural place to put it was `providers.dart`, and someone will try again.
-      final providers = tree.read('lib/src/state/providers.dart');
+      // natural place to put it was the app graph, and someone will try again.
+      final providers = tree.read('lib/core/utils/app_providers.dart');
 
       expect(
         providers.contains('theme.dart') || providers.contains('palette.dart'),
         isFalse,
-        reason: 'lib/src/state/providers.dart must not import from ui/. The theme '
-            'providers live in lib/src/ui/theme_scope.dart for exactly that reason.',
+        reason: 'lib/core/utils/app_providers.dart must not import theme files. The theme '
+            'providers live in lib/core/theme/theme_scope.dart for exactly that reason.',
       );
-      expect(tree.exists('lib/src/ui/theme_scope.dart'), isTrue);
+      expect(tree.exists('lib/features/settings/presentation/providers/settings_providers.dart'), isTrue);
     });
 
     test('the flush-on-teardown hazard is still named', () {
@@ -205,7 +205,8 @@ void main() {
       // data file, so it needs an answer rather than a migration.
       //
       // The test exists so the hazard cannot be forgotten by being quietly changed.
-      final editor = tree.read('lib/src/ui/editor/editor_app.dart');
+      final editor = tree.read(
+          'lib/features/notes/presentation/screens/editor_scope/editor_scope.dart');
 
       // `EditorTeardown.run` awaits each flush internally and is itself called
       // unawaited from `dispose`, which is the same hazard in a new shape. The first
@@ -226,12 +227,12 @@ void main() {
 
       // The widget surface has no teardown object, so it is checked on its own: the
       // flush is still unawaited, which is the recorded hazard.
-      final widgetApp = tree.read('lib/src/ui/widget/widget_app.dart');
+      final widgetApp = tree.read('lib/features/widget/presentation/screens/widget_scope/widget_scope.dart');
       expect(
         RegExp(r'unawaited\(_notifier\.flush\(\)\)').hasMatch(widgetApp),
         isTrue,
         reason: 'The widget surface has no EditorTeardown equivalent; its flush is '
-            'still unawaited, and that is the hazard `AGENTS.md` section 4.8 records.',
+            'still unawaited, and that is the hazard `AGENTS.md` section 4.7 records.',
       );
 
       // And the two roots must not reach for `ref` in `dispose`, which Riverpod

@@ -5,6 +5,13 @@
 ### Added
 
 - `docs/flutter_architecture_pattern.md`: a general Flutter architecture, performance and Riverpod rulebook, copied in verbatim for future work, with an appendix listing where it contradicts this repository.
+- `flutter_rules_guard_test`: pins the applicable subset of that rulebook, with a decision table covering every section.
+- `lib/core` and `lib/features/notes|widget|settings`: the feature-first tree from rulebook §4, with `data/`, `domain/` and `presentation/` per feature.
+- Domain repository interfaces; providers and notifiers depend on them, with `@override` on every implementation.
+- Derived providers (`selectedNote`, `focusedNote`, `visibleNotes`, `noteById.family`, theme fields); screens watch slices via `ref.select`.
+- `widgetDisplayNotesProvider` + `widgetNoteByIdProvider.family`: the surface derives the list, each card watches its own note.
+- `settings_dialog.dart` is a 40-line composition; its 12 widgets live in their own folders.
+- `widget_surface.dart`, `editor_screen.dart` and `note_editor_pane.dart` are compositions; composer, cards chrome, corrupt screen, app bar and editor sections live in their own folders.
 - `changelog_guard_test`: fails on an entry longer than one bullet.
 - `docs/provider_pattern.md`, `docs/isolate_pattern.md`, `docs/platform_pattern.md`.
 - `AGENTS.md` section 0.7 to 0.11: no `setState`, no injected dependencies, a `WidgetRef` lifetime rule, a declared channel contract, construction in providers.
@@ -29,6 +36,9 @@
 
 ### Changed
 
+- `AGENTS.md` §3.1 names `flutter_rules_guard_test`; architecture count is 137 and the suite is 463.
+- The provider cap is 300 lines code-only; only `notes_controller.dart` (333) is over, split separately.
+- The release packaging passes `--obfuscate --split-debug-info` and checks the symbols exist.
 - Ten positional `bool` parameters are now named, across the notes, settings and widget notifiers and `ShellChannel`.
 - The three controllers are Riverpod `AsyncNotifier`s with immutable state, replacing `ChangeNotifier`s.
 - `main()` builds one `ProviderScope`, so `EditorApp` and `WidgetApp` take no parameters.
@@ -40,6 +50,12 @@
 - The widget window was never configured on launch; the call read state that did not exist yet and returned early.
 - A refused drag showed no hint, and the hotkey dialog kept showing the combination it opened with; both read a `ValueNotifier` nothing was listening to.
 - `NotesState.copyWith` could not clear `selectedId`, so deselecting or deleting the last note kept the old value.
+- `WidgetSurface.build` watches the theme, palette and settings providers for what it draws.
+- `Note` is immutable with `copyWith` and value equality; the editor screen, list pane and editor pane watch state slices.
+- Settings groups watch field slices; the editor preview renders from a debounced source.
+- `CorruptNotesScreen` is a plain `StatefulWidget` with one `Consumer` around the Quit button.
+- `_CheckPainter` reuses one `Paint` and `Path` across `paint()` calls instead of allocating per frame.
+- Constant `RegExp`s in `widget_note_card.dart` and `storage_transfer.dart` are now `static final` fields.
 
 ## 1.2.0
 

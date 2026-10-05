@@ -3,13 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'src/core/app_paths.dart';
-import 'src/data/storage_location.dart';
-import 'src/platform/shell_channel.dart';
-import 'src/state/providers.dart';
-import 'src/ui/editor/editor_app.dart';
-import 'src/ui/theme.dart';
-import 'src/ui/widget/widget_app.dart';
+import 'core/utils/app_paths.dart';
+import './features/settings/data/storage_location.dart';
+import './core/platform/shell_channel.dart';
+import './core/utils/app_providers.dart';
+import './features/notes/presentation/screens/editor_app/editor_app.dart';
+import 'core/widgets/shell_missing/shell_missing_app.dart';
+import './features/widget/presentation/screens/widget_app/widget_app.dart';
 
 /// Entry point for both surfaces.
 ///
@@ -28,7 +28,7 @@ Future<void> main(List<String> args) async {
   // desktop to put a window on, so a neutral editor keeps the failure visible
   // instead of crashing on a null.
   if (launch == null) {
-    runApp(_ShellMissingApp());
+    runApp(const ShellMissingApp());
     return;
   }
 
@@ -90,39 +90,4 @@ Future<void> main(List<String> args) async {
       child: launch.isWidgetSurface ? const WidgetApp() : const EditorApp(),
     ),
   );
-}
-
-/// Shown when the native runner is not present.
-class _ShellMissingApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: buildWinNotesTheme(brightness: Brightness.light, highContrast: false),
-      home: const Scaffold(
-        body: Center(
-          child: Padding(
-            padding: EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.desktop_access_disabled, size: 40),
-                SizedBox(height: 16),
-                Text(
-                  'WinNotes could not reach the Windows runner.',
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'The app has to be built as a Windows executable; running it '
-                  'any other way leaves nothing to draw a window on.',
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/data/note.dart';
-import 'package:win_notes/src/ui/theme.dart';
-import 'package:win_notes/src/ui/widget/widget_note_card.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/core/theme/theme.dart';
+import 'package:win_notes/features/widget/presentation/providers/widget_providers.dart';
+import 'package:win_notes/features/widget/presentation/widgets/widget_note_card/widget_note_card.dart';
 
 /// Rendering tests for the widget card, which is where the project's one real
 /// design decision lives: one focused card rendered large, everything else
@@ -29,22 +31,27 @@ void main() {
     VoidCallback? onToggleCompleted,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: buildWinNotesTheme(brightness: brightness, highContrast: false),
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              // Room for a large card, or deliberately too small for one.
-              width: roomy ? 340 : 170,
-              height: roomy ? 400 : 150,
-              child: WidgetNoteCard(
-                note: theNote,
-                focused: focused,
-                roomy: roomy,
-                dark: brightness == Brightness.dark,
-                accent: WinNotesColors.coral,
-                onTap: () {},
-                onToggleCompleted: onToggleCompleted ?? () {},
+      ProviderScope(
+        overrides: [
+          widgetNoteByIdProvider(theNote.id).overrideWithValue(theNote),
+        ],
+        child: MaterialApp(
+          theme: buildWinNotesTheme(brightness: brightness, highContrast: false),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                // Room for a large card, or deliberately too small for one.
+                width: roomy ? 340 : 170,
+                height: roomy ? 400 : 150,
+                child: WidgetNoteCard(
+                  noteId: theNote.id,
+                  focused: focused,
+                  roomy: roomy,
+                  dark: brightness == Brightness.dark,
+                  accent: WinNotesColors.coral,
+                  onTap: () {},
+                  onToggleCompleted: onToggleCompleted ?? () {},
+                ),
               ),
             ),
           ),
@@ -137,25 +144,31 @@ void main() {
       (tester) async {
     final handle = tester.ensureSemantics();
     var taps = 0;
+    final grocery = note('Groceries', 'Milk');
     await tester.pumpWidget(
-      MaterialApp(
-        theme: buildWinNotesTheme(
-          brightness: Brightness.light,
-          highContrast: false,
-        ),
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 340,
-              height: 400,
-              child: WidgetNoteCard(
-                note: note('Groceries', 'Milk'),
-                focused: true,
-                roomy: true,
-                dark: false,
-                accent: WinNotesColors.coral,
-                onTap: () => taps++,
-                onToggleCompleted: () {},
+      ProviderScope(
+        overrides: [
+          widgetNoteByIdProvider(grocery.id).overrideWithValue(grocery),
+        ],
+        child: MaterialApp(
+          theme: buildWinNotesTheme(
+            brightness: Brightness.light,
+            highContrast: false,
+          ),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 340,
+                height: 400,
+                child: WidgetNoteCard(
+                  noteId: grocery.id,
+                  focused: true,
+                  roomy: true,
+                  dark: false,
+                  accent: WinNotesColors.coral,
+                  onTap: () => taps++,
+                  onToggleCompleted: () {},
+                ),
               ),
             ),
           ),

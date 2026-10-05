@@ -110,30 +110,37 @@ void main() {
     });
 
     test('the guard bites: the essay that shipped as 1.2.0 is rejected', () {
-      // Taken from the real released section, because a fixture invented for
-      // the purpose proves less than the thing that actually happened. The
-      // 1.2.0 notes are not judged as a section - only this excerpt is.
+      // Verbatim from the 1.2.0 notes as they originally shipped, taken because
+      // that is the real shape rather than one invented for the purpose.
       //
-      // Anchored on the `## 1.2.0` heading rather than on "the first `### Fixed`".
-      // The earlier version found the first `### Fixed` anywhere in the file and the
-      // next `### Added` after it, which silently depended on `Unreleased` having no
-      // `Fixed` section of its own - so the day it grew one, this test quietly
-      // stopped finding the fixture it was asserting on and failed with an empty
-      // list. A negative fixture that can go missing is not a guard.
-      final released = tree.read('CHANGELOG.md');
-      final release = released.indexOf('## 1.2.0');
-      expect(
-        release,
-        isNot(-1),
-        reason: 'precondition: 1.2.0 is still a released section. If it is '
-            'reformatted, point this at whichever section still contains the essay.',
-      );
+      // An earlier version pulled this out of the repository with
+      // `indexOf('## 1.2.0')` and asserted the extracted section was faulty. That
+      // worked only while CHANGELOG.md still contained the essay, and it was a
+      // fixture that could go missing: the moment the changelog was converted to
+      // the house style, `indexOf` returned a section that was perfectly legal,
+      // and the test failed for the wrong reason while still reading as a guard
+      // of something. A negative fixture that depends on the thing it is testing
+      // for continuing to exist is not a guard. So the excerpt lives here.
+      const essay = '''
+# Changelog
 
-      final start = released.indexOf('### Fixed', release);
-      final end = released.indexOf('\n## ', start);
-      final body = end < 0 ? released.substring(start) : released.substring(start, end);
+## Unreleased
 
-      final essay = '# Changelog\n\n## Unreleased\n\n$body\n';
+### Fixed
+
+- **The editor can no longer be shrunk to nothing.** It could be dragged by a
+  corner down to a few pixels and left there — a window too small to hold a
+  title, a note and a status bar is not a smaller version of this app, it is a
+  broken one. There is now a floor of **520 × 360**.
+
+  The floor comes from the layout rather than from taste: the editor already
+  collapses to one pane at a time below 760 wide, and that pane stops fitting
+  much under 400, so 520 leaves the narrow layout genuinely usable rather than
+  technically reachable.
+
+  Enforced with `WM_GETMINMAXINFO`, the only hook that governs the size the user
+  can reach by dragging a frame edge.
+''';
 
       expect(
         findChangelogFaults(essay),

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/app_paths.dart';
+import 'package:win_notes/core/utils/app_paths.dart';
 
 /// `AppPaths.resolve` — the override that lets tooling run without touching a
 /// real profile.

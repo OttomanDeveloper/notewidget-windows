@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/data/note.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
 
 void main() {
   Note make({String id = 'n1', String title = 't', String body = 'b'}) => Note(
@@ -70,11 +70,11 @@ void main() {
 
     test('copy is a deep enough copy to restore an undo', () {
       final original = make();
-      final duplicate = original.copy();
-      duplicate.title = 'changed';
-      duplicate.body = 'changed';
+      final changed = original.copyWith(title: 'changed', body: 'changed');
       expect(original.title, 't');
       expect(original.body, 'b');
+      expect(changed.title, 'changed');
+      expect(changed.body, 'changed');
     });
   });
 
@@ -85,7 +85,8 @@ void main() {
     });
 
     test('survives a JSON round trip with the time it was finished', () {
-      final original = make()..completedAt = DateTime(2026, 3, 4, 5, 6, 7);
+      final original =
+          make().copyWith(completedAt: DateTime(2026, 3, 4, 5, 6, 7));
       final restored = Note.fromJson(original.toJson());
 
       expect(restored.isCompleted, isTrue);
@@ -130,7 +131,8 @@ void main() {
 
     test('copy carries the finished state, because undo restores a whole note',
         () {
-      final original = make()..completedAt = DateTime(2026, 3, 4);
+      final original =
+          make().copyWith(completedAt: DateTime(2026, 3, 4));
       expect(original.copy().isCompleted, isTrue);
     });
   });

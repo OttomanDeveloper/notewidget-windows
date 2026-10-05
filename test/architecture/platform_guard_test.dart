@@ -263,7 +263,7 @@ void main() {
       // Not a fault - a recorded fact. `docs/platform_pattern.md` §4 says why it
       // is acceptable and what would have to change. A test that asserted it was
       // fixed would be claiming a fix that has not happened.
-      final channel = tree.read('lib/src/platform/shell_channel.dart');
+      final channel = tree.read('lib/core/platform/shell_channel.dart');
       expect(
         channel.contains('static final ShellEvents instance'),
         isTrue,
@@ -282,7 +282,7 @@ void main() {
       // method - the drag arithmetic in `widget_pattern.md` §3.3 reads `anchorX` and
       // `anchorY`, and a typo in either would leave the widget unmovable with no
       // error anywhere.
-      final channel = tree.read('lib/src/platform/shell_channel.dart');
+      final channel = tree.read('lib/core/platform/shell_channel.dart');
       final host = tree.read('windows/runner/win_notes_host.cpp');
 
       final orphans = <String>[];
@@ -324,7 +324,7 @@ void main() {
       // helpers, and anything else reaching `invokeMethod`/`invokeMapMethod`
       // directly re-decides its own failure policy, which is what §3.3 says not to
       // do.
-      final channel = tree.read('lib/src/platform/shell_channel.dart');
+      final channel = tree.read('lib/core/platform/shell_channel.dart');
 
       // Computed from the same idiom list the parity scanner uses, so the two
       // cannot disagree about what a "direct" call is.

@@ -15,14 +15,14 @@ import 'guards.dart';
 void main() {
   final tree = SourceTree();
 
-  group('dart:io is confined to core/ and data/', () {
-    test('no file operation appears in ui/, state/ or platform/', () {
+  group('dart:io is confined to utils/ and data/', () {
+    test('no file operation appears in presentation, theme or platform/', () {
       final violations = findFileOperationsOutsideDataLayer(tree);
 
       expect(
         violations,
         isEmpty,
-        reason: 'dart:io outside core/ and data/ breaks the layer rule.\n'
+        reason: 'dart:io outside utils/ and data/ breaks the layer rule.\n'
             'Writes are the hazard - not atomic, so an interrupted write leaves a '
             'truncated file.\n'
             'Put the operation behind a repository method in data/ instead. '
@@ -31,19 +31,21 @@ void main() {
       );
     });
 
-    test('the rule actually bites: core/ and data/ do hold file operations', () {
+    test('the rule actually bites: utils/ and data/ do hold file operations', () {
       // Without this, the guard above would also pass on an empty tree, or if
       // the regex silently stopped matching. A guard that cannot fail is worse
       // than no guard, because it reads as enforcement.
       final inDataLayer = RegExp(r'\bFile\s*\(').hasMatch(
-        tree.dartFilesUnder('lib/src/core').values.join('\n') +
-            tree.dartFilesUnder('lib/src/data').values.join('\n'),
+        tree.dartFilesUnder('lib/core/utils').values.join('\n') +
+            tree.dartFilesUnder('lib/features/notes/data').values.join('\n') +
+            tree.dartFilesUnder('lib/features/settings/data').values.join('\n') +
+            tree.dartFilesUnder('lib/features/widget/data').values.join('\n'),
       );
 
       expect(
         inDataLayer,
         isTrue,
-        reason: 'core/ and data/ are supposed to contain the file operations. '
+        reason: 'utils/ and data/ are supposed to contain the file operations. '
             'If they do not, the scanner is broken, not the code.',
       );
     });

@@ -207,7 +207,7 @@ different `watchExternal` settings.
 
 | § | Rule | Pinned by |
 |---|---|---|
-| 3.1 | Construction lives in a provider | **guard** `isolate_guard_test` · *no widget constructs a repository or a controller*; *the scanner still finds the six types it claims to*; *both roots read the same providers, from the same declarations*; *the theme provider is under ui/, not state/*; **manual** - build a release, change the Windows theme while both surfaces are open |
+| 3.1 | Construction lives in a provider | **guard** `isolate_guard_test` · *no widget constructs a repository or a controller*; *the scanner still finds the six types it claims to*; *both roots read the same providers, from the same declarations*; *the theme provider is under core/theme/, not the app graph*; **manual** - build a release, change the Windows theme while both surfaces are open |
 | 3.2 | `main()` branches and owns the scope | **guard** `isolate_guard_test` * main() builds the scope and passes no state to either root*; **manual** - a probe reading both windows at once |
 | 3.3 | The DI root is not the app root | **manual** - a probe driving the Settings menu and asserting a dialog appears. The `GlobalKey` that patched it is gone and no guard asserts its absence, because a check for "this workaround must not come back" is only worth having next to a reason it might. |
 | 3.4 | Events routed, never double-handled | `widget_integration_test`; **manual** - completing a note in the widget and asserting one write |

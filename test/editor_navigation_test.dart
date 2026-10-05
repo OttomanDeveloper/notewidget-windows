@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/ui/editor/editor_app.dart';
+import 'package:win_notes/features/notes/presentation/screens/editor_app/editor_app.dart';
 
 import 'helpers/provider_harness.dart';
-import 'package:win_notes/src/ui/settings/settings_dialog.dart';
+import 'package:win_notes/features/settings/presentation/screens/settings_dialog/settings_dialog.dart';
 
 /// Tests for the editor surface's own navigation.
 ///

@@ -2,10 +2,11 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/atomic_json_file.dart';
-import 'package:win_notes/src/data/note.dart';
-import 'package:win_notes/src/data/notes_repository.dart';
-import 'package:win_notes/src/state/notes_controller.dart';
+import 'package:win_notes/core/utils/atomic_json_file.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/features/notes/domain/repositories.dart';
+import 'package:win_notes/features/notes/data/notes_repository.dart';
+import 'package:win_notes/features/notes/presentation/providers/notes_controller.dart';
 
 import 'helpers/provider_harness.dart';
 
@@ -60,7 +61,7 @@ void main() {
       final c = await controller();
       await c.load();
       final first = c.createNote()!;
-      first.body = 'first';
+      c.updateNote(first.id, body: 'first');
       final second = c.createNote()!;
       expect(c.notes.first.id, second.id);
 
@@ -97,9 +98,10 @@ void main() {
       final c = await controller();
       await c.load();
       final a = c.createNote()!;
-      a.title = 'A';
+      c.updateNote(a.id, title: 'A');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      (c.createNote()!).title = 'B';
+      final b = c.createNote()!;
+      c.updateNote(b.id, title: 'B');
 
       final orderBefore = c.notes.map((n) => n.id).toList();
       c.updateNote(a.id, title: 'A', body: '');
@@ -151,13 +153,15 @@ void main() {
 
       expect(note.isCompleted, isFalse);
 
+      // Re-read after each toggle: notes are immutable, so the held object
+      // never changes - only the state does.
       c.toggleCompleted(note.id);
-      expect(note.isCompleted, isTrue);
-      expect(note.completedAt, isNotNull);
+      expect(c.selectedNote!.isCompleted, isTrue);
+      expect(c.selectedNote!.completedAt, isNotNull);
 
       c.toggleCompleted(note.id);
-      expect(note.isCompleted, isFalse);
-      expect(note.completedAt, isNull);
+      expect(c.selectedNote!.isCompleted, isFalse);
+      expect(c.selectedNote!.completedAt, isNull);
     });
 
     test('finishing a note does not reorder the list', () async {
@@ -168,13 +172,13 @@ void main() {
       final c = await controller();
       await c.load();
       final first = c.createNote()!;
-      first.title = 'older';
+      c.updateNote(first.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final second = c.createNote()!;
-      second.title = 'newer';
+      c.updateNote(second.id, title: 'newer');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final third = c.createNote()!;
-      third.title = 'newest';
+      c.updateNote(third.id, title: 'newest');
 
       expect(c.notes.map((n) => n.title), ['newest', 'newer', 'older']);
       final stampsBefore = {for (final n in c.notes) n.id: n.updatedAt};
@@ -225,13 +229,13 @@ void main() {
       final c = await controller();
       await c.load();
       final older = c.createNote()!;
-      older.title = 'older';
+      c.updateNote(older.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final newer = c.createNote()!;
-      newer.title = 'newer';
+      c.updateNote(newer.id, title: 'newer');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final newest = c.createNote()!;
-      newest.title = 'newest';
+      c.updateNote(newest.id, title: 'newest');
 
       // With nothing picked. createNote selects what it makes, and that is a
       // deliberate choice the preference must not override - see the test below.
@@ -250,10 +254,10 @@ void main() {
       final c = await controller();
       await c.load();
       final a = c.createNote()!;
-      a.title = 'a';
+      c.updateNote(a.id, title: 'a');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final b = c.createNote()!;
-      b.title = 'b';
+      c.updateNote(b.id, title: 'b');
 
       c.toggleCompleted(a.id);
       c.toggleCompleted(b.id);
@@ -270,10 +274,10 @@ void main() {
       final c = await controller();
       await c.load();
       final older = c.createNote()!;
-      older.title = 'older';
+      c.updateNote(older.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final newer = c.createNote()!;
-      newer.title = 'newer';
+      c.updateNote(newer.id, title: 'newer');
       c.toggleCompleted(newer.id);
 
       c.select(older.id);
@@ -518,8 +522,10 @@ void main() {
     test('a whitespace-only query shows everything', () async {
       final c = await controller();
       await c.load();
-      (c.createNote()!).title = 'A';
-      (c.createNote()!).title = 'B';
+      final first0 = c.createNote()!;
+      c.updateNote(first0.id, title: 'A');
+      final second0 = c.createNote()!;
+      c.updateNote(second0.id, title: 'B');
       c.setQuery('   ');
       expect(c.visibleNotes, hasLength(2));
     });
@@ -529,7 +535,8 @@ void main() {
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, title: 'Groceries');
-      (c.createNote()!).title = 'Other';
+      final other = c.createNote()!;
+      c.updateNote(other.id, title: 'Other');
       c.setQuery('groceries');
       expect(c.visibleNotes, hasLength(1));
       c.setQuery('');
@@ -542,10 +549,10 @@ void main() {
       final c = await controller();
       await c.load();
       final a = c.createNote()!;
-      a.title = 'older';
+      c.updateNote(a.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
       final b = c.createNote()!;
-      b.title = 'newer';
+      c.updateNote(b.id, title: 'newer');
 
       c.select(null);
       expect(c.selectedNote!.id, b.id);
@@ -716,7 +723,8 @@ void main() {
     test('replaceAll swaps the whole library', () async {
       final c = await controller();
       await c.load();
-      (c.createNote()!).title = 'old';
+      final old = c.createNote()!;
+      c.updateNote(old.id, title: 'old');
 
       final incoming = [
         Note(
@@ -735,7 +743,8 @@ void main() {
     test('merge keeps existing notes and selects the new one', () async {
       final c = await controller();
       await c.load();
-      (c.createNote()!).title = 'existing';
+      final existing = c.createNote()!;
+      c.updateNote(existing.id, title: 'existing');
 
       c.merge([
         Note(
@@ -753,7 +762,8 @@ void main() {
     test('merging nothing does nothing', () async {
       final c = await controller();
       await c.load();
-      (c.createNote()!).title = 'only';
+      final only = c.createNote()!;
+      c.updateNote(only.id, title: 'only');
       c.merge([]);
       expect(c.notes, hasLength(1));
     });

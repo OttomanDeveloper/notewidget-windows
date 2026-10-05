@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/data/note.dart';
-import 'package:win_notes/src/data/notes_repository.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/features/notes/data/notes_repository.dart';
 
 void main() {
   const backup = BackupService();

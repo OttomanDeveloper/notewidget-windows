@@ -62,8 +62,23 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'analyzer reported problems; refusing to package' }
 
     Write-Host 'building the release'
-    flutter build windows --release
+    # `--obfuscate --split-debug-info` is `flutter_architecture_pattern.md` §7.3, and
+    # it is here rather than in a comment because a flag nobody passes is a flag that
+    # is not happening. It renames Dart symbols in `app.so`, which is otherwise a
+    # readable map of every class, method and string in the app; the symbol file goes
+    # to `build/symbols` so a crash report from somebody else can still be read.
+    #
+    # Not obfuscated in debug: stack traces from a developer are worth more readable
+    # than they are worth short, and this only runs for a release artifact.
+    flutter build windows --release --obfuscate --split-debug-info=build/symbols
     if ($LASTEXITCODE -ne 0) { throw 'flutter build failed' }
+
+    $symbols = Join-Path $root 'build\symbols'
+    if (-not (Test-Path $symbols)) {
+        # An obfuscated build without a symbol file produces a crash report nobody
+        # can read, so this is a failure rather than a note.
+        throw "release build succeeded but there is no symbol file at $symbols."
+    }
 
     $built = Join-Path $root 'build\windows\x64\runner\Release'
     $exe = Join-Path $built 'win_notes.exe'

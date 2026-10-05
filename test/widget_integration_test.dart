@@ -3,14 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/atomic_json_file.dart';
-import 'package:win_notes/src/data/note.dart';
-import 'package:win_notes/src/data/notes_repository.dart';
-import 'package:win_notes/src/state/settings_controller.dart';
-import 'package:win_notes/src/ui/common/completion_toggle.dart';
-import 'package:win_notes/src/ui/theme.dart';
-import 'package:win_notes/src/ui/widget/widget_note_card.dart';
-import 'package:win_notes/src/ui/widget/widget_surface.dart';
+import 'package:win_notes/core/utils/atomic_json_file.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/features/notes/data/notes_repository.dart';
+import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
+import 'package:win_notes/core/widgets/completion_toggle/completion_toggle.dart';
+import 'package:win_notes/core/theme/theme.dart';
+import 'package:win_notes/features/widget/presentation/widgets/widget_note_card/widget_note_card.dart';
+import 'package:win_notes/features/widget/presentation/screens/widget_surface/widget_surface.dart';
+import 'package:win_notes/features/widget/presentation/widgets/composer_button/composer_button.dart';
+import 'package:win_notes/features/widget/presentation/widgets/composer_field/composer_field.dart';
 
 import 'helpers/provider_harness.dart';
 
@@ -175,7 +177,7 @@ void main() {
         tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
     expect(cards.first.focused, isTrue);
     expect(cards.first.roomy, isTrue);
-    expect(cards.first.note.id, 'new');
+    expect(cards.first.noteId, 'new');
     expect(cards.skip(1).every((c) => !c.roomy || !c.focused), isTrue);
   });
 
@@ -205,7 +207,7 @@ void main() {
     expect(controller.focusedNote!.id, 'old');
     final cards =
         tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
-    expect(cards.first.note.id, 'old');
+    expect(cards.first.noteId, 'old');
     expect(cards.first.focused, isTrue);
   });
 

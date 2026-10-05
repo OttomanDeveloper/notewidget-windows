@@ -10,10 +10,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/app_paths.dart';
-import 'package:win_notes/src/data/settings.dart';
-import 'package:win_notes/src/data/storage_location.dart';
-import 'package:win_notes/src/data/storage_transfer.dart';
+import 'package:win_notes/core/utils/app_paths.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
+import 'package:win_notes/features/settings/data/storage_location.dart';
+import 'package:win_notes/features/settings/data/storage_transfer.dart';
 
 void main() {
   late Directory root;

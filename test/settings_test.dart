@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/data/hotkey_binding.dart';
-import 'package:win_notes/src/data/settings.dart';
-import 'package:win_notes/src/data/settings_repository.dart';
+import 'package:win_notes/features/settings/domain/hotkey_binding.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
+import 'package:win_notes/features/widget/data/widget_state_repository.dart';
 
 void main() {
   group('HotkeyBinding', () {

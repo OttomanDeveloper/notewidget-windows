@@ -29,7 +29,7 @@ void main() {
     late String code;
 
     setUpAll(() {
-      code = _code(tree.read('lib/src/core/atomic_json_file.dart'));
+      code = _code(tree.read('lib/core/utils/atomic_json_file.dart'));
     });
 
     test('the subscription is on the parent directory', () {
@@ -99,7 +99,7 @@ void main() {
     late String backupService;
 
     setUpAll(() {
-      backupService = tree.read('lib/src/data/notes_repository.dart');
+      backupService = tree.read('lib/features/notes/data/notes_repository.dart');
     });
 
     test('exportTo goes through the atomic writer', () {
@@ -116,7 +116,7 @@ void main() {
       // the backup afterwards would copy the file just written over the backup,
       // leaving the previous version gone. This is exactly what happened while
       // extracting the helper, so it is asserted rather than trusted.
-      final atomic = tree.read('lib/src/core/atomic_json_file.dart');
+      final atomic = tree.read('lib/core/utils/atomic_json_file.dart');
       final hookIndex = atomic.indexOf('beforeReplace?.call()');
       final renameIndex = atomic.indexOf('await temp.rename(path)');
 
@@ -131,7 +131,7 @@ void main() {
     });
 
     test('the export does not write the destination directly', () {
-      final editor = _code(tree.read('lib/src/ui/editor/editor_app.dart'));
+      final editor = _code(tree.read('lib/features/notes/presentation/screens/editor_app/editor_app.dart'));
       expect(
         editor.contains('.writeAsString'),
         isFalse,
@@ -153,8 +153,8 @@ void main() {
       expect(
         writers,
         equals(<String>{
-          'lib/src/state/notes_controller.dart',
-          'lib/src/state/widget_controller.dart',
+          'lib/features/notes/presentation/providers/notes_controller.dart',
+          'lib/features/widget/presentation/providers/widget_controller.dart',
         }),
         reason: 'notes.json has one writer by rule. The editor notifier is it; the\n'
             'widget notifier may write *only* when the runner has said no editor is\n'
@@ -169,7 +169,7 @@ void main() {
       // memory for a quarter of a second before they reach disk, so a toggle written
       // from here inside that window overwrites them and silently loses whatever was
       // typed. The runner is asked who owns the file, and the answer decides.
-      final source = tree.read('lib/src/state/widget_controller.dart');
+      final source = tree.read('lib/features/widget/presentation/providers/widget_controller.dart');
       final unguarded = _methodNamesWritingNotesWithoutAsking(source);
 
       expect(
@@ -188,7 +188,7 @@ void main() {
       // writes unconditionally, the widget asks. A future change that made the
       // editor ask would mean a hotkey race on startup; one that made the widget
       // write unconditionally would mean a lost-keystroke race on every toggle.
-      final source = tree.read('lib/src/state/notes_controller.dart');
+      final source = tree.read('lib/features/notes/presentation/providers/notes_controller.dart');
 
       expect(
         source.contains('isEditorRunning'),

@@ -365,7 +365,7 @@ afterwards. All five went red; all five returned to green.
 
 | Broken on purpose | Guard that caught it |
 |---|---|
-| `dart:io` reintroduced into `editor_app.dart` | `layer_test` → *no file operation appears in ui/, state/ or platform/* |
+| `dart:io` reintroduced into `editor_app.dart` | `layer_test` → *no file operation appears in presentation, theme or platform/* |
 | `HitTest` made to return `HTCAPTION` | `widget_guard_test` → *the runner never answers HTCAPTION* |
 | `.bak` taken **after** the rename | `storage_guard_test` → *the backup is taken before the replace, not after* |
 | A `_fire` call with no runner handler | `layer_test` → *every method called from Dart is handled by the runner* |

@@ -1,0 +1,99 @@
+import 'dart:io';
+
+import './note.dart';
+
+/// Result of loading the notes document.
+sealed class NotesLoadResult {
+  const NotesLoadResult();
+}
+
+class NotesLoaded extends NotesLoadResult {
+  const NotesLoaded(this.notes);
+  final List<Note> notes;
+}
+
+/// The file exists but could not be read.
+///
+/// Carries the path so the UI can offer it as an import target later, which is
+/// how a backup gets restored by hand without this app having to parse it.
+class NotesCorrupt extends NotesLoadResult {
+  const NotesCorrupt(this.error);
+  final CorruptDataFileError error;
+}
+
+/// What the recovery screen shows about a file it could not read.
+typedef FileDescription = ({int bytes, DateTime changed});
+
+/// What a corrupt file looks like above the `dart:io` line, so the UI never
+/// imports it directly. Built once, in `data/`, from the caught error.
+class CorruptDataFileError {
+  const CorruptDataFileError(this.path, this.reason, {this.transient = false});
+  final String path;
+  final String reason;
+
+  /// Whether the file may simply be held open by something else right now.
+  ///
+  /// Carried through rather than derived, because the difference decides what the
+  /// screen says and offers: a file that is being scanned is intact, and telling
+  /// someone their notes are broken - then offering to start over - is the wrong
+  /// thing to do about it.
+  final bool transient;
+}
+
+/// What happened when someone tried to get past an unreadable file.
+///
+/// Returned rather than thrown, because every one of these is an expected thing
+/// for a person to try and every one of them has something to say afterwards.
+/// The screen has to distinguish "there was nothing to restore" from "the file is
+/// locked, try in a moment" from "I moved it aside", because the advice is
+/// different in each case.
+enum RecoveryOutcome {
+  /// No rolling backup existed, so there was nothing to restore from.
+  nothingToRecover,
+
+  /// The rolling backup was read and put back.
+  restoredBackup,
+
+  /// The unreadable file was moved aside and a fresh one created.
+  startedFresh,
+
+  /// Something else is holding the file, so it could not be moved.
+  fileIsHeld,
+}
+
+/// Owns `notes.json`. The interface the providers depend on; the file in
+/// `data/` is the only implementation.
+abstract interface class INotesRepository {
+  Future<NotesLoadResult> load();
+  void save(List<Note> notes);
+  Future<void> saveNow(List<Note> notes);
+  void watch(void Function() onChanged);
+  void unblock();
+  String? get backupPath;
+  Future<int?> restoreBackup();
+  Future<String?> setAsideAndStartFresh();
+  Future<NotesLoadResult> loadFrom(File file);
+  Future<void> flush();
+  Future<void> dispose();
+  String get path;
+}
+
+/// Which note is focused. The interface the providers depend on.
+abstract interface class ISelectionRepository {
+  String? get cached;
+  String? readSelection();
+  void setSelection(String? noteId);
+  void watch(void Function() onChanged);
+  Future<void> flush();
+  Future<void> dispose();
+}
+
+/// Plain-text backup in both directions. The interface is thin on purpose:
+/// this is a pure function object with no state, and the only implementation
+/// lives beside it in `data/`.
+abstract interface class IBackupService {
+  String export(List<Note> notes);
+  Future<String> exportTo(String path, List<Note> notes);
+  Future<List<Note>?> readFrom(String path);
+  List<Note> import(String text);
+}

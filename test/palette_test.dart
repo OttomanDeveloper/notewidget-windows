@@ -3,16 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/atomic_json_file.dart';
-import 'package:win_notes/src/data/settings.dart';
-import 'package:win_notes/src/data/settings_repository.dart';
-import 'package:win_notes/src/platform/shell_channel.dart';
-import 'package:win_notes/src/state/settings_controller.dart';
+import 'package:win_notes/core/utils/atomic_json_file.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
+import 'package:win_notes/features/settings/data/settings_repository.dart';
+import 'package:win_notes/core/platform/shell_channel.dart';
+import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
 
 import 'helpers/provider_harness.dart';
-import 'package:win_notes/src/ui/palette.dart';
-import 'package:win_notes/src/ui/settings/settings_dialog.dart';
-import 'package:win_notes/src/ui/theme.dart';
+import 'package:win_notes/core/theme/palette.dart';
+import 'package:win_notes/features/settings/presentation/screens/settings_dialog/settings_dialog.dart';
+import 'package:win_notes/core/theme/theme.dart';
 
 /// Keys the picker publishes, so a test aims at a swatch without reverse-
 /// engineering the wrap order.

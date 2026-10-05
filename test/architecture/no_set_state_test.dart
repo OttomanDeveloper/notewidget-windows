@@ -99,7 +99,12 @@ void main() {
       // contain something that listens to one. It cannot prove *which* notifier is
       // wired, and it is not claiming to - it is claiming that the replacement for
       // `setState` was used as a replacement, rather than as a field.
-      final declares = countPerFile(tree, 'lib/src/ui', r'\bValueNotifier<');
+      final declares = <String, int>{};
+      for (final layer in ['lib/features', 'lib/core/widgets']) {
+        for (final entry in countPerFile(tree, layer, r'\bValueNotifier<').entries) {
+          declares[entry.key] = (declares[entry.key] ?? 0) + entry.value;
+        }
+      }
       expect(declares, isNotEmpty, reason: 'precondition: the pattern is in use');
 
       final silent = <String, String>{};

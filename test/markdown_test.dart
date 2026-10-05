@@ -4,15 +4,19 @@ import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/atomic_json_file.dart';
-import 'package:win_notes/src/data/note.dart';
-import 'package:win_notes/src/data/notes_repository.dart';
-import 'package:win_notes/src/ui/common/markdown_text.dart';
-import 'package:win_notes/src/ui/editor/note_editor_pane.dart';
-import 'package:win_notes/src/ui/editor/note_list_pane.dart';
-import 'package:win_notes/src/ui/theme.dart';
-import 'package:win_notes/src/ui/widget/widget_note_card.dart';
+import 'package:win_notes/core/utils/atomic_json_file.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/features/notes/data/notes_repository.dart';
+import 'package:win_notes/core/widgets/markdown_text/markdown_text.dart';
+import 'package:win_notes/core/widgets/markdown_density/markdown_density.dart';
+import 'package:win_notes/features/notes/presentation/widgets/note_editor_pane/note_editor_pane.dart';
+import 'package:win_notes/features/notes/presentation/widgets/markdown_toggle_button/markdown_toggle_button.dart';
+import 'package:win_notes/features/notes/presentation/widgets/note_list_pane/note_list_pane.dart';
+import 'package:win_notes/core/theme/theme.dart';
+import 'package:win_notes/features/widget/presentation/providers/widget_providers.dart';
+import 'package:win_notes/features/widget/presentation/widgets/widget_note_card/widget_note_card.dart';
 
 import 'helpers/file_io.dart';
 import 'helpers/provider_harness.dart';
@@ -29,24 +33,29 @@ Future<void> pumpCard(
   Brightness brightness = Brightness.light,
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      theme: buildWinNotesTheme(
-        brightness: brightness,
-        highContrast: false,
-      ),
-      home: Scaffold(
-        body: Center(
-          child: SizedBox(
-            width: roomy ? 340 : 170,
-            height: roomy ? 400 : 150,
-            child: WidgetNoteCard(
-              note: theNote,
-              focused: true,
-              roomy: roomy,
-              dark: brightness == Brightness.dark,
-              accent: WinNotesColors.coral,
-              onTap: () {},
-              onToggleCompleted: () {},
+    ProviderScope(
+      overrides: [
+        widgetNoteByIdProvider(theNote.id).overrideWithValue(theNote),
+      ],
+      child: MaterialApp(
+        theme: buildWinNotesTheme(
+          brightness: brightness,
+          highContrast: false,
+        ),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: roomy ? 340 : 170,
+              height: roomy ? 400 : 150,
+              child: WidgetNoteCard(
+                noteId: theNote.id,
+                focused: true,
+                roomy: roomy,
+                dark: brightness == Brightness.dark,
+                accent: WinNotesColors.coral,
+                onTap: () {},
+                onToggleCompleted: () {},
+              ),
             ),
           ),
         ),
@@ -143,10 +152,10 @@ void main() {
     test('the body is never rewritten by turning it on or off', () {
       // The whole promise of the flag: it decides presentation, not content.
       const source = '# Heading\n\n**bold** and `code`';
-      final n = note('t', source);
-      n.markdown = true;
+      var n = note('t', source);
+      n = n.copyWith(markdown: true);
       expect(n.body, source, reason: 'switching on must not touch the source');
-      n.markdown = false;
+      n = n.copyWith(markdown: false);
       expect(n.body, source, reason: 'and switching off must not either');
     });
   });
@@ -552,7 +561,7 @@ void main() {
 
     testWidgets('a finished markdown card is struck through', (tester) async {
       final finished = note('t', '**bold**', markdown: true)
-        ..completedAt = DateTime(2026);
+          .copyWith(completedAt: DateTime(2026));
       await pumpCard(tester, finished);
 
       // Carried by the enclosing DefaultTextStyle rather than by any one span,

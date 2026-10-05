@@ -47,7 +47,7 @@ void main() {
       // The bootstrap ordering. `settings.json` is how the app learns where anything
       // else is, so it has to be findable before the answer is known — which is why
       // `reportedDirectory` and `dataDirectory` are separate fields rather than one.
-      final paths = tree.read('lib/src/core/app_paths.dart');
+      final paths = tree.read('lib/core/utils/app_paths.dart');
       expect(
         paths,
         matches(RegExp(r'final String\? reportedDirectory;')),
@@ -62,7 +62,7 @@ void main() {
     });
 
     test('the pointer is in the reported directory and the library is not', () {
-      final paths = tree.read('lib/src/core/app_paths.dart');
+      final paths = tree.read('lib/core/utils/app_paths.dart');
       expect(
         paths,
         matches(RegExp(r"settingsPointerFile\s*=>\s*'\$reportedDirectory")),
@@ -78,7 +78,7 @@ void main() {
 
   group('a chosen folder that is gone must not become an empty one', () {
     test('the resolver asks whether the folder is reachable', () {
-      final location = tree.read('lib/src/data/storage_location.dart');
+      final location = tree.read('lib/features/settings/data/storage_location.dart');
       expect(
         location,
         matches(RegExp(r'if \(!isReachable\(pointer\)\) return null;')),
@@ -92,7 +92,7 @@ void main() {
     test('and the reachability check never creates the folder it is asked about', () {
       // The trap this guard exists for: a check that creates what it tests answers
       // "yes" to every path ever pointed at.
-      final location = tree.read('lib/src/data/storage_location.dart');
+      final location = tree.read('lib/features/settings/data/storage_location.dart');
       final body = location.substring(
         location.indexOf('static bool isReachable'),
         location.indexOf('static bool isReachable') + 900,
@@ -129,7 +129,7 @@ void main() {
       // "Copy, never move" is the decision the owner made, and the one that makes
       // this recoverable: a person who has seen the copy arrive can remove the old
       // one themselves. An app that deletes it has taken that away.
-      final transfer = tree.read('lib/src/data/storage_transfer.dart');
+      final transfer = tree.read('lib/features/settings/data/storage_transfer.dart');
 
       // Every delete in the file, with context, so the assertion below can say
       // something useful rather than just "no delete".
@@ -159,7 +159,7 @@ void main() {
     test('a destination that already has notes is refused', () {
       // The other half of "cannot lose notes": pointing at the wrong folder must not
       // destroy a library that was never read.
-      final transfer = tree.read('lib/src/data/storage_transfer.dart');
+      final transfer = tree.read('lib/features/settings/data/storage_transfer.dart');
       expect(
         transfer,
         contains('destinationNotEmpty'),
@@ -183,7 +183,7 @@ void main() {
       // 310 — inside this method's own doc comment, which explains the rule before
       // the code does it. A guard that reads a comment is a guard that passes
       // whatever the code says.
-      final controller = tree.read('lib/src/state/settings_controller.dart');
+      final controller = tree.read('lib/features/settings/presentation/providers/settings_controller.dart');
       final move = controller.substring(
         controller.indexOf('Future<StorageTransferOutcome> moveTo'),
         controller.indexOf('Future<StorageTransferOutcome> moveTo') + 1800,
@@ -206,7 +206,7 @@ void main() {
     test('the pointer is written last', () {
       // Writing the pointer first means a failed transfer leaves the next launch
       // pointing at a folder with no notes in it. That is the whole ordering.
-      final controller = tree.read('lib/src/state/settings_controller.dart');
+      final controller = tree.read('lib/features/settings/presentation/providers/settings_controller.dart');
       final move = controller.substring(
         controller.indexOf('Future<StorageTransferOutcome> moveTo'),
         controller.indexOf('Future<StorageTransferOutcome> moveTo') + 1800,
@@ -226,8 +226,8 @@ void main() {
       // bootstrap read happens before any repository exists. The cost of that being
       // a *drift* rather than a duplication is one shared constant, and this is what
       // holds them to it.
-      final location = tree.read('lib/src/data/storage_location.dart');
-      final settings = tree.read('lib/src/data/settings.dart');
+      final location = tree.read('lib/features/settings/data/storage_location.dart');
+      final settings = tree.read('lib/features/settings/domain/settings.dart');
 
       expect(
         location,
@@ -245,7 +245,7 @@ void main() {
       // their notes. That is the opposite of the notes rule on purpose, and it is
       // worth pinning so a future "let me clean this up" does not make the app refuse
       // to start over a preferences file.
-      final location = tree.read('lib/src/data/storage_location.dart');
+      final location = tree.read('lib/features/settings/data/storage_location.dart');
       final start = location.indexOf('static String? _readKey');
       expect(start, greaterThan(0), reason: 'precondition: the reader exists');
 

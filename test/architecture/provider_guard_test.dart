@@ -105,7 +105,7 @@ void main() {
       // The rule has to leave room for something, or it reads as "no parameters".
       // What it leaves room for is behaviour: `EditorView` takes three callbacks and
       // no state, and that is the shape every widget below the roots should have.
-      final editorView = tree.read('lib/src/ui/editor/editor_view.dart');
+      final editorView = tree.read('lib/features/notes/presentation/screens/editor_screen/editor_screen.dart');
 
       expect(
         editorView.contains('final VoidCallback onOpenSettings;'),
@@ -121,46 +121,38 @@ void main() {
   });
 
   group('a provider file may not grow past the cap', () {
-    // `docs/provider_pattern.md` §3.6 sets 200 lines, and two files are over it:
-    // `notes_controller.dart` at 637 and `widget_controller.dart` at 413. That is
-    // recorded in `AGENTS.md` §4 rather than hidden, so the rule currently reads as
-    // broken.
-    //
-    // This group does not pretend otherwise. It makes the breach *bounded in one
-    // direction*: a third file over the cap is a red build. Without that, "we are
-    // already over" quietly becomes "we are all over", and a cap that is already
-    // violated is not a cap - it is a number in a document. The two existing
-    // breaches stay visible and named, and the count is what gets pinned.
+    // §2 sets 300 lines, code only. One file is over it: `notes_controller.dart`
+    // at 333. Recorded in `AGENTS.md` §4 rather than hidden. The split from
+    // `provider_pattern.md` §3.6 (list/selection/search vs corrupt-file recovery)
+    // lands separately; until then the breach is bounded in one direction: a
+    // second file over the cap is a red build.
     test('no more provider files are over the cap than are already recorded', () {
-      const cap = 200;
+      const cap = 300;
 
-      // Named, so the message can say which is which rather than "3 files, expected
-      // 2", and so the removal half below has something to check against.
-      const known = <String>{
-        'lib/src/state/notes_controller.dart',
-        'lib/src/state/settings_controller.dart',
-        'lib/src/state/widget_controller.dart',
-      };
+      // Empty since the notes split: no provider file is over the cap. Kept as
+      // a set rather than deleted so the next breach has a named place to go,
+      // and the removal half below keeps checking the record is current.
+      const known = <String>{};
 
-      final over = _filesOverCap(
-        tree.dartFilesUnderRelative('lib/src/state'),
+      final over = _filesOverCodeOnlyCap(
+        _providerFiles(tree),
         cap,
       );
 
       expect(
         over.keys.toSet().difference(known),
         isEmpty,
-        reason: 'A new file is over the $cap-line cap in `lib/src/state/`.\n'
+        reason: 'A new file is over the $cap-line code-only cap in a providers/ dir.\n'
             '  over the cap: ${over.entries.map((e) => '${e.key} (${e.value})').join(', ')}\n'
             '  already recorded in AGENTS.md §4: ${(known.toList()..sort()).join(', ')}\n\n'
-            'Split it before adding to it. Two files over the cap is recorded debt; '
-            'three is drift, and the only difference between the two is whether '
+            'Split it before adding to it. One file over the cap is recorded debt; '
+            'two is drift, and the only difference between the two is whether '
             'anything notices.',
       );
 
-      // And the recorded two must still be the ones that are over, so a split that
-      // brings one under the cap has to update the record in the same commit rather
-      // than leaving a file named as a breach that no longer is.
+      // And the recorded breach must still be the one that is over, so a split
+      // that brings it under the cap has to update the record in the same commit
+      // rather than leaving a file named as a breach that no longer is.
       expect(
         known.difference(over.keys.toSet()),
         isEmpty,
@@ -175,27 +167,31 @@ void main() {
     test('the scanner measures what it claims to measure', () {
       // A cap guard that silently measures nothing passes forever, and the way it
       // silently measures nothing is by keying on paths that never match. So this
-      // asks for the two named files directly rather than trusting the absence in
+      // asks for the split files directly rather than trusting the absence in
       // the test above to mean anything.
-      final over = _filesOverCap(
-        tree.dartFilesUnderRelative('lib/src/state'),
-        200,
+      final over = _filesOverCodeOnlyCap(
+        _providerFiles(tree),
+        300,
       );
 
       expect(
         over,
-        containsPair('lib/src/state/notes_controller.dart', 637),
-        reason: 'precondition: `notes_controller.dart` is 637 lines against a cap of '
-            '200, so it must appear with that count. The number changes as the split '
-            'lands - update it then, and in `AGENTS.md` §4 in the same change.',
+        isEmpty,
+        reason: 'precondition: no provider file is over the cap after the split.',
       );
+      for (final split in [
+        'lib/features/notes/presentation/providers/notes_controller.dart',
+        'lib/features/notes/presentation/providers/notes_state.dart',
+      ]) {
+        expect(
+          _providerFiles(tree).keys,
+          contains(split),
+          reason: 'precondition: the split file $split is scanned, or the '
+              'emptiness above is vacuous.',
+        );
+      }
       expect(
-        over.keys,
-        contains('lib/src/state/widget_controller.dart'),
-        reason: 'precondition: and `widget_controller.dart` is over the cap too.',
-      );
-      expect(
-        _filesOverCap(tree.dartFilesUnderRelative('lib/src/state'), 10000),
+        _filesOverCodeOnlyCap(_providerFiles(tree), 10000),
         isEmpty,
         reason: 'precondition: a cap of 10000 excludes everything, so the scanner '
             'does discriminate rather than always returning a set.',
@@ -204,15 +200,49 @@ void main() {
   });
 }
 
-/// Files over [cap] lines, keyed by repo-relative path with forward slashes.
-Map<String, int> _filesOverCap(
+/// Code-only line count per §2: imports, blank lines and comments do not count.
+int _codeOnlyLines(List<String> lines) {
+  var n = 0;
+  for (final line in lines) {
+    final trimmed = line.trimLeft();
+    if (trimmed.isEmpty) continue;
+    if (trimmed.startsWith('//')) continue;
+    if (trimmed.startsWith('import ') ||
+        trimmed.startsWith('export ') ||
+        trimmed == 'library;') {
+      continue;
+    }
+    n++;
+  }
+  return n;
+}
+
+/// Files over [cap] code-only lines, keyed by repo-relative path.
+Map<String, int> _filesOverCodeOnlyCap(
   Map<String, List<String>> files,
   int cap,
 ) {
   final out = <String, int>{};
   for (final entry in files.entries) {
-    final lines = entry.value.length;
+    final lines = _codeOnlyLines(entry.value);
     if (lines > cap) out[entry.key] = lines;
   }
   return out;
 }
+
+/// Every file that may hold a provider: the three feature providers dirs plus
+/// the shared graph in `core/utils`. Narrow on purpose: a screen or widget file
+/// over the cap is a §2 matter, not a provider matter.
+Map<String, List<String>> _providerFiles(SourceTree tree) => {
+      ...tree.dartFilesUnderRelative(
+        'lib/features/notes/presentation/providers',
+      ),
+      ...tree.dartFilesUnderRelative(
+        'lib/features/widget/presentation/providers',
+      ),
+      ...tree.dartFilesUnderRelative(
+        'lib/features/settings/presentation/providers',
+      ),
+      'lib/core/utils/app_providers.dart':
+          tree.read('lib/core/utils/app_providers.dart').split('\n'),
+    };

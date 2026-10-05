@@ -107,6 +107,16 @@ class SourceTree {
 // properly. A scanner that only returns a bool forces every failure message to
 // be reconstructed inside the scanner, which is where good messages go to die.
 
+/// The subset of [layers] that exists on disk.
+///
+/// Widget dirs appear as the splits land (`settings/presentation/widgets` does
+/// not exist until the dialog is split). Throwing on a missing dir would make
+/// every widget split a guard fix first; silently defaulting would hide a typo.
+/// The middle ground: skip what is absent, and let the decision table say which
+/// dirs are expected to exist by the end.
+List<String> _existingLayers(SourceTree tree, List<String> layers) =>
+    layers.where(tree.exists).toList();
+
 /// `dart:io` file operations are confined to `core/` and `data/`.
 ///
 /// `docs/storage_pattern.md` §6 and `AGENTS.md` §3.
@@ -128,7 +138,13 @@ List<String> findFileOperationsOutsideDataLayer(SourceTree tree) {
     r'''\.lastModifiedSync|\.createSync''',
   );
   final violations = <String>[];
-  for (final layer in ['lib/src/ui', 'lib/src/state', 'lib/src/platform']) {
+  for (final layer in _existingLayers(tree, [
+    'lib/features/notes/presentation',
+    'lib/features/widget/presentation',
+    'lib/features/settings/presentation',
+    'lib/core/platform',
+    'lib/core/widgets',
+  ])) {
     for (final entry in tree.dartFilesUnder(layer).entries) {
       // Comments are allowed to say "dart:io" — two of ours do, and both do it
       // to explain why the UI must not use it. Only real code counts.
@@ -146,14 +162,14 @@ List<String> findFileOperationsOutsideDataLayer(SourceTree tree) {
   return violations;
 }
 
-/// Only `platform/` constructs a `MethodChannel`.
+/// Only `core/platform` constructs a `MethodChannel`.
 ///
 /// `AGENTS.md` §3. Everything else goes through `ShellChannel`, so that the set
 /// of method names lives in one file and can be checked against the runner.
 List<String> findChannelsOutsidePlatform(SourceTree tree) {
   final violations = <String>[];
-  for (final entry in tree.dartFilesUnder('lib/src').entries) {
-    if (entry.key.replaceAll(r'\', '/').contains('/platform/')) continue;
+  for (final entry in tree.dartFilesUnder('lib').entries) {
+    if (entry.key.replaceAll(r'\', '/').contains('/core/platform/')) continue;
     for (var i = 0; i < entry.value.length; i++) {
       final line = entry.value[i];
       if (line.trimLeft().startsWith('//')) continue;
@@ -178,7 +194,7 @@ Set<String> dartMethodNames(SourceTree tree) {
   final names = <String>{};
   final literal = RegExp(r"""_fire\(\s*'([^']+)'""");
   final invoke = RegExp(r"""_invoke(?:<[^>]*>)?\(\s*'([^']+)'""");
-  for (final entry in tree.dartFilesUnder('lib/src').entries) {
+  for (final entry in tree.dartFilesUnder('lib').entries) {
     for (final line in entry.value) {
       for (final m in literal.allMatches(line)) {
         names.add(m.group(1)!);
@@ -567,7 +583,7 @@ const Set<String> approvedDependencies = <String>{
   // The CommonMark parser. Added 2026-10-04 with the reversal of "no Markdown".
   // Everything the package does *not* do - the renderer, the two density
   // budgets, the palette styling, what is deliberately not rendered - is in
-  // `lib/src/ui/common/markdown_text.dart` and is owned here.
+  // `lib/core/widgets/markdown_text/markdown_text.dart` and is owned here.
   'markdown',
 
   // State management and DI. Added 2026-10-05, completing the provider pattern
@@ -865,9 +881,18 @@ Map<String, int> injectedStateParamCounts(SourceTree tree) {
   final classLine = RegExp(r'^\s*class\s+(\w+)', multiLine: true);
 
   final counts = <String, int>{};
-  for (final entry in tree.dartFilesUnder('lib/src/ui').entries) {
-    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
-    final source = entry.value.join('\n');
+  for (final layer in _existingLayers(tree, [
+    'lib/features/notes/presentation/screens',
+    'lib/features/notes/presentation/widgets',
+    'lib/features/widget/presentation/screens',
+    'lib/features/widget/presentation/widgets',
+    'lib/features/settings/presentation/screens',
+    'lib/features/settings/presentation/widgets',
+    'lib/core/widgets',
+  ])) {
+    for (final entry in tree.dartFilesUnder(layer).entries) {
+      final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+      final source = entry.value.join('\n');
 
     // Offsets of every class declaration, so a hit can be attributed to one.
     final declarations = <int, String>{};
@@ -882,6 +907,7 @@ Map<String, int> injectedStateParamCounts(SourceTree tree) {
       if (_isWidgetClass(source, owner)) found++;
     }
     if (found > 0) counts[path] = found;
+    }
   }
   return counts;
 }
@@ -908,17 +934,34 @@ bool _isWidgetClass(String source, int offset) {
   return RegExp(r'extends\s+[\w<>,\s]*?(Widget|State<)\b').hasMatch(header);
 }
 
-/// Every repository or controller constructed inside `lib/src/ui/`.
+/// Every repository or controller constructed where widgets live.
 ///
 /// `AGENTS.md` §0.9 and `docs/isolate_pattern.md` §3.1: construction belongs to a
 /// provider, so that both surfaces build the same graph instead of each writing
-/// its own.
-Map<String, int> uiConstructionCounts(SourceTree tree) => countPerFile(
+/// its own. Scoped to screens and widgets, not the providers dirs - building a
+/// repository inside its provider file is the rule, not the violation.
+Map<String, int> uiConstructionCounts(SourceTree tree) {
+  final out = <String, int>{};
+  for (final layer in _existingLayers(tree, [
+    'lib/features/notes/presentation/screens',
+    'lib/features/notes/presentation/widgets',
+    'lib/features/widget/presentation/screens',
+    'lib/features/widget/presentation/widgets',
+    'lib/features/settings/presentation/screens',
+    'lib/features/settings/presentation/widgets',
+    'lib/core/widgets',
+  ])) {
+    for (final entry in countPerFile(
       tree,
-      'lib/src/ui',
+      layer,
       r'\b(?:Notes|Settings|WidgetState|Selection)Repository\s*\(|\b'
       r'(?:Notes|Settings|Widget)Controller\s*\(',
-    );
+    ).entries) {
+      out[entry.key] = (out[entry.key] ?? 0) + entry.value;
+    }
+  }
+  return out;
+}
 
 /// Every method name Dart sends to the runner, across **all four** dispatch idioms.
 ///
@@ -943,7 +986,7 @@ Map<String, int> uiConstructionCounts(SourceTree tree) => countPerFile(
 ///  4. `methodChannel.invokeMapMethod<T,V>('name')` - as 3, returning a map.
 Set<String> channelMethodNames(SourceTree tree) {
   final names = <String>{};
-  final text = tree.read('lib/src/platform/shell_channel.dart');
+  final text = tree.read('lib/core/platform/shell_channel.dart');
 
   final idioms = <RegExp>[
     RegExp(r"_fire\s*\(\s*'([^']+)'"),
@@ -973,7 +1016,7 @@ Set<String> channelMethodNames(SourceTree tree) {
 /// `docs/platform_pattern.md` §3.3 says to avoid: they reach the channel without a
 /// helper, so each one re-decides its own failure policy.
 Map<String, Set<String>> channelMethodNamesByIdiom(SourceTree tree) {
-  final text = tree.read('lib/src/platform/shell_channel.dart');
+  final text = tree.read('lib/core/platform/shell_channel.dart');
   final out = <String, Set<String>>{
     'fire': <String>{},
     'invoke': <String>{},
