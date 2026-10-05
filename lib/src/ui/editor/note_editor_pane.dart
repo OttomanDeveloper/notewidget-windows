@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/note.dart';
@@ -24,14 +25,12 @@ const double _previewThreshold = 460;
 ///
 /// Editing is plain text because the widget shows plain text too. Rich text
 /// would only be readable in one of the two places.
-class NoteEditorPane extends StatefulWidget {
+class NoteEditorPane extends ConsumerStatefulWidget {
   const NoteEditorPane({
     super.key,
-    required this.controller,
     this.onBack,
   });
 
-  final NotesController controller;
 
   /// Only supplied in the narrow layout, where the editor covers the list.
   final VoidCallback? onBack;
@@ -39,10 +38,10 @@ class NoteEditorPane extends StatefulWidget {
   bool get hasBack => onBack != null;
 
   @override
-  State<NoteEditorPane> createState() => _NoteEditorPaneState();
+  ConsumerState<NoteEditorPane> createState() => _NoteEditorPaneState();
 }
 
-class _NoteEditorPaneState extends State<NoteEditorPane> {
+class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
   final TextEditingController _title = TextEditingController();
   final TextEditingController _body = TextEditingController();
   final FocusNode _titleFocus = FocusNode();
@@ -55,10 +54,11 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
   /// Reset when the note changes, because carrying "I was reading the preview"
   /// across to a different note would drop someone into a rendered view of text
   /// they did not write, with no caret and nothing to type into.
-  bool _narrowShowsPreview = false;
+  final ValueNotifier<bool> _narrowShowsPreview = ValueNotifier<bool>(false);
 
   @override
   void dispose() {
+    _narrowShowsPreview.dispose();
     _title.dispose();
     _body.dispose();
     _titleFocus.dispose();
@@ -71,8 +71,8 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
   /// Guarded on [Note.id] rather than on a diff of the text: an incoming change
   /// from the widget surface or an undo has to overwrite the fields even when
   /// the text happens to match, or the caret would sit in stale content.
-  void _syncToSelected(NotesController controller, {bool focusBody = false}) {
-    final note = controller.selectedNote;
+  void _syncToSelected(NotesState? state, NotesNotifier notifier, {bool focusBody = false}) {
+    final note = state?.selectedNote;
     if (note == null) {
       _loadedNoteId = null;
       _title.clear();
@@ -84,7 +84,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
       _title.text = note.title;
       _body.text = note.body;
       // Back to the source on every note change; see _narrowShowsPreview.
-      _narrowShowsPreview = false;
+      _narrowShowsPreview.value = false;
       _title.selection = TextSelection.collapsed(offset: _title.text.length);
       _body.selection = TextSelection.collapsed(offset: _body.text.length);
     }
@@ -93,14 +93,14 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
     }
   }
 
-  void _pushToModel(NotesController controller) {
+  void _pushToModel(NotesNotifier notifier) {
     final id = _loadedNoteId;
     if (id == null) return;
-    controller.updateNote(id, title: _title.text, body: _body.text);
+    notifier.updateNote(id, title: _title.text, body: _body.text);
   }
 
-  Future<void> _deleteCurrent(NotesController controller) async {
-    final note = controller.selectedNote;
+  Future<void> _deleteCurrent(NotesNotifier notifier) async {
+    final note = ref.read(notesProvider).value?.selectedNote;
     if (note == null) return;
     final confirmed = await confirmDestructiveAction(
       context,
@@ -113,26 +113,30 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
     // dialog await is where this widget can be torn down.
     if (!confirmed || !mounted) return;
 
-    controller.deleteNote(note.id);
+    notifier.deleteNote(note.id);
     // The undo bar is the safety net for the "no trash" decision, so it appears
     // immediately rather than on the next edit.
     UndoToast.show(
       context,
       message: '"${note.displayTitle}" deleted',
-      onUndo: controller.undoDelete,
+      onUndo: notifier.undoDelete,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = widget.controller;
     final theme = Theme.of(context);
+    final state = ref.watch(notesProvider).value;
+    final notifier = ref.read(notesProvider.notifier);
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        _syncToSelected(controller);
-        final note = controller.selectedNote;
+    // `Consumer` rather than `ConsumerWidget.build` directly, because `_syncToSelected`
+    // has to run before anything is drawn - it loads the selected note's text into
+    // the fields - and a nested Consumer is the only place that can be ordered
+    // against the build below it without a post-frame callback.
+    return Consumer(
+      builder: (context, ref, _) {
+        _syncToSelected(state, notifier);
+        final note = state?.selectedNote;
 
         if (note == null) {
           return Stack(
@@ -144,7 +148,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                   message: 'Pick a note from the list, or start a new one.',
                   action: FilledButton.tonalIcon(
                     onPressed: () {
-                      controller.createNote();
+                      notifier.createNote();
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         _bodyFocus.requestFocus();
                       });
@@ -179,14 +183,14 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                     // reflex-driven worry.
                     _SaveIntent: CallbackAction<_SaveIntent>(
                       onInvoke: (_) {
-                        _pushToModel(controller);
+                        _pushToModel(notifier);
                         return null;
                       },
                     ),
                     _DoneIntent: CallbackAction<_DoneIntent>(
                       onInvoke: (_) {
-                        final selected = controller.selectedNote;
-                        if (selected != null) controller.toggleCompleted(selected.id);
+                        final selected = state?.selectedNote;
+                        if (selected != null) notifier.toggleCompleted(selected.id);
                         return null;
                       },
                     ),
@@ -204,7 +208,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                             // applies to rather than in a bar above it.
                             CompletionToggle(
                               completed: note.isCompleted,
-                              onToggle: () => controller.toggleCompleted(note.id),
+                              onToggle: () => notifier.toggleCompleted(note.id),
                               diameter: 22,
                               hitTarget: 40,
                               filled: true,
@@ -214,7 +218,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                               child: TextField(
                                 controller: _title,
                                 focusNode: _titleFocus,
-                                onChanged: (_) => _pushToModel(controller),
+                                onChanged: (_) => _pushToModel(notifier),
                                 textInputAction: TextInputAction.next,
                                 onSubmitted: (_) => _bodyFocus.requestFocus(),
                                 maxLines: null,
@@ -239,17 +243,17 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _markdownToggle(controller, note),
+                            _markdownToggle(notifier, note),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Expanded(
                           child: note.markdown
-                              ? _markdownBody(controller, note, theme)
+                              ? _markdownBody(notifier, note, theme)
                               : TextField(
                                   controller: _body,
                                   focusNode: _bodyFocus,
-                                  onChanged: (_) => _pushToModel(controller),
+                                  onChanged: (_) => _pushToModel(notifier),
                                   maxLines: null,
                                   expands: true,
                                   textAlignVertical: TextAlignVertical.top,
@@ -275,7 +279,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
                 ),
               ),
             ),
-            _statusBar(context, theme, controller),
+            _statusBar(context, theme, state, notifier),
           ],
         );
       },
@@ -288,10 +292,11 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
   /// completion circle is: a control that belongs to a note belongs next to that
   /// note's content, and "where do I turn this on" has to be answerable without
   /// going looking.
-  Widget _markdownToggle(NotesController controller, Note note) {
+  Widget _markdownToggle(NotesNotifier notifier, Note note) {
     return IconButton(
       key: markdownToggleKey,
-      onPressed: () => controller.setMarkdown(note.id, !note.markdown),
+      onPressed: () =>
+          notifier.setMarkdown(note.id, enabled: !note.markdown),
       tooltip: note.markdown
           ? 'Markdown on. Turn it off to edit this as plain text.'
           : 'Markdown. Turn it on to format this note.',
@@ -314,37 +319,51 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
   /// note in a narrow window needs to see the result, and needs to see the
   /// source, and cannot have both at once. Asking is better than guessing, and
   /// better than silently showing neither.
-  Widget _markdownBody(NotesController controller, Note note, ThemeData theme) {
+  Widget _markdownBody(NotesNotifier notifier, Note note, ThemeData theme) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _previewThreshold;
 
         if (!wide) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // One or the other, not both: at this width two panes of prose
-              // side by side are two unreadable columns.
-              Expanded(
-                child: _narrowShowsPreview
-                    ? _previewPane(note, theme)
-                    : _sourceField(controller, note, theme),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const SizedBox(width: 2),
-                  _narrowPreviewButton(theme),
-                ],
-              ),
-            ],
+          // One builder over the *whole* narrow column, not just the pane.
+          //
+          // The first version wrapped only the `Expanded`, leaving the button
+          // outside it while the button still read `_narrowShowsPreview.value` -
+          // a hidden dependency with nothing to rebuild it. Tapping "Preview"
+          // switched the pane and left the label reading "Preview", so the button
+          // offered the same action twice and `markdown_test` caught it.
+          //
+          // The flag is then *passed* to the button rather than read there, so a
+          // second reader cannot reintroduce the same shape: the only place the
+          // notifier is read is inside the builder.
+          return ValueListenableBuilder<bool>(
+            valueListenable: _narrowShowsPreview,
+            builder: (context, showsPreview, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // One or the other, not both: at this width two panes of prose
+                // side by side are two unreadable columns.
+                Expanded(
+                  child: showsPreview
+                      ? _previewPane(note, theme)
+                      : _sourceField(notifier, note, theme),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const SizedBox(width: 2),
+                    _narrowPreviewButton(theme, showsPreview),
+                  ],
+                ),
+              ],
+            ),
           );
         }
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: _sourceField(controller, note, theme)),
+            Expanded(child: _sourceField(notifier, note, theme)),
             VerticalDivider(
               width: 1,
               thickness: 1,
@@ -359,11 +378,11 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
     );
   }
 
-  Widget _sourceField(NotesController controller, Note note, ThemeData theme) {
+  Widget _sourceField(NotesNotifier notifier, Note note, ThemeData theme) {
     return TextField(
       controller: _body,
       focusNode: _bodyFocus,
-      onChanged: (_) => _pushToModel(controller),
+      onChanged: (_) => _pushToModel(notifier),
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,
@@ -425,14 +444,19 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
     );
   }
 
-  Widget _narrowPreviewButton(ThemeData theme) {
+  /// The switch between the rendered preview and the raw source.
+  ///
+  /// Takes [showsPreview] rather than reading the notifier, so the label cannot
+  /// drift from the pane above it. See the note on the `ValueListenableBuilder` in
+  /// [_markdownBody] - the first version read the field here and went stale.
+  Widget _narrowPreviewButton(ThemeData theme, bool showsPreview) {
     return TextButton.icon(
-      onPressed: () => setState(() => _narrowShowsPreview = !_narrowShowsPreview),
+      onPressed: () => _narrowShowsPreview.value = !showsPreview,
       icon: Icon(
-        _narrowShowsPreview ? Icons.edit_outlined : Icons.visibility_outlined,
+        showsPreview ? Icons.edit_outlined : Icons.visibility_outlined,
         size: 15,
       ),
-      label: Text(_narrowShowsPreview ? 'Edit source' : 'Preview'),
+      label: Text(showsPreview ? 'Edit source' : 'Preview'),
       style: TextButton.styleFrom(
         visualDensity: VisualDensity.compact,
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -454,7 +478,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
       );
 
   Widget _backBar(BuildContext context) {
-    final note = widget.controller.selectedNote;
+    final note = ref.read(notesProvider).value?.selectedNote;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
       child: Row(
@@ -473,7 +497,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
               padding: const EdgeInsets.only(right: 4),
               child: CompletionToggle(
                 completed: note.isCompleted,
-                onToggle: () => widget.controller.toggleCompleted(note.id),
+                onToggle: () => ref.read(notesProvider.notifier).toggleCompleted(note.id),
                 diameter: 20,
                 hitTarget: 36,
                 filled: true,
@@ -482,7 +506,7 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Delete note',
-            onPressed: () => _deleteCurrent(widget.controller),
+            onPressed: () => _deleteCurrent(ref.read(notesProvider.notifier)),
           ),
         ],
       ),
@@ -492,7 +516,8 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
   Widget _statusBar(
     BuildContext context,
     ThemeData theme,
-    NotesController controller,
+    NotesState? state,
+    NotesNotifier notifier,
   ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 10, 20, 14),
@@ -511,16 +536,16 @@ class _NoteEditorPaneState extends State<NoteEditorPane> {
               ),
             ),
           ),
-          if (controller.pendingUndo != null)
+          if (state?.pendingUndo != null)
             TextButton(
-              onPressed: controller.undoDelete,
+              onPressed: notifier.undoDelete,
               style: TextButton.styleFrom(
                 foregroundColor: theme.colorScheme.primary,
               ),
               child: const Text('Undo delete'),
             ),
           TextButton.icon(
-            onPressed: () => _deleteCurrent(widget.controller),
+            onPressed: () => _deleteCurrent(ref.read(notesProvider.notifier)),
             icon: const Icon(Icons.delete_outline, size: 16),
             label: const Text('Delete'),
             style: TextButton.styleFrom(

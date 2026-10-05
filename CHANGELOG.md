@@ -6,19 +6,28 @@
 
 - `changelog_guard_test`: fails on an entry longer than one bullet.
 - `docs/provider_pattern.md`, `docs/isolate_pattern.md`, `docs/platform_pattern.md`.
-- `AGENTS.md` section 0.7 to 0.10: no `setState`, no injected dependencies, a declared channel contract, construction in providers.
-- `no_set_state_test`, `provider_guard_test`, `platform_guard_test`, `isolate_guard_test`, all on per-file countdowns.
+- `AGENTS.md` section 0.7 to 0.11: no `setState`, no injected dependencies, a `WidgetRef` lifetime rule, a declared channel contract, construction in providers.
+- `no_set_state_test`, `provider_guard_test`, `platform_guard_test`, `isolate_guard_test`.
+- `lib/src/state/providers.dart`: the dependency graph, replacing ten hand-written constructions across the two roots.
+- Riverpod and flutter_riverpod, as the state layer.
+- `WidgetNotifier.reloadNotes()`, so a change to `notes.json` can be applied without the directory watcher.
+- `TestHarness` in `test/helpers/`, so tests build a container rather than a controller.
 - `channelMethodNames` scans joined text and all four dispatch idioms; it had been missing five real methods.
-- `_resolveBrightness` has three copies that disagree, and `dispose()` has four unawaited flushes. Both recorded as divergences.
 - Lints: `unawaited_futures`, `cancel_subscriptions`, `close_sinks`,
   `parameter_assignments`, `avoid_catching_errors`, `use_string_buffers`,
   `prefer_final_locals`, `require_trailing_commas`, `avoid_positional_boolean_parameters`.
 
 ### Changed
 
-- Ten positional `bool` parameters are now named, across
-  `NotesController.setMarkdown`, `SettingsController.setAutoStart`,
-  `WidgetController` and `ShellChannel`.
+- Ten positional `bool` parameters are now named, across the notes, settings and widget notifiers and `ShellChannel`.
+- The three controllers are Riverpod `AsyncNotifier`s with immutable state, replacing `ChangeNotifier`s.
+- `main()` builds one `ProviderScope`, so `EditorApp` and `WidgetApp` take no parameters.
+
+### Fixed
+
+- The widget window was never configured on launch; the call read state that did not exist yet and returned early.
+- A refused drag showed no hint, and the hotkey dialog kept showing the combination it opened with; both read a `ValueNotifier` nothing was listening to.
+- `NotesState.copyWith` could not clear `selectedId`, so deselecting or deleting the last note kept the old value.
 
 ## 1.2.0
 

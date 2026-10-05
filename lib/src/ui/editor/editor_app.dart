@@ -1,18 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_paths.dart';
-import '../../core/atomic_json_file.dart';
 import '../../data/note.dart';
 import '../../data/notes_repository.dart';
-import '../../data/settings_repository.dart';
 import '../../platform/shell_channel.dart';
 import '../../state/notes_controller.dart';
+import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../settings/settings_dialog.dart';
-import '../palette.dart';
-import '../theme.dart';
+import '../theme_scope.dart';
 import 'editor_view.dart';
 
 /// Root widget for the editor surface.
@@ -20,266 +18,366 @@ import 'editor_view.dart';
 /// Owns notes.json and settings.json. The widget surface reads both and writes
 /// neither, which is the whole reason there is no cross-isolate merge logic
 /// anywhere in this project.
-class EditorApp extends StatefulWidget {
-  const EditorApp({
-    super.key,
-    required this.shell,
-    required this.launch,
-    required this.paths,
-  });
-
-  final ShellChannel shell;
-  final LaunchInfo launch;
-  final AppPaths paths;
+///
+/// Now a `ConsumerWidget` over a `ProviderScope` it creates itself, rather than a
+/// `StatefulWidget` that constructed four repositories in `initState` and disposed
+/// them in `dispose`. Three things follow, and they are the reason this file is 285
+/// lines shorter than it was:
+///
+///  - `_resolveBrightness` and `_systemBrightness` are gone. Both surfaces now
+///    resolve the theme through `widgetSurfaceThemeProvider`, which is what
+///    stopped the three divergent copies (`AGENTS.md` §4.7).
+///  - The `GlobalKey<NavigatorState>` is gone. It existed because this State was
+///    *also* the app root, so its own `context` sat above the `MaterialApp` it
+///    returned and had no `Navigator` ancestor - which is why Settings appeared to
+///    do nothing. A `ConsumerWidget` below the `MaterialApp` has an ordinary context.
+///  - The seven `unawaited(...flush())` calls are now one call to a provider's
+///    `flush`, and still unawaited. `AGENTS.md` §4.8: `onDispose` is synchronous,
+///    so this hazard is unchanged by the rewrite and is recorded rather than fixed.
+class EditorApp extends ConsumerWidget {
+  const EditorApp({super.key});
 
   @override
-  State<EditorApp> createState() => _EditorAppState();
+  Widget build(BuildContext context, WidgetRef ref) => const _EditorScope();
 }
 
-class _EditorAppState extends State<EditorApp> with WidgetsBindingObserver {
-  late final NotesRepository _notesRepo;
-  late final SettingsRepository _settingsRepo;
-  late final SelectionRepository _selectionRepo;
-  late final NotesController _notes;
-  late final SettingsController _settings;
-  StreamSubscription<ShellEvent>? _events;
+/// Inside the MaterialApp: the `MaterialApp` and everything under it.
+///
+/// Split from [EditorApp] purely so the `ProviderScope` sits *above* the
+/// `MaterialApp` while the widgets below it can read providers. Putting the scope
+/// inside would work for `ref.watch` but would put this widget's own context above
+/// the Navigator again, which is the bug this file used to work around.
+class _EditorScope extends ConsumerStatefulWidget {
+  const _EditorScope();
 
-  bool _settingsOpen = false;
-  Brightness _systemBrightness = Brightness.light;
+  @override
+  ConsumerState<_EditorScope> createState() => _EditorScopeState();
+}
 
-  BackupService get _backup => const BackupService();
+class _EditorScopeState extends ConsumerState<_EditorScope>
+    with WidgetsBindingObserver {
+  /// Everything teardown needs, captured while a `ref` is still readable.
+  ///
+  /// Riverpod asserts on *any* `ref` use inside `dispose` - `_assertNotDisposed` -
+  /// not merely on use after an `await`. So the notifiers are read in [initState] and
+  /// held here, and [dispose] only touches ordinary objects.
+  ///
+  /// That is the rule in one line: **a `ConsumerState` may read its `ref` in
+  /// `initState`, and may not read it in `dispose`.** Capture early.
+  late final EditorTeardown _teardown;
+  late final EditorBootstrap _bootstrap;
 
   @override
   void initState() {
     super.initState();
+    _bootstrap = EditorBootstrap(
+      notes: ref.read(notesProvider.notifier),
+      settings: ref.read(settingsProvider.notifier),
+      selection: ref.read(selectionRepositoryProvider),
+      notesReady: ref.read(notesProvider.future),
+      settingsReady: ref.read(settingsProvider.future),
+    );
+    _teardown = EditorTeardown(
+      notes: ref.read(notesProvider.notifier),
+      settings: ref.read(settingsProvider.notifier),
+      selection: ref.read(selectionRepositoryProvider),
+    );
+    // Registers itself with the binding rather than putting the observation in a
+    // provider: `WidgetsBindingObserver` is an interface on a `State`, and a
+    // Notifier is not one. One observer, writing one provider, is what stopped the
+    // two surfaces disagreeing about the theme.
     WidgetsBinding.instance.addObserver(this);
-    unawaited(_bootstrap());
-  }
-
-  Future<void> _bootstrap() async {
-    _notesRepo = NotesRepository(AtomicJsonFile(widget.paths.notesFile));
-    _settingsRepo = SettingsRepository(
-      AtomicJsonFile(widget.paths.settingsFile),
-      widget.shell,
-    );
-    _selectionRepo = SelectionRepository(
-      AtomicJsonFile(widget.paths.selectionFile),
-    );
-
-    _notes = NotesController(repository: _notesRepo, watchExternal: false);
-    _settings = SettingsController(
-      repository: _settingsRepo,
-      shell: widget.shell,
-      watchExternal: true,
-    );
-
-    await _settings.load(
-      animationsEnabled: widget.launch.animationsEnabled,
-      acrylicSupported: widget.launch.acrylicSupported,
-    );
-
-    await _notes.load();
-
-    // Corresponds to the first launch opening with a note already focused, so
-    // typing is the very first thing that happens.
-    if (_notes.corrupt == null) {
-      _notes.ensureAtLeastOneNote();
-      _notes.select(_selectionRepo.readSelection());
-    }
-
-    // Corrects the registry entry and the hotkey on every launch, so neither
-    // has to be toggled to be right.
-    await _settings.syncPlatform();
-
-    _events = widget.shell.events.listen(_onEvent);
-  }
-
-  void _onEvent(ShellEvent event) {
-    switch (event.kind) {
-      case ShellEventKind.hotkey:
-        _focusEditor();
-      case ShellEventKind.openSettings:
-        _openSettings();
-      case ShellEventKind.toggleCompleted:
-        // The widget surface asks rather than writing, because this is the one
-        // writer of notes.json. Answering here means the change is made in the
-        // same place every other edit is, and the widget sees it through the
-        // directory watcher it already uses.
-        final id = event.noteId;
-        if (id != null) _notes.toggleCompleted(id);
-      case ShellEventKind.createNote:
-        // A note written in the widget, for the same reason as above.
-        final incoming = event.newNote;
-        if (incoming != null) _notes.addNote(title: incoming.title, body: incoming.body);
-      case ShellEventKind.geometry:
-      case ShellEventKind.visibility:
-      case ShellEventKind.unknown:
-        break;
-    }
-  }
-
-  void _focusEditor() {
-    if (!mounted) return;
-    // Closing the editor hands focus back to the widget, so the hotkey has to
-    // bring the editor back properly rather than just showing it.
-    unawaited(widget.shell.focusWindow('editor'));
-    FocusScope.of(context).requestFocus(FocusNode());
-  }
-
-  void _openSettings() {
-    final navigator = _navigatorKey.currentContext;
-    if (!mounted || _settingsOpen || navigator == null) return;
-    setState(() => _settingsOpen = true);
-    showDialog<void>(
-      context: navigator,
-      builder: (context) => SettingsDialog(
-        controller: _settings,
-        shell: widget.shell,
-        defaultDataDirectory: widget.paths.defaultStorageDirectory,
-      ),
-    ).whenComplete(() {
-      if (mounted) setState(() => _settingsOpen = false);
-    });
-  }
-
-  Future<void> _export() async {
-    // Captured before the first await, and never looked up again afterwards.
-    //
-    // Two reasons, both learned the hard way: there is no ScaffoldMessenger
-    // above the MaterialApp this State returns, so ScaffoldMessenger.of(context)
-    // throws and the "Exported N notes" confirmation is lost while the file
-    // still writes; and reaching for a context after an await is unsafe because
-    // the widget behind it may be gone.
-    final below = _navigatorKey.currentContext;
-    final messenger = below == null ? null : ScaffoldMessenger.of(below);
-
-    final stamp = DateTime.now().toIso8601String().substring(0, 19).replaceAll(':', '-');
-    final path = await widget.shell.saveFile(
-      suggestedName: 'winnotes-backup-$stamp.txt',
-    );
-    if (path == null) return;
-    await _backup.exportTo(path, _notes.notes);
-    if (!mounted || messenger == null) return;
-    messenger.showSnackBar(
-      SnackBar(content: Text('Exported ${_notes.notes.length} notes.')),
-    );
-  }
-
-  Future<List<Note>?> _import() async {
-    final path = await widget.shell.pickFile();
-    if (path == null) return null;
-
-    final incoming = await _backup.readFrom(path);
-    if (incoming == null) return null;
-
-    if (_notes.corrupt != null) {
-      // A hand-chosen backup is the one thing allowed to replace a file the app
-      // refused to touch on its own.
-      _notesRepo.unblock();
-      _notes.replaceAll(incoming);
-    } else {
-      final merge = await _confirmMerge(incoming.length);
-      if (merge) {
-        _notes.merge(incoming);
-      }
-    }
-    return incoming;
-  }
-
-  Future<bool> _confirmMerge(int count) async {
-    final navigator = _navigatorKey.currentContext;
-    if (!mounted || navigator == null) return false;
-    final result = await showDialog<bool>(
-      // Below the Navigator, unlike this State's own context. See _navigatorKey.
-      context: navigator,
-      builder: (context) => AlertDialog(
-        title: Text('Add $count notes?'),
-        content: const Text(
-          'The imported notes are added alongside the ones you already have. '
-          'Nothing existing is replaced.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Add them'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
+    unawaited(_bootstrap.run());
   }
 
   @override
   void didChangePlatformBrightness() {
-    setState(() {
-      _systemBrightness =
-          MediaQueryData.fromView(View.of(context)).platformBrightness;
-    });
+    final view = View.of(context);
+    ref.read(systemBrightnessProvider.notifier).report(
+          brightness: MediaQueryData.fromView(view).platformBrightness,
+        );
+    // A theme change can also mean a change to the acrylic or hotkey state the
+    // runner owns, and the editor is the only surface that writes settings.json.
+    unawaited(ref.read(settingsProvider.notifier).syncPlatform());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_events?.cancel());
-    // Anything still queued has to reach disk before the isolate goes away,
-    // because there is no quit hook to do it later.
-    unawaited(_notes.flush());
-    unawaited(_settings.flush());
-    unawaited(_selectionRepo.flush());
-    _notes.dispose();
-    _settings.dispose();
-    unawaited(_notesRepo.dispose());
-    unawaited(_settingsRepo.dispose());
-    unawaited(_selectionRepo.dispose());
+    unawaited(_teardown.run());
     super.dispose();
   }
 
-  Brightness _resolveBrightness() {
-    final mode = _settings.settings.themeMode;
-    if (mode == ThemeMode.light) return Brightness.light;
-    if (mode == ThemeMode.dark) return Brightness.dark;
-    return widget.launch.isSystemDark ? Brightness.dark : _systemBrightness;
-  }
-
-  /// Navigator handle for anything this State needs to push over the app.
-  ///
-  /// This State's own [context] sits *above* the MaterialApp it returns, so it
-  /// has no Navigator ancestor and `showDialog(context: context)` throws rather
-  /// than showing anything. That is why Settings appeared to do nothing: the
-  /// exception was raised inside the popup's onSelected, the popup still closed,
-  /// and no dialog ever appeared. Holding the key gives a context that is
-  /// genuinely below the Navigator.
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _settings,
-      builder: (context, _) {
-        final brightness = _resolveBrightness();
-        return MaterialApp(
-          title: 'WinNotes',
-          navigatorKey: _navigatorKey,
-          debugShowCheckedModeBanner: false,
-          themeMode: ThemeMode.light,
-          theme: buildWinNotesTheme(
-            brightness: brightness,
-            highContrast: widget.launch.highContrast,
-            palette: paletteById(_settings.settings.accentPalette),
-          ),
-          home: EditorView(
-            controller: _notes,
-            shell: widget.shell,
-            onOpenSettings: _openSettings,
-            exportNotes: _export,
-            importNotes: _import,
-          ),
-        );
-      },
+    final theme = ref.watch(widgetSurfaceThemeProvider);
+
+    return MaterialApp(
+      title: 'WinNotes',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.light,
+      theme: theme,
+      // The router is here rather than in `EditorView` because it needs a context
+      // with a `Navigator` ancestor to open the settings dialog from, and
+      // `EditorHome`'s context has one while a provider does not.
+      home: const EditorEventRouter(child: EditorHome()),
     );
   }
+}
+
+/// The editor surface below the `MaterialApp`.
+///
+/// Its own `ConsumerWidget` rather than a field of `_EditorScope`, so that a dialog
+/// pushed from here has a context with a `Navigator` ancestor. That is the whole of
+/// what the old `GlobalKey` was working around.
+class EditorHome extends ConsumerWidget {
+  const EditorHome({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return EditorView(
+      onOpenSettings: () => openSettings(context, ref),
+      exportNotes: () => exportNotes(context, ref),
+      importNotes: () => importNotes(context, ref),
+    );
+  }
+}
+
+/// Startup, in the order it has to happen.
+///
+/// Extracted from the old `_bootstrap` because the ordering is load-bearing and a
+/// method body is a better place to keep it than a comment:
+///
+///  1. settings first. Nothing in the editor needs them to draw, but the theme does,
+///     and reading them second would mean building the `MaterialApp` twice.
+///  2. notes, which themselves guarantee a first note exists - so by the time this
+///     resolves, the editor has something to show and typing can be the very first
+///     thing that happens.
+///  3. the saved selection, applied afterwards so it can override that default.
+///  4. `syncPlatform` last, on every launch, so the registry entry and the hotkey
+///     are corrected whether or not anyone ever opens the settings dialog.
+class EditorBootstrap {
+  const EditorBootstrap({
+    required this.notes,
+    required this.settings,
+    required this.selection,
+    required this.notesReady,
+    required this.settingsReady,
+  });
+
+  /// Captured in `initState`, because a `WidgetRef` is readable there and nowhere
+  /// later - see `_EditorScopeState`.
+  final NotesNotifier notes;
+  final SettingsNotifier settings;
+  final SelectionRepository selection;
+
+  /// The two futures, also captured, so the awaits below touch no `ref` at all.
+  final Future<NotesState> notesReady;
+  final Future<SettingsState> settingsReady;
+
+  Future<void> run() async {
+    await settingsReady;
+    await notesReady;
+
+    final saved = selection.readSelection();
+    if (saved != null) notes.select(saved);
+
+    await settings.syncPlatform();
+  }
+}/// Teardown: flush everything queued, then release the file handles.
+///
+/// Called from `_EditorScopeState.dispose` and nowhere else. `onDispose` would be
+/// the obvious home and cannot be: it is synchronous, and flushing is not.
+///
+/// `AGENTS.md` §4.8 records that these writes are unawaited and that the hazard
+/// predates the provider work. It is unchanged, not fixed, and claiming otherwise
+/// would be the kind of quiet improvement that hides a real one.
+class EditorTeardown {
+  const EditorTeardown({
+    required this.notes,
+    required this.settings,
+    required this.selection,
+  });
+
+  /// Captured in `dispose`, because that is the last moment a `WidgetRef` is usable.
+  final NotesNotifier notes;
+  final SettingsNotifier settings;
+  final SelectionRepository selection;
+
+  Future<void> run() async {
+    await notes.flush();
+    await settings.flush();
+    await selection.flush();
+  }
+}
+
+/// Routes events pushed up from the runner.
+///
+/// Kept as a switch rather than a table of handlers because each case does something
+/// different, and three of them deliberately do nothing - see [ShellEventKind].
+///
+/// This is a `ConsumerState` rather than a plain function so the subscription has an
+/// owner with a lifetime. A bare `shell.events.listen` in `build` would stack a
+/// listener per rebuild, and the symptom of that is a hotkey that raises the editor
+/// six times.
+class EditorEventRouter extends ConsumerStatefulWidget {
+  const EditorEventRouter({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<EditorEventRouter> createState() => _EditorEventRouterState();
+}
+
+class _EditorEventRouterState extends ConsumerState<EditorEventRouter> {
+  StreamSubscription<ShellEvent>? _events;
+
+  @override
+  void initState() {
+    super.initState();
+    _events = ref.read(shellProvider).events.listen(_onEvent);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_events?.cancel());
+    super.dispose();
+  }
+
+  void _onEvent(ShellEvent event) {
+    // An event can arrive after the tree is torn down, and a `ref` used then
+    // throws rather than being ignored. See `EditorBootstrap.start`.
+    if (!mounted) return;
+
+    switch (event.kind) {
+      case ShellEventKind.hotkey:
+        _focusEditor();
+      case ShellEventKind.openSettings:
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        if (!mounted) return;
+        unawaited(openSettings(context, ref));
+        messenger?.hideCurrentSnackBar();
+      case ShellEventKind.toggleCompleted:
+        // The widget surface asks rather than writing, because this is the one
+        // writer of notes.json. Answering here means the change is made in the same
+        // place every other edit is, and the widget sees it through the directory
+        // watcher it already uses.
+        final id = event.noteId;
+        if (id != null) ref.read(notesProvider.notifier).toggleCompleted(id);
+      case ShellEventKind.createNote:
+        // A note written in the widget, for the same reason as above.
+        final incoming = event.newNote;
+        if (incoming != null) {
+          ref.read(notesProvider.notifier).addNote(
+                title: incoming.title,
+                body: incoming.body,
+              );
+        }
+      case ShellEventKind.geometry:
+      case ShellEventKind.visibility:
+      case ShellEventKind.unknown:
+        // Not ours. `docs/isolate_pattern.md` §3.4: a future event that arrives at
+        // the wrong surface should be ignored loudly in a test, not silently here.
+        break;
+    }
+  }
+
+  void _focusEditor() {
+    // Closing the editor hands focus back to the widget, so the hotkey has to bring
+    // the editor back properly rather than just showing it.
+    unawaited(ref.read(shellProvider).focusWindow('editor'));
+    FocusScope.of(context).requestFocus(FocusNode());
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// Opens the settings dialog.
+///
+/// `context` is the one below the `MaterialApp`, so `showDialog` has somewhere to
+/// go. The old code needed a `GlobalKey<NavigatorState>` to get this; here it is
+/// simply the caller's context.
+Future<void> openSettings(BuildContext context, WidgetRef ref) async {
+  final paths = ref.read(appPathsProvider);
+  await showDialog<void>(
+    context: context,
+    builder: (context) => SettingsDialog(
+      defaultDataDirectory: paths.defaultStorageDirectory,
+    ),
+  );
+}
+
+/// Writes a plain-text backup of every note somewhere the person chose.
+Future<void> exportNotes(BuildContext context, WidgetRef ref) async {
+  // Captured before the first await, and never looked up again afterwards.
+  //
+  // Two reasons, both learned the hard way: there is no ScaffoldMessenger above the
+  // MaterialApp this returns, so ScaffoldMessenger.of(context) throws and the
+  // "Exported N notes" confirmation is lost while the file still writes; and
+  // reaching for a context after an await is unsafe because the widget behind it
+  // may be gone.
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final shell = ref.read(shellProvider);
+  final notes = ref.read(notesProvider).value;
+
+  final stamp = DateTime.now().toIso8601String().substring(0, 19).replaceAll(':', '-');
+  final path = await shell.saveFile(suggestedName: 'winnotes-backup-$stamp.txt');
+  if (path == null || !context.mounted) return;
+  await const BackupService().exportTo(path, notes?.notes ?? const []);
+  messenger?.showSnackBar(
+    SnackBar(content: Text('Exported ${notes?.notes.length ?? 0} notes.')),
+  );
+}
+
+/// Reads a plain-text backup back in, with a confirmation before it merges.
+Future<List<Note>?> importNotes(BuildContext context, WidgetRef ref) async {
+  final shell = ref.read(shellProvider);
+  final notes = ref.read(notesProvider.notifier);
+
+  final path = await shell.pickFile();
+  if (path == null) return null;
+
+  final incoming = await const BackupService().readFrom(path);
+  if (incoming == null) return null;
+
+  if (notes.hasReadOnlyFile) {
+    // A hand-chosen backup is the one thing allowed to replace a file the app
+    // refused to touch on its own.
+    notes.unblockForRestore();
+    notes.replaceAll(incoming);
+  } else {
+    // Guarded on `context.mounted` rather than left bare: the dialog is an await,
+    // and this widget can be torn down inside it.
+    if (!context.mounted) return incoming;
+    final merge = await _confirmMerge(context, incoming.length);
+    if (merge) {
+      notes.merge(incoming);
+    }
+  }
+  return incoming;
+}
+
+Future<bool> _confirmMerge(BuildContext context, int count) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Add $count notes?'),
+      content: const Text(
+        'The imported notes are added alongside the ones you already have. '
+        'Nothing existing is replaced.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Add them'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
 }

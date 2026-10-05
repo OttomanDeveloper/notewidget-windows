@@ -43,12 +43,39 @@ void main() {
       expect(approvedDependencies, isNotEmpty);
       expect(
         approvedDependencies.length,
-        lessThanOrEqualTo(2),
-        reason: 'AGENTS.md §0.4 enumerates one package. If this now needs a '
-            'bigger number, the rule has quietly become "no dependencies" '
-            'again and the count is the wrong thing to be asserting.',
+        lessThanOrEqualTo(3),
+        reason: 'AGENTS.md §0.4 enumerates three packages: the CommonMark '
+            'parser, and the two halves of Riverpod. `riverpod` is pure Dart and '
+            '`flutter_riverpod` is its Flutter binding - one decision, two '
+            'entries, because the rule is about what pubspec.yaml declares. If '
+            'this needs a fourth, the count is no longer the thing to assert '
+            'and the reasoning in guards.dart has to say why.',
       );
       expect(approvedDependencies, contains('markdown'));
+      expect(approvedDependencies, contains('riverpod'));
+      expect(approvedDependencies, contains('flutter_riverpod'));
+    });
+
+    test('the two riverpod entries are the same version, or one is redundant', () {
+      // `flutter_riverpod` depends on `riverpod`, so declaring only the former
+      // would work. Declaring both is deliberate - the rule is about what
+      // pubspec.yaml says - but if the constraints ever diverge, this app is
+      // building against two versions of the same library, which is a class of
+      // bug that shows up as an unexplained cast error at runtime.
+      final declared = RegExp(r'^\s{2}(riverpod|flutter_riverpod):\s*(\S+)',
+              multiLine: true)
+          .allMatches(SourceTree().read('pubspec.yaml'))
+          .map((m) => '${m.group(1)}=${m.group(2)}')
+          .toList();
+
+      expect(declared, hasLength(2), reason: 'both should be declared');
+      final constraints =
+          declared.map((d) => d.substring(d.indexOf('=') + 1)).toSet();
+      expect(
+        constraints,
+        hasLength(1),
+        reason: 'The two must resolve to one version:\n  $declared',
+      );
     });
 
     test('the scanner actually bites: a planted dependency is rejected', () {

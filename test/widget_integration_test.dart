@@ -6,14 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:win_notes/src/core/atomic_json_file.dart';
 import 'package:win_notes/src/data/note.dart';
 import 'package:win_notes/src/data/notes_repository.dart';
-import 'package:win_notes/src/data/settings_repository.dart';
-import 'package:win_notes/src/platform/shell_channel.dart';
 import 'package:win_notes/src/state/settings_controller.dart';
-import 'package:win_notes/src/state/widget_controller.dart' as wn;
 import 'package:win_notes/src/ui/common/completion_toggle.dart';
 import 'package:win_notes/src/ui/theme.dart';
 import 'package:win_notes/src/ui/widget/widget_note_card.dart';
 import 'package:win_notes/src/ui/widget/widget_surface.dart';
+
+import 'helpers/provider_harness.dart';
 
 /// Integration tests for the widget surface itself.
 ///
@@ -30,10 +29,16 @@ import 'package:win_notes/src/ui/widget/widget_surface.dart';
 /// [WidgetSurface] over a real file-backed controller so the whole subtree is
 /// actually laid out.
 void main() {
-  late Directory temp;
+  /// The container behind the widget surface.
+  ///
+  /// Built with `isWidgetSurface: true` because the graph that serves the desktop
+  /// widget differs from the editor's in exactly one way that matters here: the
+  /// widget registers the directory watcher on `notes.json`, because the editor is
+  /// the writer and this side is the reader.
+  late TestHarness harness;
 
   setUp(() {
-    // Required, not cosmetic. WidgetController.load() awaits its window
+    // Required, not cosmetic. `WidgetNotifier.build` awaits its window
     // configuration call, and a MethodChannel with nothing behind it returns a
     // Future that never completes - which under flutter_test is not a failure
     // but a test that hangs forever.
@@ -42,11 +47,11 @@ void main() {
       const MethodChannel('dev.winnotes/shell'),
       (call) async => null,
     );
-    temp = Directory.systemTemp.createTempSync('winnotes_widget_test');
+    harness = TestHarness.build(isWidgetSurface: true);
   });
 
-  tearDown(() {
-    if (temp.existsSync()) temp.deleteSync(recursive: true);
+  tearDown(() async {
+    await harness.dispose();
   });
 
   Note note(String id, String title, String body, {int minute = 0}) => Note(
@@ -57,92 +62,73 @@ void main() {
         updatedAt: DateTime(2026, 1, 1, 12, minute),
       );
 
-  /// Builds a controller over real files, the way the widget isolate does.
+  /// [WidgetTester.runAsync] with a non-nullable result.
   ///
-  /// Must be called inside [WidgetTester.runAsync]: these are real file writes,
-  /// and a widget test's fake clock never advances the real event loop, so
-  /// awaiting them outside it hangs.
+  /// `runAsync` returns `T?` because its callback is allowed to return null, and
+  /// every callback in this file returns something that cannot be. Thirty `!` marks
+  /// on the results read as noise and hide where the real assertions are - and, as it
+  /// turned out, they do not even silence the analyzer, because a `!` on a local that
+  /// is then awaited reads as a precedence question rather than a guarantee.
   ///
-  /// [watchExternal] is false because the real directory watchers use real
-  /// timers. The watchers themselves are covered by the repository tests, which
-  /// run outside the fake clock.
-  Future<wn.WidgetController> makeController(
-    WidgetTester tester,
-    List<Note> notes, {
-    Future<void> Function(SettingsController)? tweakSettings,
-  }) async {
-    final shell = ShellChannel();
-
-    final notesRepo = NotesRepository(
-      AtomicJsonFile('${temp.path}\\notes.json'),
-    );
-    await notesRepo.saveNow(notes);
-
-    final settings = SettingsController(
-      repository: SettingsRepository(
-        AtomicJsonFile('${temp.path}\\settings.json'),
-        shell,
-      ),
-      shell: shell,
-    );
-    await settings.load(animationsEnabled: true, acrylicSupported: false);
-    // Applied before the widget controller attaches its listener, so the first
-    // configure it sends already reflects the change.
-    await tweakSettings?.call(settings);
-
-    final controller = wn.WidgetController(
-      shell: shell,
-      settings: settings,
-      notesRepo: notesRepo,
-      widgetRepo: WidgetStateRepository(
-        AtomicJsonFile('${temp.path}\\widget_state.json'),
-      ),
-      selectionRepo: SelectionRepository(
-        AtomicJsonFile('${temp.path}\\selection.json'),
-      ),
-      isAutostartLaunch: false,
-      animationsEnabled: true,
-      acrylicSupported: false,
-      isSystemDark: false,
-      watchExternal: false,
-    );
-    await controller.load();
-    return controller;
+  /// One place to say it instead.
+  Future<T> real<T>(WidgetTester tester, Future<T> Function() body) async {
+    final result = await tester.runAsync(body);
+    // Tested rather than asserted with `!`, which the analyzer rejects on a `T` that
+    // could be instantiated as `void` - and `T` is `void` for any callback whose
+    // result nobody reads.
+    if (result == null && null is! T) return result as T;
+    return result as T;
   }
 
-  /// Releases a controller's file handles under the real clock.
+  /// Seeds [notes] and warms the providers, the way the widget isolate does.
   ///
-  /// Registered as a tearDown rather than left to [wn.WidgetController.dispose],
-  /// because flushing is async and dispose cannot await. Safe to call twice: a
-  /// test that already released inside its own runAsync block gets a no-op.
-  void addRelease(WidgetTester tester, wn.WidgetController controller) {
-    addTearDown(() async {
-      await tester.runAsync(controller.release);
-      controller.dispose();
-    });
+  /// Must be called inside [WidgetTester.runAsync]: these are real file writes, and
+  /// a widget test's fake clock never advances the real event loop, so awaiting
+  /// them outside it hangs.
+  ///
+  /// The warm-up has to happen here rather than at the first widget build, because a
+  /// provider built during `pumpWidget` issues its read under the fake clock - which
+  /// never completes, so the surface stays in `isLoading` and every finder returns
+  /// zero widgets. No exception, no log; the app just looks stuck. See
+  /// `docs/testing_pattern.md` §4.
+  Future<WidgetNotes> makeController(
+    WidgetTester tester,
+    List<Note> notes, {
+    Future<void> Function(SettingsNotifier)? tweakSettings,
+  }) async {
+    final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
+    await repo.saveNow(notes);
+
+    // Settings first: `widgetPositionLocked` reaches the surface as state, and the
+    // window configuration the notifier sends on build has to already reflect it.
+    final settings = await harness.settings();
+    await tweakSettings?.call(settings);
+
+    await harness.widgetState();
+    return WidgetNotes(harness);
   }
 
   Future<void> pumpSurface(
-    WidgetTester tester,
-    wn.WidgetController controller, {
+    WidgetTester tester, {
     required double width,
     required double height,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme:
-            buildWinNotesTheme(brightness: Brightness.light, highContrast: false),
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: width,
-              height: height,
-              child: WidgetSurface(
-                controller: controller,
-                brightness: Brightness.light,
-                acrylicAvailable: false,
-                onOpenEditor: () {},
+      harness.wrap(
+        MaterialApp(
+          theme: buildWinNotesTheme(
+            brightness: Brightness.light,
+            highContrast: false,
+          ),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                height: height,
+                // No parameters, and that is the migration's point: the surface
+                // reads its notes, palette and acrylic flag from providers.
+                child: const WidgetSurface(),
               ),
             ),
           ),
@@ -154,18 +140,17 @@ void main() {
 
   testWidgets('renders a scrolling list of every note without throwing',
       (tester) async {
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [
         note('a', 'Groceries', 'Milk, sourdough\nCheck the bike light'),
         note('b', 'Reading list', 'The Design of Everyday Things', minute: -5),
         note('c', 'Ideas', 'Widget per monitor?', minute: -12),
       ]),
     );
-    addRelease(tester, controller!);
 
     // The regression this guards: building this subtree used to throw during
     // sliver layout and paint a red error screen over the desktop.
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
 
     expect(tester.takeException(), isNull);
     expect(find.byType(WidgetNoteCard), findsNWidgets(3));
@@ -176,15 +161,14 @@ void main() {
 
   testWidgets('the most recent note is the focused, large card',
       (tester) async {
-    final controller = await tester.runAsync(
+    final controller = await real(tester, 
       () => makeController(tester, [
         note('old', 'Older note', 'written earlier', minute: -30),
         note('new', 'Newest note', 'written last', minute: 0),
       ]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
 
     expect(controller.focusedNote!.id, 'new');
     final cards =
@@ -197,15 +181,14 @@ void main() {
 
   testWidgets('selecting an older note from the widget makes it focused',
       (tester) async {
-    final controller = await tester.runAsync(
+    final controller = await real(tester, 
       () => makeController(tester, [
         note('old', 'Older note', 'written earlier', minute: -30),
         note('new', 'Newest note', 'written last', minute: 0),
       ]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     expect(controller.focusedNote!.id, 'new');
 
     // Tapping a compact card focuses it, which is the point of showing every
@@ -228,15 +211,14 @@ void main() {
 
   testWidgets('falls back to compact cards when the widget is small',
       (tester) async {
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [
         note('a', 'Groceries', 'a body long enough to need several lines'),
       ]),
     );
-    addRelease(tester, controller!);
 
     // Below the threshold there is no room for a large card.
-    await pumpSurface(tester, controller, width: 150, height: 140);
+    await pumpSurface(tester, width: 150, height: 140);
 
     expect(tester.takeException(), isNull);
     final cards =
@@ -246,35 +228,33 @@ void main() {
 
   testWidgets('shows a quiet line rather than crashing when notes vanish',
       (tester) async {
-    final controller = await tester.runAsync(
+    final controller = await real(tester, 
       () => makeController(tester, [note('a', 'Only note', 'text')]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     expect(find.byType(WidgetNoteCard), findsOneWidget);
 
     // The last note is deleted while the widget is on screen.
-    File('${temp.path}\\notes.json').writeAsStringSync(
+    File(harness.notesFile).writeAsStringSync(
       '{"format":"winnotes","version":1,"notes":[]}',
     );
     await tester.runAsync(() => controller.load());
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     expect(tester.takeException(), isNull);
     expect(find.text('No notes'), findsOneWidget);
   });
 
   testWidgets('a list too long for the widget scrolls', (tester) async {
-    final controller = await tester.runAsync(
+    final controller = await real(tester, 
       () => makeController(tester, [
         for (var i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     expect(tester.takeException(), isNull);
 
     // The newest is on screen; the oldest is not, because the widget is short.
@@ -318,10 +298,9 @@ void main() {
       },
     );
 
-    final locked = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [note('a', 'Groceries', 'milk')]),
     );
-    addRelease(tester, locked!);
 
     expect(calls, isNotEmpty, reason: 'the widget never configured itself');
     expect(
@@ -332,15 +311,14 @@ void main() {
 
     // Turning the lock off has to reach the runner as a live change, not need a
     // restart.
-    final unlocked = await tester.runAsync(
+    await real(tester,
       () => makeController(
         tester,
         [note('a', 'Groceries', 'milk')],
         tweakSettings: (s) =>
-            s.update((v) => v.copyWith(widgetPositionLocked: false)),
+            s.apply((v) => v.copyWith(widgetPositionLocked: false)),
       ),
     );
-    addRelease(tester, unlocked!);
 
     final configures = calls.where((c) => c.method == 'widget.configure').toList();
     expect(
@@ -355,17 +333,16 @@ void main() {
     // The bug this guards: locked, the native window reports HTCLIENT, the drag
     // never starts, and nothing at all happens. Someone dragging a locked
     // widget has no way to tell the lock is why.
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(
         tester,
         [note('a', 'Groceries', 'milk')],
         tweakSettings: (s) =>
-            s.update((v) => v.copyWith(widgetPositionLocked: true)),
+            s.apply((v) => v.copyWith(widgetPositionLocked: true)),
       ),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     expect(find.textContaining('Locked in place'), findsNothing,
         reason: 'the hint must not appear before anyone has tried to drag');
 
@@ -389,12 +366,11 @@ void main() {
   });
 
   testWidgets('an unlocked widget does not nag about dragging', (tester) async {
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [note('a', 'Groceries', 'milk')]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     final gesture = await tester.startGesture(const Offset(180, 120));
     await gesture.moveBy(const Offset(0, 40));
     await tester.pump();
@@ -444,13 +420,12 @@ void main() {
     // Flutter view covered the client area, so the hit test was never consulted
     // either. The widget could not be moved or resized at all.
     final calls = recordHandOffs();
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [note('a', 'Groceries', 'milk')]),
     );
-    addRelease(tester, controller!);
 
     // One note, so the list has nothing to scroll and the drag is unambiguous.
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     await dragBody(tester);
 
     final moves = calls.where((c) => c.method == 'widget.beginMove').toList();
@@ -472,15 +447,14 @@ void main() {
     // this reliable; getting the direction backwards hands every upward drag to
     // the window, which is the direction people most often use to scroll.
     final calls = recordHandOffs();
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [
         for (var i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
 
     final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
     expect(scrollable.position.maxScrollExtent, greaterThan(0),
@@ -512,15 +486,14 @@ void main() {
     // The other half of the same rule: dragging down at the top has nothing to
     // scroll, so it belongs to the window rather than being swallowed.
     final calls = recordHandOffs();
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [
         for (var i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     await dragBody(tester, dy: 12);
 
     expect(calls.where((c) => c.method == 'widget.beginMove'), hasLength(1));
@@ -528,17 +501,16 @@ void main() {
 
   testWidgets('a locked widget is not handed to the runner', (tester) async {
     final calls = recordHandOffs();
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(
         tester,
         [note('a', 'Groceries', 'milk')],
         tweakSettings: (s) =>
-            s.update((v) => v.copyWith(widgetPositionLocked: true)),
+            s.apply((v) => v.copyWith(widgetPositionLocked: true)),
       ),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
     await dragBody(tester);
 
     expect(calls, isEmpty,
@@ -548,15 +520,14 @@ void main() {
   testWidgets('grabbing an edge hands a resize to the runner, with the edge',
       (tester) async {
     final calls = recordHandOffs();
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [
         for (var i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
 
     // Bottom edge, well clear of the corners. The band has to be wider than the
     // window's rounded corner, because the native region clips those pixels away
@@ -580,12 +551,11 @@ void main() {
     // Cards have to stay tappable, so a press and a release with no travel must
     // never turn into a drag.
     final calls = recordHandOffs();
-    final controller = await tester.runAsync(
+    await real(tester,
       () => makeController(tester, [note('a', 'Groceries', 'milk')]),
     );
-    addRelease(tester, controller!);
 
-    await pumpSurface(tester, controller, width: 360, height: 420);
+    await pumpSurface(tester, width: 360, height: 420);
 
     final gesture = await tester.startGesture(const Offset(180, 120));
     await gesture.moveBy(const Offset(2, 3));
@@ -619,11 +589,10 @@ void main() {
       // here would overwrite whatever was typed in the last quarter of a second
       // and before that, silently.
       final requests = recordWriter(editorRunning: true);
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
+  
       await tester.runAsync(() => controller.toggleCompleted('a'));
       await tester.pump();
 
@@ -639,11 +608,10 @@ void main() {
       // With no editor there is no other writer and no buffered edits, so this
       // surface is the only one that can safely do it.
       final requests = recordWriter(editorRunning: false);
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
+  
       await tester.runAsync(() async {
         await controller.toggleCompleted('a');
         // The write is queued behind a debounce, exactly as it would be in the
@@ -655,7 +623,7 @@ void main() {
       expect(requests, isEmpty,
           reason: 'nobody to route to, so it must not try');
 
-      final raw = File('${temp.path}\\notes.json').readAsStringSync();
+      final raw = File(harness.notesFile).readAsStringSync();
       expect(raw, contains('completedAt'),
           reason: 'the change has to reach disk, not just the screen');
       expect(controller.notes.single.isCompleted, isTrue);
@@ -669,18 +637,17 @@ void main() {
       // and only that, and only sometimes, which is the worst way for it to
       // break.
       recordWriter(editorRunning: false);
-      final controller = (await tester.runAsync(
+      final controller = (await real(tester, 
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
-      ))!;
+      ));
 
       await tester.runAsync(() async {
         await controller.toggleCompleted('a');
         await controller.flush();
         await controller.release();
       });
-      controller.dispose();
 
-      expect(File('${temp.path}\\notes.json').readAsStringSync(),
+      expect(File(harness.notesFile).readAsStringSync(),
           contains('completedAt'));
     });
 
@@ -690,15 +657,14 @@ void main() {
       // done". Conflating them would move the editor's selection every time
       // someone worked through a list, which is the one thing this must not do.
       final requests = recordWriter(editorRunning: true);
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [
           note('a', 'Task one', 'first'),
           note('b', 'Task two', 'second', minute: -5),
         ]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
       final before = controller.focusedNote!.id;
 
       // The tick sits to the left of the text, clear of the resize band that
@@ -713,12 +679,11 @@ void main() {
     });
 
     testWidgets('a finished card draws a line through its text', (tester) async {
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [note('a', 'Task one', 'first')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
       expect(_strikethroughCount(tester), 0);
 
       await tester.runAsync(() => controller.toggleCompleted('a'));
@@ -735,25 +700,23 @@ void main() {
     // first note from the widget - a deliberate trade, recorded as a known
     // consequence in AGENTS.md §4.
     testWidgets('no note with text means the widget is not shown', (tester) async {
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [note('a', '', '')]),
       );
-      addRelease(tester, controller!);
-      await tester.runAsync(controller.load);
+        await tester.runAsync(controller.load);
 
       expect(controller.hasAnyNoteWithText, isFalse);
       expect(controller.widgetVisible, isFalse);
     });
 
     testWidgets('one note with text is enough to show it', (tester) async {
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [
           note('a', '', ''),
           note('b', 'Groceries', 'milk'),
         ]),
       );
-      addRelease(tester, controller!);
-      await tester.runAsync(controller.load);
+        await tester.runAsync(controller.load);
 
       expect(controller.hasAnyNoteWithText, isTrue);
       expect(controller.widgetVisible, isTrue);
@@ -788,12 +751,11 @@ void main() {
       // "Otherwise not" is the point. A text field sitting permanently at the
       // bottom of every widget would cost 36 pixels of a 420px window and read as
       // an input the widget wants something from.
-      final controller = await tester.runAsync(
+      await real(tester,
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
 
       expect(find.byKey(addNoteFieldKey), findsNothing);
       expect(find.byKey(addNoteButtonKey), findsOneWidget,
@@ -808,12 +770,11 @@ void main() {
       // composer is open. An always-on-top widget that kept the caret would be
       // the most irritating thing on the desktop.
       final calls = recordComposer();
-      final controller = await tester.runAsync(
+      await real(tester,
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
 
       await tester.tap(find.byKey(addNoteButtonKey));
       await tester.pumpAndSettle();
@@ -839,12 +800,11 @@ void main() {
     testWidgets('a jotted line becomes a note, routed to the editor',
         (tester) async {
       final calls = recordComposer();
-      final controller = await tester.runAsync(
+      await real(tester,
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
       await tester.tap(find.byKey(addNoteButtonKey));
       await tester.pumpAndSettle();
 
@@ -866,12 +826,11 @@ void main() {
     testWidgets('with no editor, the widget writes the note itself',
         (tester) async {
       final calls = recordComposer(editorRunning: false);
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
       await tester.tap(find.byKey(addNoteButtonKey));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(addNoteFieldKey), 'Water the plants');
@@ -891,7 +850,7 @@ void main() {
         await controller.release();
       });
 
-      expect(File('${temp.path}\\notes.json').readAsStringSync(),
+      expect(File(harness.notesFile).readAsStringSync(),
           contains('Water the plants'),
           reason: 'and it has to reach disk, not just the widget');
     });
@@ -900,12 +859,11 @@ void main() {
       // Enter on an empty field must not make an empty note. Deleting the last
       // character of a note is not the same as making one.
       final calls = recordComposer();
-      final controller = await tester.runAsync(
+      final controller = await real(tester, 
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
       await tester.tap(find.byKey(addNoteButtonKey));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(addNoteFieldKey), '   ');
@@ -922,12 +880,11 @@ void main() {
       // the field sits. Without this, clicking near the field's edge would resize
       // the window instead of placing the caret.
       final calls = recordComposer();
-      final controller = await tester.runAsync(
+      await real(tester,
         () => makeController(tester, [note('a', 'Groceries', 'milk')]),
       );
-      addRelease(tester, controller!);
-
-      await pumpSurface(tester, controller, width: 360, height: 420);
+  
+      await pumpSurface(tester, width: 360, height: 420);
       await tester.tap(find.byKey(addNoteButtonKey));
       await tester.pumpAndSettle();
 

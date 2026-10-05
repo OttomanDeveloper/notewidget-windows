@@ -38,7 +38,8 @@ class SettingsRepository {
   ///
   /// Turning autostart off removes the entry rather than leaving it disabled
   /// somewhere, so Task Manager and the app can never disagree about the state.
-  Future<bool> applyAutoStart(bool enabled) => _shell.setAutoStart(enabled);
+  Future<bool> applyAutoStart({required bool enabled}) =>
+      _shell.setAutoStart(enabled: enabled);
 
   Future<bool> currentAutoStartState() => _shell.queryAutoStart();
 

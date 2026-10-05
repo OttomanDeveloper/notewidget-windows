@@ -444,16 +444,22 @@ The composition rules live here rather than in `docs/provider_pattern.md` becaus
 they are about widgets. The state rules live there because they are not.
 
 **`setState` is not called anywhere in `lib/`.** Not for shared state, not for
-local state, no excuse accepted (`AGENTS.md` §0.7). There are 24 call sites today
-and they are all on a per-file countdown that falls in both directions — see
-`no_set_state_test`. The two replacements:
+local state, no excuse accepted (`AGENTS.md` §0.7). There were 24 call sites; all
+24 are gone and the countdown is deleted rather than kept at zero. The two
+replacements:
 
-| The state is | Replacement | Sites today |
+| The state is | Replacement | What it was |
 |---|---|---|
 | shared, outlives the widget | a provider | `_busy`, `_ready`, `_settingsOpen`, `_showListOnNarrow`, `_narrowShowsPreview` |
-| genuinely ephemeral | `ValueNotifier` + `ValueListenableBuilder` | `_hovering`, `_lockedHint`, `_composing`, `_pending` |
+| genuinely ephemeral | `ValueNotifier` **+ a listener** | `_hovering`, `_lockedHint`, `_composing`, `_pending`, `_thumbOpacity` |
 
-The line between them is **lifetime, not importance**. `_hovering` is not
+The bold on *listener* is the part that is not obvious. A `ValueNotifier` holds a
+value and does not rebuild; `setState` did both. Four of these were written without
+one during the 2026-10-05 migration and silently did nothing — see
+`docs/provider_pattern.md` §3.4 for each. `no_set_state_test` fails on a file that
+declares a `ValueNotifier` and contains no listener at all.
+
+The line between the two rows is **lifetime, not importance**. `_hovering` is not
 unimportant, but it is true for one frame and nothing else will ever ask. `_busy`
 is true for the length of an await, and a button six rows away has to know.
 
@@ -570,7 +576,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |
-| 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` *lib/ has no setState beyond the recorded countdown*, *a new setState is a fault*, *one more in a counted file is a fault*, *one fewer is also a fault, and says why*, *a file emptied completely has its budget line removed*, *the scanner counts a setState wherever it is written*, *a name containing setState is not a setState call*, *the rule does not exempt tests*; **guard** `provider_guard_test` *lib/src/ui has no injected state beyond the recorded countdown* *a new injected parameter is a fault* *a removed parameter has its budget line taken out* *a value type passed as a parameter is not a fault* *a widget holding state by parameter is a fault* *a load result is not an injected dependency* *the budget names every file that currently injects*; **guard** `isolate_guard_test` *main() still branches rather than being given both surfaces* |
+| 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` * lib/ has no setState calls at all*, *the scanner still finds them, or the rule above is vacuous*, *the two replacements are the only two*, *every ValueNotifier is listened to, or nothing rebuilds*; **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*, *the scanner still matches the names it claims to*, *a value is not a dependency*, *a load result is not an injected dependency*, *callbacks are allowed, and are what the roots pass* |
 
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,

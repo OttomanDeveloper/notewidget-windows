@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/core/app_paths.dart';
 import 'src/platform/shell_channel.dart';
+import 'src/state/providers.dart';
 import 'src/ui/editor/editor_app.dart';
 import 'src/ui/theme.dart';
 import 'src/ui/widget/widget_app.dart';
@@ -38,11 +40,29 @@ Future<void> main(List<String> args) async {
   // but a data directory that does not exist means every read is a silent miss.
   Directory(launch.dataDirectory).createSync(recursive: true);
 
-  if (launch.isWidgetSurface) {
-    runApp(WidgetApp(shell: shell, launch: launch, paths: paths));
-  } else {
-    runApp(EditorApp(shell: shell, launch: launch, paths: paths));
-  }
+  // The `ProviderScope` lives here rather than inside each root widget, and that
+  // is what lets both roots take **no parameters at all** - `AGENTS.md` §0.8 with
+  // nothing carved out of it.
+  //
+  // The three things a container cannot discover for itself are the runner channel,
+  // what the runner reported at launch, and where the files are. They exist before
+  // any widget does, so they are supplied once, here, and every widget below reads
+  // them with `ref`. The roots used to take all three and pass them down.
+  //
+  // Above the branch, so it looks like one scope is shared - it is not. Each isolate
+  // runs this function separately, so each builds its own scope over its own
+  // channel. That is `docs/isolate_pattern.md` §2 and it is unchanged by where the
+  // scope is written.
+  runApp(
+    ProviderScope(
+      overrides: [
+        shellProvider.overrideWithValue(shell),
+        launchInfoProvider.overrideWithValue(launch),
+        appPathsProvider.overrideWithValue(paths),
+      ],
+      child: launch.isWidgetSurface ? const WidgetApp() : const EditorApp(),
+    ),
+  );
 }
 
 /// Shown when the native runner is not present.

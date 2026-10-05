@@ -1,3 +1,8 @@
+# Configures the analyzer, which statically analyzes Dart code to check for
+# errors, warnings, and lints. Run it with `flutter analyze`.
+#
+# Detail on why each rule is here or overridden lives in the comment beside it.
+
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
@@ -6,11 +11,58 @@ analyzer:
     # Native Windows runner sources. They are compiled by CMake, not the Dart
     # analyzer, and have their own warnings settings.
     - windows/**
+    # Generated code, for the day a build_runner-backed feature lands. Nothing
+    # in this repo generates code today, so this matches nothing yet.
+    - '**/*.g.dart'
 
 linter:
   rules:
-    # Disabled deliberately: this project's constructors take public named
-    # parameters and assign them to private fields. The lint's suggested fix,
-    # `required this._shell`, would force every caller to write `_shell:` and
-    # leak private field names into the public API of each controller.
+    # --- Disabled deliberately ---
+
+    # This project's constructors take public named parameters and assign them
+    # to private fields. The lint's suggested fix, `required this._shell`, would
+    # force every caller to write `_shell:` and leak private field names into
+    # the public API of each controller.
     prefer_initializing_formals: false
+
+    # Conflicts with always_specify_types, which is off. See below.
+    omit_local_variable_types: true
+
+    # Forces `String x = 'a'` rather than `final x = 'a'` on every local and
+    # field. Off: the codebase leans on `final`/`var` for inference, and
+    # annotating every local makes the widget builders markedly harder to read
+    # for no gain, since the types are already checked. Turn on
+    # always_specify_types first if this is ever reversed.
+    always_specify_types: false
+
+    # --- Async and resource correctness ---
+
+    # An unawaited Future is usually a forgotten write or a swallowed error.
+    unawaited_futures: true
+    # A StreamSubscription that outlives its owner leaks a file watcher or timer.
+    cancel_subscriptions: true
+    # An unclosed IOSink loses buffered writes on exit.
+    close_sinks: true
+
+    # --- Correctness ---
+
+    # `catch (e)` around a catch clause whose error escapes. Related to the
+    # project's rule that a damaged file is never silently overwritten.
+    avoid_catching_errors: true
+    # Reassigning a parameter hides the fact that the caller's value is gone.
+    parameter_assignments: true
+    # `f(true)` at a call site is unreadable once there are two booleans.
+    avoid_positional_boolean_parameters: true
+
+    # --- Style ---
+
+    # Repeated `+` in a loop is a quadratic string build.
+    use_string_buffers: true
+    # `var x = 1` in a loop body is almost always a bug.
+    prefer_final_locals: true
+    # One argument per line when the call wraps, so a diff touches one line
+    # rather than the whole call.
+    require_trailing_commas: true
+
+    # prefer_const_constructors and prefer_const_declarations are already on via
+    # package:flutter_lints/flutter.yaml and are not repeated here.

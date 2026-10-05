@@ -1,174 +1,121 @@
 /// `AGENTS.md` §0.8: a widget below a `ProviderScope` reads shared state with
 /// `ref`, never through a constructor parameter.
 ///
-/// This is the guard that matters most of the four added here, and the reason is
-/// in the numbers. There are 23 constructor parameters today that thread a
-/// controller, a shell channel or a settings object into a widget by hand, and
-/// `settings_dialog.dart` alone accounts for 13 of them. Introducing Riverpod
-/// without a rule here changes nothing: the next thing anyone writes is
-/// `NoteEditorPane(controller: ref.read(notesProvider), ...)`, the tree is clean
-/// for one commit, and the plumbing is back.
+/// This was a countdown. 23 parameters on 2026-10-05, across seven files, thirteen
+/// of them in `settings_dialog.dart`. Every one reached zero and the budget is
+/// gone.
 ///
-/// So the rule is about *where state comes from*, not about which library is
-/// installed. It fails on a widget being handed a dependency, which is what makes
-/// it survive the choice of state-management package.
+/// Why the rule is about *where state comes from* rather than about which library
+/// is installed: introducing a state package without this rule changes nothing. The
+/// next thing anyone writes is `NoteEditorPane(controller: ref.read(notesProvider))`,
+/// the tree is clean for one commit, and the plumbing is back. This check has teeth
+/// on day one with `pubspec.yaml` untouched.
 ///
-/// Enforced as a countdown budget for the same reason as `no_set_state_test`: 23
-/// sites exist now, and a rule unsatisfiable until the migration lands is a rule
-/// that gets deleted rather than obeyed.
+/// **Its known limit, stated rather than hidden.** It matches constructor *field
+/// names*, not types. A dependency arriving as `this.foo` would not be caught.
+/// The two `ScrollController` and `TextEditingController` fields this rule
+/// legitimately tolerates are the price of a check that runs in CI, and they were
+/// given honest names - `scroll`, `field` - so a reader can see they are per-widget
+/// resources rather than shared state.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'guards.dart';
 
-/// The 23 injected parameters that exist today, counted per file.
-const Map<String, int> injectedBudget = {
-  'lib/src/ui/editor/editor_app.dart': 1,
-  'lib/src/ui/editor/editor_view.dart': 3,
-  'lib/src/ui/editor/note_editor_pane.dart': 1,
-  'lib/src/ui/editor/note_list_pane.dart': 1,
-  'lib/src/ui/settings/settings_dialog.dart': 13,
-  'lib/src/ui/widget/widget_app.dart': 1,
-  'lib/src/ui/widget/widget_surface.dart': 3,
-};
-
-const RemovalBudget _injected = RemovalBudget(
-  what: 'injected state parameter',
-  allowance: injectedBudget,
-  rule: 'Read it with ref.watch to rebuild, or ref.read to act '
-      '(`docs/provider_pattern.md` §2). A callback that has to reach a controller '
-      'is ref.read inside the handler. What is allowed to cross a boundary as a '
-      'parameter is a value, not a thing that holds state.',
-);
-
 void main() {
   final tree = SourceTree();
 
   group('state arrives through ref, not through a parameter', () {
-    test('lib/src/ui has no injected state beyond the recorded countdown', () {
+    test('no widget holds shared state by constructor parameter', () {
       final live = injectedStateParamCounts(tree);
-      final faults = _injected.faults(live);
 
       expect(
-        faults,
+        live,
         isEmpty,
-        reason: 'AGENTS.md §0.8.\n'
-            '${live.values.fold(0, (a, b) => a + b)} of '
-            '${_injected.allowanceTotal} recorded sites remain.\n\n'
-            '${faults.join('\n')}',
+        reason: 'AGENTS.md §0.8. Zero is the only accepted number.\n\n'
+            '${live.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
+            '    Read it with ref.watch to draw, ref.read to act. A callback may '
+            'cross as a parameter; anything that holds state may not.',
       );
     });
 
-    test('the countdown is still counting', () {
-      final live = injectedStateParamCounts(tree);
-      expect(live, isNotEmpty, reason: 'The scanner found nothing.');
-      expect(
-        live.values.fold(0, (a, b) => a + b),
-        _injected.allowanceTotal,
-        reason: 'The recorded countdown and the code disagree.',
-      );
+    test('the scanner still matches the names it claims to', () {
+      // The rule above is satisfied by an empty map, so the scanner is checked
+      // against text it must match. Every name in the alternation, so a future
+      // tightening that drops one is caught here rather than silently narrowing the
+      // rule.
+      for (final name in [
+        'controller',
+        'shell',
+        'settings',
+        'notifier',
+        'store',
+        'model',
+        'repo',
+        'repository',
+        'viewModel',
+      ]) {
+        expect(
+          RegExp(r'\bthis\.(controller|shell|settings|notifier|store|model|repo|repository|viewModel)\b')
+              .hasMatch('required this.$name,'),
+          isTrue,
+          reason: 'this.$name must be caught. If it is deliberately exempt, delete '
+              'it from the alternation and say why here.',
+        );
+      }
     });
 
-    test('a new injected parameter is a fault', () {
-      final live = Map<String, int>.from(injectedBudget);
-      live['lib/src/ui/editor/editor_toolbar.dart'] = 2;
-
-      final faults = _injected.faults(live);
-      expect(faults.single, contains('is not in the budget at all'));
-      expect(faults.single, contains('editor_toolbar.dart'));
-    });
-
-    test('a removed parameter has its budget line taken out', () {
-      final live = Map<String, int>.from(injectedBudget)
-        ..remove('lib/src/ui/editor/note_list_pane.dart');
-
-      final faults = _injected.faults(live);
-      expect(faults.single, contains('note_list_pane.dart'));
-      expect(faults.single, contains('Delete the line'));
-    });
-
-    test('a value type passed as a parameter is not a fault', () {
-      // The distinction the rule actually turns on. `this.path`, `this.index` and
-      // `this.onTap` are fine: they are data or behaviour, and passing those is
-      // what parameters are for. §0.8 is about a parameter that carries *state*,
-      // because that is what makes a widget rebuild when it should not, and what
-      // makes a subtree impossible to reuse under a different scope.
+    test('a value is not a dependency', () {
+      // The distinction the rule turns on. `this.path` and `this.onTap` are fine:
+      // they are data or behaviour, and passing those is what parameters are for.
+      // `this.controller` holds state, which is what §0.8 is about.
       for (final valueParam in [
         'required this.path',
         'required this.index',
         'required this.onTap',
         'required this.noteId',
         'required this.brightness',
+        'required this.scroll',
+        'required this.field',
       ]) {
         expect(
-          RegExp(r'\bthis\.(controller|shell|settings)\b').hasMatch(valueParam),
+          RegExp(
+            r'\bthis\.(controller|shell|settings|notifier|store|model|repo|repository|viewModel)\b',
+          ).hasMatch(valueParam),
           isFalse,
           reason: '$valueParam is a value and is not what §0.8 is about',
         );
       }
-
-      expect(
-        RegExp(r'\bthis\.(controller|shell|settings)\b')
-            .hasMatch('required this.controller'),
-        isTrue,
-      );
-    });
-
-    test('a widget holding state by parameter is a fault', () {
-      final live = Map<String, int>.from(injectedBudget);
-      live['lib/src/ui/editor/note_card.dart'] = 3;
-
-      final faults = _injected.faults(live);
-      expect(faults, hasLength(1));
-      expect(faults.single, contains('is not in the budget at all'));
-      expect(faults.single, contains('note_card.dart'));
     });
 
     test('a load result is not an injected dependency', () {
-      // `NotesLoaded(this.notes)` is why `notes` is absent from the scanner's
-      // alternation. A scan that cannot tell a load result from a controller would
-      // carry that false positive forever, and a budget with a permanent
-      // false positive in it is a budget nobody believes.
+      // `NotesLoaded(this.notes)` is why `notes` is absent from the alternation. A
+      // scan that could not tell a load result from a controller would carry that
+      // false positive forever, and a guard with a permanent false positive is one
+      // nobody believes.
       expect(
-        RegExp(r'\bthis\.(controller|shell|settings)\b')
+        RegExp(r'\bthis\.(controller|shell|settings|notifier|store|model|repo|repository|viewModel)\b')
             .hasMatch('const NotesLoaded(this.notes);'),
         isFalse,
       );
+    });
+
+    test('callbacks are allowed, and are what the roots pass', () {
+      // The rule has to leave room for something, or it reads as "no parameters".
+      // What it leaves room for is behaviour: `EditorView` takes three callbacks and
+      // no state, and that is the shape every widget below the roots should have.
+      final editorView = tree.read('lib/src/ui/editor/editor_view.dart');
+
       expect(
-        RegExp(r'\bthis\.(controller|shell|settings)\b')
-            .hasMatch('const NoteListPane({required this.controller})'),
+        editorView.contains('final VoidCallback onOpenSettings;'),
         isTrue,
-      );
-    });
-
-    test('every budgeted file is one the provider rule is really about', () {
-      // If a budget line pointed at, say, `theme.dart`, the number would be
-      // counting something else and the table in the doc would be fiction.
-      for (final path in injectedBudget.keys) {
-        expect(
-          path,
-          startsWith('lib/src/ui/'),
-          reason: '$path holds state by injection but is not under ui/. '
-              'Either it moved or the count means something else.',
-        );
-      }
-    });
-
-    test('the budget names every file that currently injects', () {
-      // Catches the reverse drift: a new file that injects state is a fault above,
-      // and this asserts the two lists are the same set today so the budget is a
-      // description rather than an approximation.
-      final live = injectedStateParamCounts(tree).keys.toSet();
-      expect(
-        live.difference(injectedBudget.keys.toSet()),
-        isEmpty,
-        reason: 'Files inject state that the budget does not list',
+        reason: 'precondition: callbacks still cross as parameters',
       );
       expect(
-        injectedBudget.keys.toSet().difference(live),
+        injectedStateParamCounts(tree),
         isEmpty,
-        reason: 'The budget lists files that no longer inject anything',
+        reason: 'and nothing that holds state does',
       );
     });
   });

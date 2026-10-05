@@ -541,6 +541,38 @@ const Set<String> approvedDependencies = <String>{
   // budgets, the palette styling, what is deliberately not rendered - is in
   // `lib/src/ui/common/markdown_text.dart` and is owned here.
   'markdown',
+
+  // State management and DI. Added 2026-10-05, completing the provider pattern
+  // after the research that found this repo had none: two hand-written
+  // `_bootstrap` methods constructing the same five things, with
+  // `_resolveBrightness` already forked into three copies that disagree
+  // (AGENTS.md section 4.7).
+  //
+  // Why this passes the test PROJECT.md 167 sets - "verifiable by reading the
+  // code instead of by trusting a dependency" - while `window_manager` and
+  // friends would not: Riverpod does no I/O, spawns nothing, touches no platform
+  // channel, and generates no code. Its whole behaviour is watch/read and
+  // disposal, all of which is written down in `docs/provider_pattern.md` and none
+  // of which is delegated. What stays owned here: every provider, the per-file
+  // countdowns, and the decision of what is state at all.
+  //
+  // Unlike `markdown`, this one is load-bearing for the app's structure, so the
+  // dependency guard is joined by `provider_guard_test` and `no_set_state_test`,
+  // which fail if the plumbing comes back by hand.
+  'riverpod',
+
+  // The Flutter bindings for the above: same version, same author.
+  //
+  // A separate entry rather than a transitive one because `riverpod` alone has no
+  // `ConsumerWidget` - it is pure Dart and knows nothing about Flutter, which is
+  // exactly the split that makes it auditable. This is the only place
+  // Flutter-specific state management exists, and the one a future dependency
+  // review has to look at.
+  //
+  // `riverpod` is listed alongside it even though importing it is reachable
+  // transitively. The rule is about what `pubspec.yaml` declares, and it declares
+  // both.
+  'flutter_riverpod',
 };
 
 /// Every package named under the top-level `dependencies:` block of a pubspec.
@@ -770,20 +802,83 @@ Map<String, int> countPerFile(
 Map<String, int> setStateCounts(SourceTree tree) =>
     countPerFile(tree, 'lib', r'\bsetState\s*\(');
 
-/// Every widget constructor field that carries shared state in from outside.
+/// Every **widget** constructor field that carries shared state in from outside.
 ///
 /// `AGENTS.md` §0.8: a widget below a `ProviderScope` reads state with `ref`, not
-/// through a parameter. This counts the hand-rolled equivalent that exists today.
+/// through a parameter. This counts the hand-rolled equivalent that used to exist -
+/// 23 parameters on 2026-10-05, now zero.
 ///
-/// `notes` is deliberately absent from the alternation. `NotesLoaded(this.notes)`
-/// is a load result, not an injected dependency, and a scan that cannot tell the
-/// difference would carry a false positive forever — which is how a budget stops
-/// being believed.
-Map<String, int> injectedStateParamCounts(SourceTree tree) => countPerFile(
-      tree,
-      'lib/src/ui',
-      r'\bthis\.(controller|shell|settings)\b',
-    );
+/// **Two limits, both stated rather than hidden.**
+///
+///  - *It matches names, not types.* A dependency arriving as `this.foo` would not
+///    be caught. The alternative cannot be done by scanning text, and the two
+///    `ScrollController` and `TextEditingController` fields this rule legitimately
+///    tolerates are the price of a check that runs in CI. Both were given honest
+///    names - `scroll`, `field` - so a reader can see they are per-widget resources
+///    rather than shared state.
+///  - *It decides "is this a widget" by reading the nearest preceding `class`
+///    line.* That is an approximation: it is right for this codebase, where classes
+///    do not nest and no class is declared inside a method, and it would be wrong in
+///    one where they do. Brace-matching source text to find a class body is a
+///    reliable way to get a guard that fails on a string literal.
+///
+/// The class test matters because §0.8 is about *widgets*, and two plain classes in
+/// `editor_app.dart` legitimately hold notifiers: `EditorBootstrap` and
+/// `EditorTeardown`. They exist precisely because a `WidgetRef` cannot be held across
+/// an await or read inside `dispose` - Riverpod throws in both cases - so the
+/// dependencies are resolved in `initState` and handed to a plain object that has no
+/// widget to be unmounted from. Counting those as violations would be the guard
+/// insisting on a rule the framework makes impossible, which is how a guard gets
+/// disabled.
+Map<String, int> injectedStateParamCounts(SourceTree tree) {
+  final field = RegExp(
+    r'\bthis\.(controller|shell|settings|notifier|store|model|repo|repository|viewModel)\b',
+  );
+  final classLine = RegExp(r'^\s*class\s+(\w+)', multiLine: true);
+
+  final counts = <String, int>{};
+  for (final entry in tree.dartFilesUnder('lib/src/ui').entries) {
+    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final source = entry.value.join('\n');
+
+    // Offsets of every class declaration, so a hit can be attributed to one.
+    final declarations = <int, String>{};
+    for (final m in classLine.allMatches(source)) {
+      declarations[m.start] = m.group(1) ?? '';
+    }
+
+    var found = 0;
+    for (final hit in field.allMatches(source)) {
+      final owner = _enclosingClass(declarations.keys.toSet(), hit.start);
+      if (owner == null) continue;
+      if (_isWidgetClass(source, owner)) found++;
+    }
+    if (found > 0) counts[path] = found;
+  }
+  return counts;
+}
+
+/// The offset of the last class declared before [offset].
+int? _enclosingClass(Set<int> starts, int offset) {
+  int? best;
+  for (final start in starts) {
+    if (start > offset) break;
+    best = start;
+  }
+  return best;
+}
+
+/// Whether the class declared at [offset] is a widget.
+///
+/// True for anything extending a `*Widget`, and for a `State` subclass - which is
+/// how the rule reaches a `ConsumerStatefulWidget`'s own constructor, since the
+/// widget's fields are inherited rather than repeated.
+bool _isWidgetClass(String source, int offset) {
+  final end = source.indexOf('{', offset);
+  if (end < 0) return false;
+  final header = source.substring(offset, end > offset + 300 ? offset + 300 : end);
+  return RegExp(r'extends\s+[\w<>,\s]*?(Widget|State<)\b').hasMatch(header);
+}
 
 /// Every repository or controller constructed inside `lib/src/ui/`.
 ///
@@ -793,7 +888,7 @@ Map<String, int> injectedStateParamCounts(SourceTree tree) => countPerFile(
 Map<String, int> uiConstructionCounts(SourceTree tree) => countPerFile(
       tree,
       'lib/src/ui',
-      r'\b(?:Notes|Settings|Widget|Selection)Repository\s*\(|\b'
+      r'\b(?:Notes|Settings|WidgetState|Selection)Repository\s*\(|\b'
       r'(?:Notes|Settings|Widget)Controller\s*\(',
     );
 

@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:win_notes/src/core/atomic_json_file.dart';
 import 'package:win_notes/src/data/note.dart';
 import 'package:win_notes/src/data/notes_repository.dart';
-import 'package:win_notes/src/state/notes_controller.dart';
 import 'package:win_notes/src/ui/common/markdown_text.dart';
 import 'package:win_notes/src/ui/editor/note_editor_pane.dart';
 import 'package:win_notes/src/ui/editor/note_list_pane.dart';
@@ -16,6 +15,7 @@ import 'package:win_notes/src/ui/theme.dart';
 import 'package:win_notes/src/ui/widget/widget_note_card.dart';
 
 import 'helpers/file_io.dart';
+import 'helpers/provider_harness.dart';
 
 /// A card at the size that decides its budget: `roomy` for the large card, and
 /// deliberately too small for one otherwise, which is what a compact card is.
@@ -443,8 +443,8 @@ void main() {
   });
 
   group('the per-note switch', () {
-    late Directory temp;
-    late NotesController controller;
+    late TestHarness harness;
+    late Notes controller;
 
     setUp(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -452,33 +452,36 @@ void main() {
         const MethodChannel('dev.winnotes/shell'),
         (call) async => null,
       );
-      temp = Directory.systemTemp.createTempSync('wn_markdown');
+      harness = TestHarness.build();
     });
 
-    tearDown(() {
-      controller.dispose();
-      deleteTempDir(temp);
+    tearDown(() async {
+      await harness.dispose();
     });
 
-    Future<void> load(List<Note> notes) async {
-      final repo =
-          NotesRepository(AtomicJsonFile('${temp.path}\\notes.json'));
+    /// Seeds [notes] into the container's profile and returns the facade.
+    ///
+    /// The file is written *before* the provider is first read, because a provider
+    /// builds on first read and that read is what pulls the file in.
+    Future<Notes> load(List<Note> notes) async {
+      final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
       await repo.saveNow(notes);
-      controller = NotesController(repository: repo);
-      await controller.load();
+      await harness.notes();
+      controller = Notes(harness);
+      return controller;
     }
 
     test('turning it on changes the note and persists', () async {
       await load([note('a', '# hi')]);
       expect(controller.notes.single.markdown, isFalse);
 
-      controller.setMarkdown('a', true);
+      controller.setMarkdown('a', enabled: true);
 
       expect(controller.notes.single.markdown, isTrue);
 
       // And it reaches disk, debounce and all.
       final written = await waitForContent(
-        File('${temp.path}\\notes.json'),
+        File(harness.notesFile),
         '"markdown": true',
       );
       expect(written, contains('"markdown": true'));
@@ -498,10 +501,9 @@ void main() {
       await load([note('a', 'body')]);
       final before = controller.notes.single.updatedAt;
 
-      controller.setMarkdown('a', true);
+      controller.setMarkdown('a', enabled: true);
       expect(controller.notes.single.updatedAt.isAfter(before), isTrue);
 
-      controller.dispose();
       await load([note('b', 'body')]);
       final beforeToggle = controller.notes.single.updatedAt;
       await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -513,13 +515,13 @@ void main() {
     test('setting it to what it already is does nothing', () async {
       await load([note('a', 'body', markdown: true)]);
       final before = controller.notes.single.updatedAt;
-      controller.setMarkdown('a', true);
+      controller.setMarkdown('a', enabled: true);
       expect(controller.notes.single.updatedAt, before);
     });
 
     test('a note that is not there is ignored', () async {
       await load([note('a', 'body')]);
-      controller.setMarkdown('missing', true);
+      controller.setMarkdown('missing', enabled: true);
       expect(controller.notes.single.markdown, isFalse);
     });
   });
@@ -576,9 +578,7 @@ void main() {
   });
 
   group('the notes list rows', () {
-    late Directory temp;
-    late NotesController controller;
-    late AtomicJsonFile file;
+    late TestHarness harness;
 
     setUp(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -586,39 +586,45 @@ void main() {
         const MethodChannel('dev.winnotes/shell'),
         (call) async => null,
       );
-      temp = Directory.systemTemp.createTempSync('wn_md_list');
-      file = AtomicJsonFile('${temp.path}\\notes.json');
+      harness = TestHarness.build();
     });
 
-    tearDown(() {
-      controller.dispose();
-      deleteTempDir(temp);
+    tearDown(() async {
+      await harness.dispose();
     });
 
     /// The list pane at its real width: 300px, which is what the editor gives it.
+    ///
+    /// The provider is warmed inside `runAsync` and before `pumpWidget`, for the
+    /// reason spelled out in `pumpEditor` in `editor_navigation_test`: a provider
+    /// built during a pump issues its file read under the fake clock, which never
+    /// advances, so the list renders nothing and the test finds no rows.
+    /// reason spelled out in pumpEditor in ditor_navigation_test: a provider
+    /// built during a pump issues its file read under the fake clock, which never
+    /// advances.
     Future<void> pumpList(WidgetTester tester, List<Note> notes) async {
       await tester.runAsync(() async {
-        final repo = NotesRepository(file);
+        final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
         await repo.saveNow(notes);
-        controller = NotesController(repository: repo);
-        await controller.load();
+        await harness.notes();
       });
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildWinNotesTheme(
-            brightness: Brightness.light,
-            highContrast: false,
-          ),
-          home: Scaffold(
-            body: SizedBox(
-              width: 300,
-              height: 600,
-              child: NoteListPane(
-                controller: controller,
-                onOpenNote: () {},
-                onNewNote: () {},
-                onCloseList: () {},
+        harness.wrap(
+          MaterialApp(
+            theme: buildWinNotesTheme(
+              brightness: Brightness.light,
+              highContrast: false,
+            ),
+            home: Scaffold(
+              body: SizedBox(
+                width: 300,
+                height: 600,
+                child: NoteListPane(
+                  onOpenNote: () {},
+                  onNewNote: () {},
+                  onCloseList: () {},
+                ),
               ),
             ),
           ),
@@ -780,11 +786,8 @@ void main() {
   });
 
   group('the editor switch and preview', () {
-    late Directory temp;
-    late NotesController controller;
-    // Initialised in setUp rather than late so the analyzer can see that
-    // tearDown always has something to cancel.
-    late AtomicJsonFile file;
+    late TestHarness harness;
+    late Notes controller;
 
     setUp(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -792,48 +795,48 @@ void main() {
         const MethodChannel('dev.winnotes/shell'),
         (call) async => null,
       );
-      temp = Directory.systemTemp.createTempSync('wn_md_editor');
-      file = AtomicJsonFile('${temp.path}\\notes.json');
+      harness = TestHarness.build();
     });
 
-    tearDown(() {
-      controller.dispose();
+    tearDown(() async {
       // The debounce timers are fake under a widget test, so they never elapse on
-      // their own and the test ends with one still pending. Dropping them is
-      // right: what is being tested here is what is on screen, and the write
-      // landing is [the per-note switch] group's job.
-      file.cancelPendingWrites();
-      deleteTempDir(temp);
+      // their own and the test ends with one still pending. The harness's dispose
+      // gives up on the directory rather than failing, which is what that comment
+      // was protecting against - but the write genuinely should not land here,
+      // because what is under test is what is on screen.
+      await harness.dispose();
     });
 
     Future<void> pumpPane(WidgetTester tester, double width) async {
-      // Real file IO has to happen inside `runAsync`. Under a widget test's
-      // fake clock the event loop is never really pumped, so awaiting a disk
-      // write here hangs forever - the timer the debounce starts fires, but the
-      // write it began never completes. Which looks exactly like a widget test
-      // that hangs for no reason.
+      // Real file IO has to happen inside `runAsync`. Under a widget test's fake
+      // clock the event loop is never really pumped, so awaiting a disk write here
+      // hangs forever - the timer the debounce starts fires, but the write it began
+      // never completes. Which looks exactly like a widget test that hangs for no
+      // reason. See docs/testing_pattern.md section 4.
       await tester.runAsync(() async {
-        // Built from the group-level `file` rather than a fresh instance, so
-        // cancelling its timers in the tests below actually cancels these.
-        final repo = NotesRepository(file);
+        final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
         await repo.saveNow([
           note('t', '# Heading\n\n**bold** words', markdown: true),
         ]);
-        controller = NotesController(repository: repo);
-        await controller.load();
+        // Warmed here, before the pump, for the same reason as everywhere else:
+        // a provider built during pumpWidget reads the file under the fake clock.
+        await harness.notes();
+        controller = Notes(harness);
       });
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildWinNotesTheme(
-            brightness: Brightness.light,
-            highContrast: false,
-          ),
-          home: Scaffold(
-            body: SizedBox(
-              width: width,
-              height: 600,
-              child: NoteEditorPane(controller: controller),
+        harness.wrap(
+          MaterialApp(
+            theme: buildWinNotesTheme(
+              brightness: Brightness.light,
+              highContrast: false,
+            ),
+            home: Scaffold(
+              body: SizedBox(
+                width: width,
+                height: 600,
+                child: const NoteEditorPane(),
+              ),
             ),
           ),
         ),
@@ -883,12 +886,17 @@ void main() {
       expect(find.byType(MarkdownText), findsNothing,
           reason: 'and the preview goes with it');
 
-      // Turning Markdown on schedules a debounced write, and under a widget
-      // test that timer is fake - it never elapses on its own, and the test ends
-      // with one still pending. Cancel it here rather than in tearDown: the
-      // pending-timer check runs before tearDown does, so tearDown is too late
-      // to save this test.
-      file.cancelPendingWrites();
+      // Turning Markdown off schedules a debounced write, and under a widget test
+      // that timer is fake - it never elapses on its own, and the test ends with
+      // one still pending. Cancelled here rather than in tearDown: the pending-timer
+      // check runs before tearDown does, so tearDown is too late to save this test.
+      //
+      // Cancelled rather than flushed, and that is the whole point. `flush` *awaits*
+      // the write, and under a fake clock it never completes - so the first version
+      // of this line turned a failing assertion into a ten-minute hang, which is a
+      // much worse way to hear about it. See `TestHarness.cancelPendingWrites` and
+      // `docs/testing_pattern.md` §4.
+      harness.cancelPendingWrites();
     });
 
     testWidgets('the source keeps the syntax while it is being typed',

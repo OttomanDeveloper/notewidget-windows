@@ -1,139 +1,171 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_paths.dart';
-import '../../core/atomic_json_file.dart';
-import '../../data/notes_repository.dart';
-import '../../data/settings_repository.dart';
 import '../../platform/shell_channel.dart';
-import '../../state/settings_controller.dart';
+import '../../state/providers.dart';
 import '../../state/widget_controller.dart';
-import '../palette.dart';
-import '../theme.dart';
+import '../theme_scope.dart';
 import 'widget_surface.dart';
 
 /// Root widget for the widget surface.
 ///
 /// Runs in its own isolate, reads the same files the editor writes, and never
-/// writes notes. There is one writer per file in this app and this side owns
-/// only `widget_state.json`.
-class WidgetApp extends StatefulWidget {
-  const WidgetApp({
-    super.key,
-    required this.shell,
-    required this.launch,
-    required this.paths,
-  });
-
-  final ShellChannel shell;
-  final LaunchInfo launch;
-  final AppPaths paths;
+/// writes notes. There is one writer per file in this app and this side owns only
+/// `widget_state.json`.
+///
+/// Now a `ConsumerWidget` creating its own `ProviderScope`, against the same
+/// declarations the editor uses. That is what `docs/isolate_pattern.md` §3.1 asked
+/// for: the two surfaces build one graph rather than each writing its own, so the
+/// three copies of `_resolveBrightness` that disagreed with each other are now one
+/// provider (`AGENTS.md` §4.7).
+class WidgetApp extends ConsumerWidget {
+  const WidgetApp({super.key});
 
   @override
-  State<WidgetApp> createState() => _WidgetAppState();
+  Widget build(BuildContext context, WidgetRef ref) => const _WidgetScope();
 }
 
-class _WidgetAppState extends State<WidgetApp> with WidgetsBindingObserver {
-  late final NotesRepository _notesRepo;
-  late final WidgetStateRepository _widgetRepo;
-  late final SelectionRepository _selectionRepo;
-  late final SettingsController _settings;
-  late final WidgetController _controller;
-  StreamSubscription<ShellEvent>? _events;
+/// The MaterialApp and the widget: the `MaterialApp` and the widget itself.
+class _WidgetScope extends ConsumerStatefulWidget {
+  const _WidgetScope();
 
-  Brightness _brightness = Brightness.light;
-  bool _ready = false;
+  @override
+  ConsumerState<_WidgetScope> createState() => _WidgetScopeState();
+}
+
+class _WidgetScopeState extends ConsumerState<_WidgetScope>
+    with WidgetsBindingObserver {
+  /// Read in `initState` because Riverpod asserts on any `ref` use inside
+  /// `dispose`. See `_EditorScopeState` for the full rule.
+  late final WidgetNotifier _notifier;
 
   @override
   void initState() {
     super.initState();
+    _notifier = ref.read(widgetProvider.notifier);
     WidgetsBinding.instance.addObserver(this);
-    unawaited(_bootstrap());
+    unawaited(_start());
   }
 
-  Future<void> _bootstrap() async {
-    final notesRepo = NotesRepository(AtomicJsonFile(widget.paths.notesFile));
-    final settingsRepo = SettingsRepository(
-      AtomicJsonFile(widget.paths.settingsFile),
-      widget.shell,
-    );
-    final widgetRepo = WidgetStateRepository(
-      AtomicJsonFile(widget.paths.widgetStateFile),
-    );
-    final selectionRepo = SelectionRepository(
-      AtomicJsonFile(widget.paths.selectionFile),
-    );
+  /// The startup ladder, in the order it has to happen.
+  ///
+  /// The delay comes after the load because it is the autostart delay: on an
+  /// autostart launch the widget waits before appearing, and launching by hand shows
+  /// it at once, because someone who just clicked the icon is already looking.
+  Future<void> _start() async {
+    // Read before the first await; a WidgetRef held across one throws once the
+    // widget is gone. See EditorBootstrap.start for the full explanation.
+    final notifier = ref.read(widgetProvider.notifier);
 
-    _notesRepo = notesRepo;
-    _widgetRepo = widgetRepo;
-    _selectionRepo = selectionRepo;
-
-    _settings = SettingsController(
-      repository: settingsRepo,
-      shell: widget.shell,
-      watchExternal: true,
-    );
-    await _settings.load(
-      animationsEnabled: widget.launch.animationsEnabled,
-      acrylicSupported: widget.launch.acrylicSupported,
-    );
-
-    _brightness = _resolveBrightness();
-
-    _controller = WidgetController(
-      shell: widget.shell,
-      settings: _settings,
-      notesRepo: notesRepo,
-      widgetRepo: widgetRepo,
-      selectionRepo: selectionRepo,
-      isAutostartLaunch: widget.launch.isAutostartLaunch,
-      animationsEnabled: widget.launch.animationsEnabled,
-      acrylicSupported: widget.launch.acrylicSupported,
-      isSystemDark: widget.launch.isSystemDark,
-    );
-
-    await _controller.load();
-
-    // Only the autostart launch waits. Launching by hand shows the widget at
-    // once, because someone who just clicked the icon is already looking.
-    await _controller.applyStartupDelay();
-    await _controller.restoreGeometry();
-
-    _events = widget.shell.events.listen(_onEvent);
-
-    if (mounted) setState(() => _ready = true);
+    await ref.read(widgetProvider.future);
+    await notifier.applyStartupDelay();
+    await notifier.restoreGeometry();
   }
 
-  Brightness _resolveBrightness() {
-    final mode = _settings.settings.themeMode;
-    if (mode == ThemeMode.light) return Brightness.light;
-    if (mode == ThemeMode.dark) return Brightness.dark;
-    return widget.launch.isSystemDark ? Brightness.dark : Brightness.light;
+  @override
+  void didChangePlatformBrightness() {
+    ref.read(systemBrightnessProvider.notifier).report(
+          brightness:
+              MediaQueryData.fromView(View.of(context)).platformBrightness,
+        );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // `_notifier`, captured in `initState`, and not `ref.read(...)` here: Riverpod
+    // asserts on any `ref` use inside `dispose`, so the latter throws during tree
+    // finalisation - after the test that closed the surface has already passed.
+    //
+    // `onDispose` cannot await either, so the flush is an explicit call from a place
+    // that knows the isolate is ending. `AGENTS.md` §4.8: the hazard predates the
+    // provider work and is unchanged by it.
+    unawaited(_notifier.flush());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ref.watch(widgetSurfaceThemeProvider);
+
+    final ready = ref.watch(widgetProvider).hasValue;
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: theme,
+      // Blank rather than a spinner: the window is frameless and translucent, and
+      // a spinner on a desktop widget would be the first thing anyone saw at boot.
+      home: ready
+          ? WidgetEventRouter(
+              child: Theme(
+                // The widget draws its own surface colour, so the ambient brightness
+                // has to follow the widget's, not the window's.
+                data: ThemeData(brightness: theme.brightness),
+                child: const WidgetSurface(),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Routes events pushed up from the runner.
+///
+/// Three of the six event kinds are deliberately ignored here, and the reason is the
+/// whole design: `toggleCompleted` and `createNote` are *requests* addressed to the
+/// editor, which owns notes.json. Acting on them from this isolate would put two
+/// writers on one file - precisely what the runner's routing exists to prevent.
+/// `docs/isolate_pattern.md` §3.4.
+class WidgetEventRouter extends ConsumerStatefulWidget {
+  const WidgetEventRouter({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<WidgetEventRouter> createState() => _WidgetEventRouterState();
+}
+
+class _WidgetEventRouterState extends ConsumerState<WidgetEventRouter> {
+  StreamSubscription<ShellEvent>? _events;
+
+  @override
+  void initState() {
+    super.initState();
+    _events = ref.read(shellProvider).events.listen(_onEvent);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_events?.cancel());
+    super.dispose();
   }
 
   void _onEvent(ShellEvent event) {
+    // See `EditorEventRouter._onEvent`: a `ref` used after unmount throws
+    // than being ignored, and an event can arrive during teardown.
+    if (!mounted) return;
+    final notifier = ref.read(widgetProvider.notifier);
+    final shell = ref.read(shellProvider);
+
     switch (event.kind) {
       case ShellEventKind.hotkey:
-        // The editor may not have been created on an autostart launch, so ask
-        // the runner to raise it rather than assuming it exists.
-        unawaited(widget.shell.showEditor());
+        // The editor may not have been created on an autostart launch, so ask the
+        // runner to raise it rather than assuming it exists.
+        unawaited(shell.showEditor());
       case ShellEventKind.geometry:
         final bounds = event.bounds;
-        if (bounds != null) _controller.onGeometryChanged(bounds);
+        if (bounds != null) notifier.onGeometryChanged(bounds);
       case ShellEventKind.visibility:
-        _controller.setWidgetVisibleFromPlatform(event.isVisible);
+        notifier.setWidgetVisibleFromPlatform(visible: event.isVisible);
       case ShellEventKind.openSettings:
-        unawaited(widget.shell.openSettings());
+        // Asking the runner rather than opening a dialog here: on the widget surface
+        // there is no window to put a dialog on.
+        unawaited(shell.openSettings());
       case ShellEventKind.toggleCompleted:
-        // Only ever sent to the editor, which owns notes.json. Arriving here
-        // would mean the runner routed a write request to the wrong isolate, and
-        // re-applying it would put two writers on one file - the exact thing the
-        // routing exists to prevent. Notes reach this surface through the
-        // directory watcher instead.
-        break;
       case ShellEventKind.createNote:
-        // Same reasoning: the widget asks, the editor writes.
+        // Not ours. See the class doc.
         break;
       case ShellEventKind.unknown:
         break;
@@ -141,76 +173,5 @@ class _WidgetAppState extends State<WidgetApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangePlatformBrightness() {
-    // Windows changed between light and dark while the app was running.
-    final systemDark = MediaQueryData.fromView(View.of(context)).platformBrightness == Brightness.dark;
-    setState(() {
-      _brightness = _resolveBrightnessFor(systemDark);
-    });
-    unawaited(_settings.syncPlatform());
-  }
-
-  Brightness _resolveBrightnessFor(bool systemDark) {
-    final mode = _settings.settings.themeMode;
-    if (mode == ThemeMode.light) return Brightness.light;
-    if (mode == ThemeMode.dark) return Brightness.dark;
-    return systemDark ? Brightness.dark : Brightness.light;
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    unawaited(_events?.cancel());
-    unawaited(_controller.flush());
-    _controller.dispose();
-    _settings.dispose();
-    unawaited(_notesRepo.dispose());
-    unawaited(_selectionRepo.dispose());
-    unawaited(_widgetRepo.dispose());
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = buildWinNotesTheme(
-      brightness: _brightness,
-      highContrast: widget.launch.highContrast,
-      palette: paletteById(_settings.settings.accentPalette),
-    );
-
-    if (!_ready) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: theme,
-        home: const SizedBox.shrink(),
-      );
-    }
-
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: theme,
-      home: AnimatedBuilder(
-        animation: _settings,
-        builder: (context, _) {
-          final surfaceBrightness = _resolveBrightness();
-          return Theme(
-            // The widget draws its own surface colour, so the ambient brightness
-            // has to follow the widget's, not the window's.
-            data: ThemeData(brightness: surfaceBrightness),
-            child: WidgetSurface(
-              controller: _controller,
-              brightness: surfaceBrightness,
-              // Resolved here rather than read from the theme, because the Theme
-              // above deliberately replaces the app theme with a bare
-              // ThemeData - so the palette cannot arrive through colorScheme.
-              palette: paletteById(_settings.settings.accentPalette),
-              acrylicAvailable: widget.launch.acrylicSupported &&
-                  _settings.settings.acrylicEnabled,
-              onOpenEditor: () => unawaited(widget.shell.showEditor()),
-            ),
-          );
-        },
-      ),
-    );
-  }
+  Widget build(BuildContext context) => widget.child;
 }

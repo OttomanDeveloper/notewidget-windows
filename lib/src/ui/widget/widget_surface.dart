@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/settings_repository.dart';
 import '../../platform/shell_channel.dart';
+import '../../state/providers.dart';
+import '../../state/settings_controller.dart';
 import '../../state/widget_controller.dart';
+import '../theme_scope.dart';
 import '../palette.dart';
 import '../theme.dart';
 import 'widget_note_card.dart';
@@ -17,35 +21,61 @@ import 'widget_note_card.dart';
 /// which Windows composites natively. What is painted here is only the content,
 /// on a translucent surface, so the system backdrop shows through wherever
 /// nothing is drawn.
-class WidgetSurface extends StatefulWidget {
-  const WidgetSurface({
-    super.key,
-    required this.controller,
-    required this.brightness,
-    required this.acrylicAvailable,
-    required this.onOpenEditor,
-    this.palette,
-  });
+class WidgetSurface extends ConsumerStatefulWidget {
+  const WidgetSurface({super.key});
 
-  final WidgetController controller;
-  final Brightness brightness;
-  final bool acrylicAvailable;
-  final VoidCallback onOpenEditor;
-
-  /// The user's colour choice, or null for the default.
+  /// Everything this widget needs arrives through `ref`: the notes, the window
+  /// state, the palette, whether acrylic is available. None of it is a parameter.
+  /// `AGENTS.md` §0.8 — and this file was the worst offender at 3 injected
+  /// parameters and 9 `AnimatedBuilder` subscriptions.
   ///
-  /// Passed in rather than read from the theme because the widget deliberately
-  /// replaces the app theme with a bare `ThemeData(brightness:)` — the surface
-  /// is drawn over the desktop, not over the app's own background — so the
-  /// palette cannot arrive through `colorScheme` here.
-  final WinNotesPalette? palette;
+  /// The palette could not arrive through the theme even if it were passed: this
+  /// surface deliberately replaces the app theme with a bare `ThemeData`, because it
+  /// is drawn over the desktop rather than over the app's own background.
 
   @override
-  State<WidgetSurface> createState() => _WidgetSurfaceState();
+  ConsumerState<WidgetSurface> createState() => _WidgetSurfaceState();
 }
 
-class _WidgetSurfaceState extends State<WidgetSurface> {
+class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   final ScrollController _scroll = ScrollController();
+  /// The widget surface's own controller, reached through `ref`.
+  ///
+  /// A getter rather than a field, so every call site reads `controller`
+  /// still meaning "the notifier" - but now from a provider rather than from a
+  /// constructor. `read` and not `watch`: the notifier is for *doing*, and watching
+  /// it here would rebuild the whole surface on every note edit in addition to the
+  /// `watch` further down that already does exactly that.
+  WidgetNotifier get controller => _notifier;
+
+  /// Captured in [initState] because Riverpod forbids *any* `ref` use inside
+  /// `dispose`, not merely use after an await.
+  ///
+  /// `dispose` needs the notifier to tell the runner to give the keyboard back when
+  /// the surface is torn down with its composer open. Reaching for `ref` there throws
+  /// `Bad state: Using "ref" when a widget is about to or has been unmounted`, and
+  /// the failure lands during tree finalisation - after the test has already passed -
+  /// so it is reported as a separate error and is easy to miss.
+  ///
+  /// Same rule as the two roots; see `_EditorScopeState`.
+  late final WidgetNotifier _notifier;
+
+  /// The current window state, watched where it is drawn.
+  WidgetSurfaceState get _state => ref.read(widgetProvider).requireValue;
+
+  /// The palette, from a provider rather than from the theme - see the class doc.
+  WinNotesPalette get palette => ref.read(accentPaletteProvider);
+
+  Brightness get brightness => ref.read(widgetSurfaceThemeProvider).brightness;
+
+  bool get acrylicAvailable {
+    final settings = ref.read(settingsProvider).value?.settings;
+    return (settings?.acrylicEnabled ?? false) &&
+        ref.read(launchInfoProvider).acrylicSupported;
+  }
+
+  void onOpenEditor() =>
+      unawaited(ref.read(shellProvider).showEditor());
   final ValueNotifier<double> _thumbOpacity = ValueNotifier<double>(0);
 
   DateTime _lastTap = DateTime.fromMillisecondsSinceEpoch(0);
@@ -54,10 +84,11 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   @override
   void initState() {
     super.initState();
+    _notifier = ref.read(widgetProvider.notifier);
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final offset = widget.controller.state.scrollOffset;
+      final offset = ref.read(widgetProvider).value?.window.scrollOffset ?? 0.0;
       if (offset > 0 && _scroll.hasClients) {
         _scroll.jumpTo(offset.clamp(0, _scroll.position.maxScrollExtent));
       }
@@ -66,7 +97,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
-    widget.controller.rememberScroll(_scroll.offset);
+    controller.rememberScroll(_scroll.offset);
     // The rail fades in while scrolling and back out once it stops, so it does
     // not permanently eat into a card that is only a few lines tall.
     _thumbOpacity.value = 1;
@@ -132,7 +163,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     // the field sits, so without this a click near its edge would resize the
     // window instead of placing the caret - and dragging the widget while
     // halfway through typing a note is nobody's intention.
-    if (_composing) return;
+    if (_composing.value) return;
     final size = _surfaceSize;
     final edge = size == null
         ? _Edge.none
@@ -149,7 +180,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     final quick = now.difference(_lastTap) < const Duration(milliseconds: 350);
     final near = (event.position - _lastTapPosition).distance < 24;
     if (quick && near) {
-      widget.onOpenEditor();
+      onOpenEditor();
       _lastTap = DateTime.fromMillisecondsSinceEpoch(0);
       return;
     }
@@ -203,12 +234,12 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
         _gesture = null;
         return;
       }
-      if (widget.controller.positionLocked) {
+      if (_state.positionLocked) {
         _gesture = null;
         _explainLockedDrag();
         return;
       }
-      unawaited(widget.controller.beginMove(gesture.anchor));
+      unawaited(controller.beginMove(gesture.anchor));
       _gesture = _gesture?.handedOff();
       return;
     }
@@ -216,7 +247,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     // Resizing is never locked: the lock is about position, and a corner drag
     // is a deliberate act rather than an accidental one.
     final resizeEdge = _toResizeEdge(gesture.edge);
-    unawaited(widget.controller.beginResize(resizeEdge, gesture.anchor));
+    unawaited(controller.beginResize(resizeEdge, gesture.anchor));
     _gesture = _gesture?.handedOff();
   }
 
@@ -236,12 +267,12 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   /// question unanswered.
   void _explainLockedDrag() {
     if (_hintTimer != null) return;
-    setState(() => _lockedHint = true);
+    _lockedHint.value = true;
     // A cancellable timer, not Future.delayed: a pending delay outlives dispose
     // and fails a widget test outright.
     _hintTimer = Timer(const Duration(milliseconds: 2600), () {
       _hintTimer = null;
-      if (mounted) setState(() => _lockedHint = false);
+      if (mounted) _lockedHint.value = false;
     });
   }
 
@@ -249,7 +280,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   BuildContext? _lastContext;
 
   NativeBounds? _currentBounds() {
-    final state = widget.controller.state;
+    final state = _state.window;
     if (!state.hasGeometry) return null;
     return NativeBounds(
       left: state.left ?? 0,
@@ -275,7 +306,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     return _Edge.none;
   }
 
-  bool _lockedHint = false;
+  final ValueNotifier<bool> _lockedHint = ValueNotifier<bool>(false);
   Timer? _hintTimer;
 
   /// The add-a-note field, and whether it is open.
@@ -287,31 +318,31 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
   /// widget keeps the caret for the rest of the session.
   final TextEditingController _compose = TextEditingController();
   final FocusNode _composeFocus = FocusNode();
-  bool _composing = false;
-  bool _hovering = false;
+  final ValueNotifier<bool> _composing = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _hovering = ValueNotifier<bool>(false);
 
   void _setHovering(bool value) {
-    if (_hovering == value) return;
-    setState(() => _hovering = value);
+    if (_hovering.value == value) return;
+    _hovering.value = value;
   }
 
   void _openComposer() {
-    if (_composing) return;
-    setState(() => _composing = true);
-    unawaited(widget.controller.setComposeMode(true));
+    if (_composing.value) return;
+    _composing.value = true;
+    unawaited(controller.setComposeMode(active: true));
     // After the frame, so the window has actually taken the keyboard before
     // Flutter is asked to put the caret in the field.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _composing) _composeFocus.requestFocus();
+      if (mounted && _composing.value) _composeFocus.requestFocus();
     });
   }
 
   void _closeComposer() {
-    if (!_composing) return;
-    setState(() => _composing = false);
+    if (!_composing.value) return;
+    _composing.value = false;
     _compose.clear();
     _composeFocus.unfocus();
-    unawaited(widget.controller.setComposeMode(false));
+    unawaited(controller.setComposeMode(active: false));
   }
 
   Future<void> _submitComposer() async {
@@ -330,11 +361,11 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     // Waiting on the round trip would leave the caret parked in the widget while
     // nothing is happening, which is the thing this whole design is avoiding.
     _closeComposer();
-    await widget.controller.addNote(title: title, body: body);
+    await controller.addNote(title: title, body: body);
   }
 
-  Future<void> setComposeMode(bool active) =>
-      widget.controller.setComposeMode(active);
+  Future<void> setComposeMode({required bool active}) =>
+      controller.setComposeMode(active: active);
 
   @override
   void dispose() {
@@ -345,7 +376,18 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
     // Closing rather than disposing leaves the window as it found it. A widget
     // that kept WS_EX_NOACTIVATE dropped would hold the caret with no field
     // visible to type into.
-    if (_composing) unawaited(widget.controller.setComposeMode(false));
+    // Read once, here, while the element is still alive.
+    //
+    // Riverpod asserts on *any* `ref` use inside `dispose`, so a call routed through
+    // the [controller] getter throws `Bad state: Using "ref" when a widget is about
+    // to or has been unmounted`. The notifier is captured instead, which is the same
+    // rule the two roots follow - see `_EditorScopeState`.
+    //
+    // Worth noting what this protects: a widget torn down while its composer is open
+    // would otherwise leave the native window holding the keyboard with no field
+    // visible to type into, and the only symptom would be a desktop widget that
+    // swallows typing.
+    if (_composing.value) unawaited(_notifier.setComposeMode(active: false));
     _scroll
       ..removeListener(_onScroll)
       ..dispose();
@@ -355,27 +397,38 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = widget.brightness == Brightness.dark;
+    final dark = brightness == Brightness.dark;
     // Resolved through the palette rather than read from the theme, so the
     // focused card's bar, the tick and the composer's border cannot disagree
     // with the editor about what the accent is.
-    final palette = widget.palette ?? winNotesPalettes.first;
-    final accent = palette.accentFor(widget.brightness);
-    final controller = widget.controller;
+    final accent = palette.accentFor(brightness);
 
-    return AnimatedBuilder(
-      animation: controller,
+    // One `watch` on the surface state, and everything below rebuilds from it.
+    // The previous version had nine `AnimatedBuilder`s over the same controller, so
+    // a single keystroke in a note ran nine rebuilds of overlapping subtrees.
+    final surface = ref.watch(widgetProvider).value;
+    final notes = surface?.displayNotes ?? const [];
+
+    // Three `ValueNotifier`s that were `setState` fields until 2026-10-05, merged
+    // into one listener so the surface repaints when any of them changes.
+    //
+    // **This listener is not optional.** Without it the notifiers were written and
+    // nothing listened: a refused drag set `_lockedHint` and the "Locked in place"
+    // hint never appeared. `no_set_state_test` cannot catch that - it checks that
+    // `setState` is gone, not that its replacement rebuilds. Two of these three were
+    // read from inside another builder and one was not, which is the shape a
+    // mechanical rewrite leaves behind and the reason the missing one is named here.
+    return ListenableBuilder(
+      listenable: Listenable.merge([_hovering, _composing, _lockedHint]),
       builder: (context, _) {
-        final notes = controller.displayNotes;
-
         return ClipRRect(
           // Matches the native rounded region so the painted edge and the
           // composited edge are the same curve rather than two approximations.
           borderRadius: BorderRadius.circular(12),
           child: Container(
             color: widgetSurfaceColor(
-              brightness: widget.brightness,
-              acrylicAvailable: widget.acrylicAvailable,
+              brightness: brightness,
+              acrylicAvailable: acrylicAvailable,
               opacityPercent: 92,
               palette: palette,
             ),
@@ -447,7 +500,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
                 Positioned.fill(
                   child: IgnorePointer(
                     child: _FloatingScrollRail(
-                      controller: _scroll,
+                      scroll: _scroll,
                       opacity: _thumbOpacity,
                     ),
                   ),
@@ -459,7 +512,7 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
                   right: 10,
                   bottom: 10,
                   child: IgnorePointer(
-                    child: _LockedHint(visible: _lockedHint, dark: dark),
+                    child: _LockedHint(visible: _lockedHint.value, dark: dark),
                   ),
                 ),
                 Positioned(
@@ -467,9 +520,9 @@ class _WidgetSurfaceState extends State<WidgetSurface> {
                   right: 8,
                   bottom: 8,
                   child: _Composer(
-                    open: _composing,
-                    revealed: _hovering || _composing,
-                    controller: _compose,
+                    open: _composing.value,
+                    revealed: _hovering.value || _composing.value,
+                    field: _compose,
                     focusNode: _composeFocus,
                     dark: dark,
                     accent: accent,
@@ -508,7 +561,7 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.open,
     required this.revealed,
-    required this.controller,
+    required this.field,
     required this.focusNode,
     required this.dark,
     required this.accent,
@@ -519,7 +572,10 @@ class _Composer extends StatelessWidget {
 
   final bool open;
   final bool revealed;
-  final TextEditingController controller;
+  /// The note field's own controller. Named for what it is rather than controller,
+  /// because a generic name here reads as shared state and it is not: this widget
+  /// creates it, hands it to a TextField and disposes it.
+  final TextEditingController field;
   final FocusNode focusNode;
   final bool dark;
   final Color accent;
@@ -619,7 +675,7 @@ class _Composer extends StatelessWidget {
               Expanded(
                 child: TextField(
                   key: addNoteFieldKey,
-                  controller: controller,
+                  controller: field,
                   focusNode: focusNode,
                   // One line, and Enter saves. A note with several lines is a
                   // note being written, not a note being jotted down, and that
@@ -765,11 +821,11 @@ class _LockedHint extends StatelessWidget {
 /// this widget is too small for either.
 class _FloatingScrollRail extends StatelessWidget {
   const _FloatingScrollRail({
-    required this.controller,
+    required this.scroll,
     required this.opacity,
   });
 
-  final ScrollController controller;
+  final ScrollController scroll;
   final ValueListenable<double> opacity;
 
   @override
@@ -789,10 +845,10 @@ class _FloatingScrollRail extends StatelessWidget {
               child: SizedBox(
                 width: 4,
                 child: ListenableBuilder(
-                  listenable: controller,
+                  listenable: scroll,
                   builder: (context, _) {
-                    if (!controller.hasClients) return const SizedBox.shrink();
-                    final position = controller.position;
+                    if (!scroll.hasClients) return const SizedBox.shrink();
+                    final position = scroll.position;
                     final total = position.maxScrollExtent + position.viewportDimension;
                     if (total <= 0) return const SizedBox.shrink();
                     final fraction = position.viewportDimension / total;

@@ -27,7 +27,7 @@ class WinNotesColors {
 
 /// Motion durations, zeroed out when Windows reports animation is off.
 class WinNotesMotion {
-  const WinNotesMotion(this.enabled);
+  const WinNotesMotion({required this.enabled});
 
   final bool enabled;
 

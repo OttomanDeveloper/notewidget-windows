@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/note.dart';
@@ -11,17 +12,20 @@ import '../common/markdown_text.dart';
 /// Search matches both title and body and filters as the user types. There is
 /// no search history and no saved query, because neither has ever been wanted
 /// by anyone who just wanted to find the thing they wrote.
-class NoteListPane extends StatefulWidget {
+class NoteListPane extends ConsumerStatefulWidget {
   const NoteListPane({
     super.key,
-    required this.controller,
     required this.onOpenNote,
     required this.onNewNote,
     required this.onCloseList,
     this.showCloseButton = false,
   });
 
-  final NotesController controller;
+  /// Callbacks, not a controller.
+  ///
+  /// All three are allowed to cross as parameters (`AGENTS.md` §0.8) because they
+  /// are behaviour rather than state: a callback that opens a note does not rebuild
+  /// when the notes change. What *is* state is read with `ref`.
   final VoidCallback onOpenNote;
   final VoidCallback onNewNote;
 
@@ -30,10 +34,10 @@ class NoteListPane extends StatefulWidget {
   final bool showCloseButton;
 
   @override
-  State<NoteListPane> createState() => _NoteListPaneState();
+  ConsumerState<NoteListPane> createState() => _NoteListPaneState();
 }
 
-class _NoteListPaneState extends State<NoteListPane> {
+class _NoteListPaneState extends ConsumerState<NoteListPane> {
   final TextEditingController _search = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
@@ -42,7 +46,11 @@ class _NoteListPaneState extends State<NoteListPane> {
     super.initState();
     // Restoring the query keeps the list filter from resetting when the layout
     // swaps between the two-pane and one-pane arrangements.
-    _search.text = widget.controller.query;
+    //
+    // `read` and not `watch`: this runs before the first frame, and watching a
+    // provider inside `initState` is the thing Riverpod warns about - there is no
+    // widget yet to rebuild.
+    _search.text = ref.read(notesProvider).value?.query ?? '';
   }
 
   @override
@@ -60,14 +68,17 @@ class _NoteListPaneState extends State<NoteListPane> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final controller = widget.controller;
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final notes = controller.visibleNotes;
-        return Column(
-          children: [
+    // One `watch`, and the whole pane rebuilds from it. That is the coarse option
+    // and the right one here: the pane draws every visible note, so there is
+    // nothing narrower to select. A pane that drew a count and nothing else would
+    // want `ref.select` instead - see `docs/provider_pattern.md` §2.
+    final state = ref.watch(notesProvider).value;
+    final notes = state?.visible ?? const [];
+    final notifier = ref.read(notesProvider.notifier);
+
+    return Column(
+      children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Row(
@@ -89,20 +100,20 @@ class _NoteListPaneState extends State<NoteListPane> {
                         child: TextField(
                           controller: _search,
                           focusNode: _searchFocus,
-                          onChanged: controller.setQuery,
+                          onChanged: notifier.setQuery,
                           textInputAction: TextInputAction.search,
                           style: theme.textTheme.bodyMedium,
                           decoration: InputDecoration(
                             hintText: 'Search notes',
                             prefixIcon: const Icon(Icons.search, size: 18),
-                            suffixIcon: controller.query.isEmpty
+                            suffixIcon: (state?.query ?? '').isEmpty
                                 ? null
                                 : IconButton(
                                     icon: const Icon(Icons.close, size: 16),
                                     tooltip: 'Clear search',
                                     onPressed: () {
                                       _search.clear();
-                                      controller.setQuery('');
+                                      notifier.setQuery('');
                                       _searchFocus.requestFocus();
                                     },
                                   ),
@@ -126,7 +137,7 @@ class _NoteListPaneState extends State<NoteListPane> {
             Divider(height: 1, color: theme.dividerColor),
             Expanded(
               child: notes.isEmpty
-                  ? _emptyList(context)
+                  ? _emptyList(context, state)
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: notes.length,
@@ -134,13 +145,13 @@ class _NoteListPaneState extends State<NoteListPane> {
                         final note = notes[index];
                         return _NoteListItem(
                           note: note,
-                          selected: note.id == controller.selectedNote?.id,
+                          selected: note.id == state?.selectedNote?.id,
                           onTap: () {
-                            controller.select(note.id);
+                            notifier.select(note.id);
                             widget.onOpenNote();
                           },
                           onToggleCompleted: () =>
-                              controller.toggleCompleted(note.id),
+                              notifier.toggleCompleted(note.id),
                         );
                       },
                     ),
@@ -152,7 +163,7 @@ class _NoteListPaneState extends State<NoteListPane> {
                 children: [
                   Expanded(
                     child: Text(
-                      _statusText(controller),
+                      _statusText(state),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -168,23 +179,21 @@ class _NoteListPaneState extends State<NoteListPane> {
               ),
             ),
           ],
-        );
-      },
     );
   }
 
-  String _statusText(NotesController controller) {
-    final total = controller.notes.length;
-    final shown = controller.visibleNotes.length;
-    if (controller.query.trim().isNotEmpty) {
+  String _statusText(NotesState? state) {
+    final total = state?.notes.length ?? 0;
+    final shown = state?.visible.length ?? 0;
+    if ((state?.query ?? '').trim().isNotEmpty) {
       return shown == total ? '$total notes' : '$shown of $total notes';
     }
     return total == 1 ? '1 note' : '$total notes';
   }
 
-  Widget _emptyList(BuildContext context) {
+  Widget _emptyList(BuildContext context, NotesState? state) {
     final theme = Theme.of(context);
-    final filtering = widget.controller.query.trim().isNotEmpty;
+    final filtering = (state?.query ?? '').trim().isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),

@@ -7,43 +7,38 @@ import 'package:win_notes/src/data/note.dart';
 import 'package:win_notes/src/data/notes_repository.dart';
 import 'package:win_notes/src/state/notes_controller.dart';
 
-void main() {  late Directory temp;
+import 'helpers/provider_harness.dart';
 
-  // Every controller this file builds, so tearDown can drain them.
-  final built = <NotesController>[];
+void main() {
+  late TestHarness harness;
 
-  setUp(() {
-    temp = Directory.systemTemp.createTempSync('winnotes_ctrl_test');
-    built.clear();
-  });
-
-  // Controllers are registered rather than disposed per test because a queued
-  // write outlives the test that made it, and AtomicJsonFile creates its parent
-  // directory before every write. Deleting the temp directory first therefore
+  // Containers are drained and disposed before their temp directory is deleted,
+  // because a queued write outlives the test that made it and `AtomicJsonFile`
+  // creates its parent directory before every write. Deleting the directory first
   // raced the pending write, which recreated the directory and left it behind -
   // hundreds of them, in the developer's %TEMP%, with every test still green.
+  // See `provider_harness.dart`.
+  setUp(() => harness = TestHarness.build());
+
   tearDown(() async {
-    for (final c in built) {
-      await c.flush();
-      c.dispose();
-    }
-    built.clear();
-    if (temp.existsSync()) temp.deleteSync(recursive: true);
+    // `dispose` drains the writers itself, in the order that matters - see
+    // `TestHarness.dispose`. Flushing here as well was two writes racing the same
+    // teardown.
+    await harness.dispose();
   });
 
-  NotesController controller() {
-    final c = NotesController(
-      repository: NotesRepository(
-        AtomicJsonFile('${temp.path}\\notes.json'),
-      ),
-    );
-    built.add(c);
-    return c;
+  /// The notes surface, with the first load already awaited.
+  ///
+  /// Awaiting here rather than at each call site: the old tests called `c.load()`
+  /// themselves, and one that forgot it asserted against an empty list and passed.
+  Future<Notes> controller() async {
+    await harness.notes();
+    return Notes(harness);
   }
 
   group('creating and editing', () {
     test('the first launch has a note ready to type into', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       expect(c.notes, isEmpty);
 
@@ -54,7 +49,7 @@ void main() {  late Directory temp;
     });
 
     test('ensureAtLeastOneNote does not add a second note', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       c.ensureAtLeastOneNote();
       c.ensureAtLeastOneNote();
@@ -62,7 +57,7 @@ void main() {  late Directory temp;
     });
 
     test('editing moves a note to the top of the list', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final first = c.createNote()!;
       first.body = 'first';
@@ -79,7 +74,7 @@ void main() {  late Directory temp;
       // these three notes are very likely to land in the same one, and the
       // ordering tie-break is by id - which is random. Before the controller
       // guaranteed a strictly increasing stamp, this was a coin flip.
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       final b = c.createNote()!;
@@ -99,7 +94,7 @@ void main() {  late Directory temp;
     });
 
     test('an edit that changes nothing does not reorder anything', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       a.title = 'A';
@@ -111,7 +106,7 @@ void main() {  late Directory temp;
       expect(c.notes.map((n) => n.id).toList(), orderBefore);
     });
     test('a note whose body is emptied still exists', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final n = c.createNote()!;
       c.updateNote(n.id, body: 'something');
@@ -123,35 +118,34 @@ void main() {  late Directory temp;
       expect(c.selectedNote!.isEmpty, isTrue);
     });
 
-    test('notifies listeners on every change that matters', () async {
-      final c = controller();
-      await c.load();
-      var notifications = 0;
-      c.addListener(() => notifications++);
+      test('produces a new state on every change that matters', () async {
+        final c = await controller();
+        await c.load();
+        final before = c.changes;
 
-      c.createNote();
-      final n = c.selectedNote!;
-      c.updateNote(n.id, body: 'x');
-      c.setQuery('x');
-      // create, edit and search each notify once. Nothing here should notify
-      // more than once per action, so the count is exact rather than a floor.
-      expect(notifications, 3);
-    });
+        c.createNote();
+        final n = c.selectedNote!;
+        c.updateNote(n.id, body: 'x');
+        c.setQuery('x');
+        // Create, edit and search each produce one new state. Nothing here should
+        // produce more than one per action, so the count is exact rather than a
+        // floor.
+        expect(c.changes - before, 3);
+      });
 
-    test('setting the same query twice does not notify twice', () async {
-      final c = controller();
-      await c.load();
-      c.setQuery('milk');
-      var notifications = 0;
-      c.addListener(() => notifications++);
-      c.setQuery('milk');
-      expect(notifications, 0);
-    });
+      test('setting the same query twice does not produce a new state', () async {
+        final c = await controller();
+        await c.load();
+        c.setQuery('milk');
+        final before = c.changes;
+        c.setQuery('milk');
+        expect(c.changes - before, 0);
+      });
   });
 
   group('marking a task finished', () {
     test('a note toggles both ways', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final note = c.createNote()!;
 
@@ -171,7 +165,7 @@ void main() {  late Directory temp;
       // most recently edited, so bumping the timestamp would send the note to
       // the top every time it is ticked off, and working through a list would
       // become a shuffle with the finished task landing back in front of you.
-      final c = controller();
+      final c = await controller();
       await c.load();
       final first = c.createNote()!;
       first.title = 'older';
@@ -196,7 +190,7 @@ void main() {  late Directory temp;
     });
 
     test('undo brings a finished note back finished', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final note = c.createNote()!;
       c.toggleCompleted(note.id);
@@ -211,14 +205,14 @@ void main() {  late Directory temp;
     });
 
     test('the finished state is written to disk', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final note = c.createNote()!;
       c.toggleCompleted(note.id);
       await c.flush();
 
       final reread = NotesRepository(
-        AtomicJsonFile('${temp.path}\\notes.json'),
+        AtomicJsonFile(harness.notesFile),
       );
       final result = await reread.load();
       final restored = (result as NotesLoaded).notes.single;
@@ -228,7 +222,7 @@ void main() {  late Directory temp;
 
     test('the big card skips finished notes so it is never a struck-through task',
         () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final older = c.createNote()!;
       older.title = 'older';
@@ -253,7 +247,7 @@ void main() {  late Directory temp;
 
     test('with everything finished the big card falls back to the most recent',
         () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       a.title = 'a';
@@ -273,7 +267,7 @@ void main() {  late Directory temp;
       // The preference is a default, not a rule. If someone has picked a note,
       // moving the selection out from under them would be worse than showing a
       // finished note large.
-      final c = controller();
+      final c = await controller();
       await c.load();
       final older = c.createNote()!;
       older.title = 'older';
@@ -290,11 +284,11 @@ void main() {  late Directory temp;
       // Every other mutation is refused in this state, and this one has to be too:
       // a note flipped to finished in memory that never reaches disk is a note
       // that comes back unfinished, which is worse than the toggle doing nothing.
-      final c = controller();
+      final c = await controller();
       await c.load();
       final note = c.createNote()!;
 
-      File('${temp.path}\\notes.json').writeAsStringSync('{ not json');
+      File(harness.notesFile).writeAsStringSync('{ not json');
       await c.load();
       expect(c.corrupt, isNotNull);
 
@@ -303,7 +297,7 @@ void main() {  late Directory temp;
     });
 
     test('toggling a note that is not there does nothing', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       c.createNote();
       c.toggleCompleted('no-such-note');
@@ -320,10 +314,10 @@ void main() {  late Directory temp;
       // path had none, so a scanner passing over the file could stop the app
       // from starting until it was restarted - while telling the user their
       // notes were damaged, which they were not.
-      final c = controller();
-      File('${temp.path}\\notes.json')
+      final c = await controller();
+      File(harness.notesFile)
           .writeAsStringSync('{"format":"winnotes","version":1,"notes":[]}');
-      final lock = _ExclusiveLock.acquire('${temp.path}\\notes.json');
+      final lock = _ExclusiveLock.acquire(harness.notesFile);
       addTearDown(lock.release);
 
       await c.load();
@@ -346,7 +340,7 @@ void main() {  late Directory temp;
       // The ladder costs two and a half seconds, and it must only ever be paid
       // when something is actually in the way - otherwise every cold start
       // would be that much slower.
-      final c = controller();
+      final c = await controller();
       await c.load();
       final started = DateTime.now();
       c.createNote();
@@ -357,8 +351,8 @@ void main() {  late Directory temp;
       // Waiting cannot make the content change, so this must not be dressed up
       // as a lock - that would send someone round looking for antivirus instead
       // of telling them their file needs attention.
-      final c = controller();
-      File('${temp.path}\\notes.json').writeAsStringSync('{ "format": "winnotes"');
+      final c = await controller();
+      File(harness.notesFile).writeAsStringSync('{ "format": "winnotes"');
       await c.load();
       expect(c.corrupt, isNotNull);
       expect(c.corrupt!.transient, isFalse);
@@ -367,7 +361,7 @@ void main() {  late Directory temp;
     test('a missing file is a first run, not a problem to report', () async {
       // The antivirus-quarantine case. There is nothing to lose and nothing to
       // explain, so refusing to start would be the wrong answer entirely.
-      final c = controller();
+      final c = await controller();
       await c.load();
       expect(c.corrupt, isNull);
       expect(c.notes, isEmpty);
@@ -376,8 +370,8 @@ void main() {  late Directory temp;
     });
 
     test('a zero-length file is a leftover temp, not corruption', () async {
-      final c = controller();
-      File('${temp.path}\\notes.json').writeAsStringSync('');
+      final c = await controller();
+      File(harness.notesFile).writeAsStringSync('');
       await c.load();
       expect(c.corrupt, isNull);
     });
@@ -387,7 +381,7 @@ void main() {  late Directory temp;
       // Because writes are atomic, WinNotes can never produce a file it cannot
       // read, so corruption is always external - and this is the only copy that
       // survives that.
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, body: 'first version');
@@ -397,17 +391,17 @@ void main() {  late Directory temp;
       c.updateNote(note.id, body: 'second version');
       await c.flush();
 
-      final backup = File('${temp.path}\\notes.json.bak');
+      final backup = File(harness.backupFile);
       expect(backup.existsSync(), isTrue);
       expect(backup.readAsStringSync(), contains('first version'),
           reason: 'the backup is one write behind, which costs at most the '
               'debounce window of typing');
-      expect(File('${temp.path}\\notes.json').readAsStringSync(),
+      expect(File(harness.notesFile).readAsStringSync(),
           contains('second version'));
     });
 
     test('the previous version restores the notes', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, body: 'the note worth keeping');
@@ -416,7 +410,7 @@ void main() {  late Directory temp;
       await c.flush();
 
       // Now break the file the way something external would.
-      File('${temp.path}\\notes.json').writeAsStringSync('{{{ truncated');
+      File(harness.notesFile).writeAsStringSync('{{{ truncated');
       await c.load();
       expect(c.corrupt, isNotNull);
       expect(c.hasBackup, isTrue);
@@ -428,7 +422,7 @@ void main() {  late Directory temp;
       // The safety net must survive the recovery. Routing the restore through
       // the ordinary write path would copy the corrupt file over the backup on
       // its way past, so the one good copy would be gone the moment it was used.
-      expect(File('${temp.path}\\notes.json.bak').readAsStringSync(),
+      expect(File(harness.backupFile).readAsStringSync(),
           contains('the note worth keeping'),
           reason: 'recovering must not consume the thing it recovered from');
     });
@@ -436,11 +430,11 @@ void main() {  late Directory temp;
     test('restoring reports when there is nothing to restore', () async {
       // One write means no previous version, and the screen must not offer a
       // button that quietly does nothing.
-      final c = controller();
+      final c = await controller();
       await c.load();
       c.createNote();
       await c.flush();
-      File('${temp.path}\\notes.json').writeAsStringSync('nonsense');
+      File(harness.notesFile).writeAsStringSync('nonsense');
       await c.load();
 
       expect(c.hasBackup, isFalse);
@@ -453,9 +447,9 @@ void main() {  late Directory temp;
       // The escape hatch. A refusal with no way out is a trap, and someone in it
       // is already stressed. Nothing is deleted: the damaged file is renamed with
       // the time on the end, because it may still be readable by hand.
-      final c = controller();
+      final c = await controller();
       await c.load();
-      File('${temp.path}\\notes.json').writeAsStringSync('{{{ truncated');
+      File(harness.notesFile).writeAsStringSync('{{{ truncated');
 
       final result = await c.startFresh();
       expect(result.outcome, RecoveryOutcome.startedFresh);
@@ -470,14 +464,14 @@ void main() {  late Directory temp;
 
     test('a second incident does not overwrite the first one', () async {
       // Timestamped names specifically so this holds.
-      final c = controller();
+      final c = await controller();
       await c.load();
 
-      File('${temp.path}\\notes.json').writeAsStringSync('first damage');
+      File(harness.notesFile).writeAsStringSync('first damage');
       final first = await c.startFresh();
 
       await Future<void>.delayed(const Duration(milliseconds: 1100));
-      File('${temp.path}\\notes.json').writeAsStringSync('second damage');
+      File(harness.notesFile).writeAsStringSync('second damage');
       final second = await c.startFresh();
 
       expect(first.keptAt, isNot(second.keptAt));
@@ -487,16 +481,16 @@ void main() {  late Directory temp;
 
     test('starting fresh writes a valid file, so it does not refuse again',
         () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
-      File('${temp.path}\\notes.json').writeAsStringSync('{{{ truncated');
+      File(harness.notesFile).writeAsStringSync('{{{ truncated');
       await c.startFresh();
       await c.flush();
 
       // The whole point of the escape hatch: the app is usable afterwards, which
       // is checked by reading the folder with a controller that has never seen
       // the damaged file.
-      final reloaded = controller();
+      final reloaded = await controller();
       await reloaded.load();
       expect(reloaded.corrupt, isNull);
       expect(reloaded.notes, isNotEmpty);
@@ -505,7 +499,7 @@ void main() {  late Directory temp;
 
   group('search', () {
     test('filters on title and body as the user types', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, title: 'Groceries', body: 'Milk');
@@ -522,7 +516,7 @@ void main() {  late Directory temp;
     });
 
     test('a whitespace-only query shows everything', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       (c.createNote()!).title = 'A';
       (c.createNote()!).title = 'B';
@@ -531,7 +525,7 @@ void main() {  late Directory temp;
     });
 
     test('clearing the query restores the full list', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, title: 'Groceries');
@@ -545,7 +539,7 @@ void main() {  late Directory temp;
 
   group('selection', () {
     test('falls back to the most recent note when nothing is picked', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       a.title = 'older';
@@ -560,7 +554,7 @@ void main() {  late Directory temp;
     });
 
     test('deleting the selected note moves the selection on', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -573,7 +567,7 @@ void main() {  late Directory temp;
     });
 
     test('deleting the last note leaves nothing selected, not a crash', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.deleteNote(a.id);
@@ -584,7 +578,7 @@ void main() {  late Directory temp;
 
     test('a selection pointing at a missing note resolves to something real',
         () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.select(a.id);
@@ -597,7 +591,7 @@ void main() {  late Directory temp;
 
   group('delete and undo', () {
     test('undo restores the note', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final n = c.createNote()!;
       c.updateNote(n.id, title: 'Groceries', body: 'Milk');
@@ -614,7 +608,7 @@ void main() {  late Directory temp;
 
     test('undo puts the note back in its original position, not on top',
         () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, title: 'A', body: 'old');
@@ -635,7 +629,7 @@ void main() {  late Directory temp;
     });
 
     test('undo is offered once and then expires', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final n = c.createNote()!;
       c.deleteNote(n.id);
@@ -648,7 +642,7 @@ void main() {  late Directory temp;
 
     test('deleting again replaces the pending undo rather than queueing',
         () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final a = c.createNote()!;
       c.updateNote(a.id, title: 'A');
@@ -669,14 +663,14 @@ void main() {  late Directory temp;
     });
 
     test('the undo window closes on its own', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final n = c.createNote()!;
       c.deleteNote(n.id);
 
       // Uses the real timer rather than fake async so the assertion covers the
       // duration the UI actually shows.
-      await Future<void>.delayed(NotesController.undoWindow + const Duration(seconds: 1));
+      await Future<void>.delayed(NotesNotifier.undoWindow + const Duration(seconds: 1));
       expect(c.pendingUndo, isNull);
       expect(c.undoDelete(), isFalse);
     }, timeout: const Timeout(Duration(seconds: 20)));
@@ -684,8 +678,8 @@ void main() {  late Directory temp;
 
   group('corrupt file', () {
     test('blocks every mutation instead of starting empty', () async {
-      File('${temp.path}\\notes.json').writeAsStringSync('{ not json');
-      final c = controller();
+      File(harness.notesFile).writeAsStringSync('{ not json');
+      final c = await controller();
       await c.load();
 
       expect(c.corrupt, isNotNull);
@@ -698,12 +692,12 @@ void main() {  late Directory temp;
       final created = c.notes.length;
 
       await c.flush();
-      expect(File('${temp.path}\\notes.json').readAsStringSync(), '{ not json');
+      expect(File(harness.notesFile).readAsStringSync(), '{ not json');
       expect(created, 0);
     });
 
     test('a valid file loads normally and clears the error', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       final n = c.createNote()!;
       c.updateNote(n.id, title: 'Fine');
@@ -711,7 +705,7 @@ void main() {  late Directory temp;
       // file that does not exist yet.
       await c.flush();
 
-      final fresh = controller();
+      final fresh = await controller();
       await fresh.load();
       expect(fresh.corrupt, isNull);
       expect(fresh.notes.single.title, 'Fine');
@@ -720,7 +714,7 @@ void main() {  late Directory temp;
 
   group('import and export', () {
     test('replaceAll swaps the whole library', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       (c.createNote()!).title = 'old';
 
@@ -739,7 +733,7 @@ void main() {  late Directory temp;
     });
 
     test('merge keeps existing notes and selects the new one', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       (c.createNote()!).title = 'existing';
 
@@ -757,7 +751,7 @@ void main() {  late Directory temp;
     });
 
     test('merging nothing does nothing', () async {
-      final c = controller();
+      final c = await controller();
       await c.load();
       (c.createNote()!).title = 'only';
       c.merge([]);

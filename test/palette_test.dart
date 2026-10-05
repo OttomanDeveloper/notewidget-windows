@@ -8,6 +8,8 @@ import 'package:win_notes/src/data/settings.dart';
 import 'package:win_notes/src/data/settings_repository.dart';
 import 'package:win_notes/src/platform/shell_channel.dart';
 import 'package:win_notes/src/state/settings_controller.dart';
+
+import 'helpers/provider_harness.dart';
 import 'package:win_notes/src/ui/palette.dart';
 import 'package:win_notes/src/ui/settings/settings_dialog.dart';
 import 'package:win_notes/src/ui/theme.dart';
@@ -275,58 +277,51 @@ void main() {
   });
 
   group('the picker in Settings', () {
-    late Directory temp;
-    late SettingsController controller;
+      // The container, so the dialog's groups read providers rather than being
+      // handed one.
+      late TestHarness harness;
 
-    setUp(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-        const MethodChannel('dev.winnotes/shell'),
-        (call) async => null,
-      );
-      temp = Directory.systemTemp.createTempSync('wn_palette_ui');
-    });
+      // The settings notifier, for the assertions that read what a toggle did.
+      late SettingsNotifier controller;
 
-    tearDown(() {
-      if (temp.existsSync()) temp.deleteSync(recursive: true);
-    });
-
-    Future<void> pumpDialog(WidgetTester tester) async {
-      final shell = ShellChannel();
-      // Under runAsync, and not inline: loading the settings file is real file
-      // I/O, and a widget test's fake clock never advances the real event loop.
-      // Awaiting it directly hangs forever - the same trap as the debounced
-      // writes, and for the same reason. See docs/testing_pattern.md §4.
-      await tester.runAsync(() async {
-        controller = SettingsController(
-          repository: SettingsRepository(
-            AtomicJsonFile('${temp.path}\\settings.json'),
-            shell,
-          ),
-          shell: shell,
+      setUp(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('dev.winnotes/shell'),
+          (call) async => null,
         );
-        await controller.load(animationsEnabled: true, acrylicSupported: true);
+        harness = TestHarness.build();
       });
-      addTearDown(controller.dispose);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildWinNotesTheme(
-            brightness: Brightness.light,
-            highContrast: false,
-          ),
-          home: Scaffold(
-            body: SettingsDialog(
-              controller: controller,
-              shell: shell,
-              defaultDataDirectory: temp.path,
+      tearDown(() async {
+        // `dispose` drains the writers itself; doing it here too meant two calls
+        // racing the same teardown.
+        await harness.dispose();
+      });
+
+
+      Future<void> pumpDialog(WidgetTester tester) async {
+        // Under runAsync, and not inline: loading the settings file is real file
+        // I/O, and a widget test's fake clock never advances the real event loop.
+        // Awaiting it directly hangs forever - the same trap as the debounced
+        // writes, and for the same reason. See docs/testing_pattern.md section 4.
+        await tester.runAsync(() async {
+          controller = await harness.settings();
+        });
+
+        await tester.pumpWidget(
+          harness.wrap(
+            MaterialApp(
+              theme: buildWinNotesTheme(
+                brightness: Brightness.light,
+                highContrast: false,
+              ),
+              home: Scaffold(
+                body: SettingsDialog(defaultDataDirectory: harness.path),
+              ),
             ),
           ),
-        ),
-      );
-      // pumpAndSettle rather than pump: the swatch grows over 140ms when the
-      // selection moves, and a test that asserted before that finished would be
-      // asserting the previous animation frame.
+        );
       await tester.pumpAndSettle();
     }
 
@@ -368,7 +363,7 @@ void main() {
       await tester.tap(find.byKey(swatchKey('teal')));
       await tester.pumpAndSettle();
 
-      expect(controller.settings.accentPalette, 'teal');
+      expect(controller.current!.settings.accentPalette, 'teal');
     });
 
     testWidgets('the chosen name is written out, not left to be guessed',

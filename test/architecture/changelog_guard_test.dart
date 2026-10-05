@@ -113,10 +113,27 @@ void main() {
       // Taken from the real released section, because a fixture invented for
       // the purpose proves less than the thing that actually happened. The
       // 1.2.0 notes are not judged as a section - only this excerpt is.
+      //
+      // Anchored on the `## 1.2.0` heading rather than on "the first `### Fixed`".
+      // The earlier version found the first `### Fixed` anywhere in the file and the
+      // next `### Added` after it, which silently depended on `Unreleased` having no
+      // `Fixed` section of its own - so the day it grew one, this test quietly
+      // stopped finding the fixture it was asserting on and failed with an empty
+      // list. A negative fixture that can go missing is not a guard.
       final released = tree.read('CHANGELOG.md');
-      final start = released.indexOf('### Fixed');
-      final end = released.indexOf('### Added', start);
-      final essay = '# Changelog\n\n## Unreleased\n\n${released.substring(start, end)}\n';
+      final release = released.indexOf('## 1.2.0');
+      expect(
+        release,
+        isNot(-1),
+        reason: 'precondition: 1.2.0 is still a released section. If it is '
+            'reformatted, point this at whichever section still contains the essay.',
+      );
+
+      final start = released.indexOf('### Fixed', release);
+      final end = released.indexOf('\n## ', start);
+      final body = end < 0 ? released.substring(start) : released.substring(start, end);
+
+      final essay = '# Changelog\n\n## Unreleased\n\n$body\n';
 
       expect(
         findChangelogFaults(essay),

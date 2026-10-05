@@ -80,21 +80,24 @@ per-isolate rule is asserted by
 
 ### 3.3 Providers are `Notifier`, not `ChangeNotifier`
 
-The three controllers in `lib/src/state/` are `ChangeNotifier` subclasses totalling
-989 lines. They are being rewritten as Riverpod notifiers, not wrapped.
+The three controllers in `lib/src/state/` were `ChangeNotifier` subclasses totalling
+989 lines. They are now Riverpod `AsyncNotifier`s — rewritten, not wrapped.
 
-The reason is `AsyncValue`, and it pays for the rewrite:
+The reason was `AsyncValue`, and it paid for the rewrite:
 
-- `NotesController.corrupt` (`notes_controller.dart:61`) is a hand-rolled error
-  field, read in four places and rendered by `EditorView` at `editor_view.dart:50`.
-  As an `AsyncNotifier` it is `AsyncError.error` — the same information, with the
-  loading state that currently does not exist yet.
-- `EditorView._busy` (`editor_view.dart:305`), checked at 8 call sites to disable
-  buttons while a recovery runs, becomes `isLoading`.
-- `WidgetApp._ready` (`widget_app.dart:46`) becomes `isLoading`.
+- `NotesController.corrupt` was a hand-rolled error field, read in four places and
+  rendered by `EditorView`.
+- `EditorView._busy`, checked at 8 call sites to disable buttons while a recovery
+  ran, became `isLoading`.
+- `WidgetApp._ready` became `isLoading`.
 
-That is 3 of the 24 `setState` sites removed by a state-model change rather than a
-mechanical rewrite, which is most of the argument for doing it this way.
+**One prediction did not hold, and the code says so.** `corrupt` is *not*
+`AsyncError.error`. A file that cannot be read is a state this app *recovers from*
+rather than an exception it propagates — there is a whole recovery screen for it,
+with three actions and per-outcome advice — so modelling it as a thrown error would
+mean every reader had to know it is special. It is a field on `NotesState`, and
+`isReadOnly` is what the mutations check. `isLoading` and `hasValue` come from the
+`AsyncValue` around it, which is where the debounced watcher re-reads show up.
 
 A `ChangeNotifier` wrapped in `ChangeNotifierProvider` would have been about a day
 instead of a week. It was rejected because it keeps the hand-rolled loading and
@@ -107,54 +110,120 @@ No excuse is accepted (`AGENTS.md` §0.7). The choice is between:
 | The state is | Replacement | Example |
 |---|---|---|
 | shared, outlives the widget | a provider | `_busy`, `_ready`, `_showListOnNarrow`, `_narrowShowsPreview` |
-| genuinely ephemeral | a `ValueNotifier` + `ValueListenableBuilder` | `_hovering`, `_lockedHint`, `_composing`, `_pending` |
+| genuinely ephemeral | a `ValueNotifier` + a listener | `_hovering`, `_lockedHint`, `_composing`, `_pending` |
 
 The dividing line is **lifetime**, not importance. `_hovering` is not
 unimportant, but it is true for one frame and nobody else will ever ask; `_busy`
 is true for the length of an await and a button six rows away has to know.
 
-`widget_surface.dart:49` already does this once, for thumb opacity. The pattern is
-in the tree.
+**A `ValueNotifier` does not rebuild anything.** This is the one thing the
+migration got wrong four times, and it is worth stating as its own rule because
+nothing about it is visible in the code. `setState` did two jobs: it held a value
+*and* it rebuilt the widget. A `ValueNotifier` only does the first, so replacing
+one with the other produces a field that compiles, analyzes clean, passes every
+test that does not happen to look at the result, and does nothing.
+
+What each of the four looked like:
+
+- `note_editor_pane.dart` — the Preview button read `_narrowShowsPreview.value`
+  outside the builder that wrapped the pane, so the label never changed. The button
+  now takes the flag as a parameter, so there is no second reader to drift.
+- `widget_surface.dart` — `_lockedHint` had no listener at all, so a refused drag
+  said nothing. Three notifiers there are now merged into one
+  `ListenableBuilder(listenable: Listenable.merge([...]))`.
+- `settings_dialog.dart` — `_pending` had no listener, so the hotkey capture
+  dialog kept showing the combination it opened with, with "Use this" disabled.
+- `editor_view.dart` — `_busy` was read by eight button callbacks in a build with
+  no listener, so recovery buttons never disabled themselves.
+
+`no_set_state_test` fails on a file that declares a `ValueNotifier` and contains no
+listener at all. It is coarse — it cannot prove *which* notifier is wired — and it
+is not claiming to. It is claiming the replacement was used as a replacement rather
+than as a field.
 
 The `State` class is not deleted. It stays as the disposal shell — for a
 `TextEditingController`, a `ScrollController`, a `FocusNode`. What it must not do
 is hold a bool that a provider could hold, because that is `setState` with extra
 steps.
 
-**A `State` may still hold ephemeral fields, read through a `ValueNotifier`, and
-never call `setState`.** That is the whole of the remaining freedom, and
-`ValueListenableBuilder` is what renders it.
-
 ### 3.5 No widget receives a dependency by parameter
 
 Below a `ProviderScope`, a widget reads state with `ref`. 23 constructor
-parameters do this by hand today, 13 of them in `settings_dialog.dart`.
+parameters used to do this by hand, 13 of them in `settings_dialog.dart`. There are
+none now.
 
 What is still allowed to cross a boundary as a parameter is **a value**: an
 `int index`, a `String path`, a `void Function()` callback. What is not allowed is
 anything that holds state — a controller, the shell channel, a settings object.
 
-This rule is about *where state comes from*, not about which package is
-installed. That is deliberate: it means the rule survives a change of state
-management library, and it means the guard has something to say today, before
-Riverpod is in `pubspec.yaml`.
+The two per-widget resources that used to trip this are named for what they are:
+`WidgetSurface`'s scroll is `scroll`, and the composer field is `field`. Neither is
+shared state; both are created, passed and disposed by the widget that owns them.
 
-### 3.6 A provider is small enough to read in one sitting
+**A plain class may hold a notifier, and two do.** `EditorBootstrap` and
+`EditorTeardown` in `editor_app.dart` take notifiers as constructor parameters,
+because a `WidgetRef` cannot survive an `await` or be read inside `dispose` — see
+§3.8. The rule is about *widgets*, so the guard decides "is this a widget" from the
+nearest preceding `class` line. That is an approximation and it is stated in
+`guards.dart`; it would be wrong in a codebase whose classes nest.
+
+### 3.6 A provider is small enough to read in one sitting — and two are not
 
 `hellobiller` caps its providers and splits anything larger into a main provider
 plus satellites. The same cap here, at **200 lines** per provider file.
 
-`NotesController` is 482 lines and `WidgetController` is 376. Both will be split
-rather than migrated whole — `notesRepositoryProvider`, `notesProvider` for the
-list and selection, and a separate one for recovery — because a 482-line provider
-is not a unit you can test, and the corrupt-file recovery is exactly the part that
-needs a test of its own.
+**The migration did not meet it, and the honest reason is ordering.** The two
+large files were the two the rewrite had to get right first, and the split was
+written as a follow-up rather than as part of the same change:
+
+| File | Lines | Over by |
+|---|---|---|
+| `settings_controller.dart` | 187 | — |
+| `providers.dart` | 133 | — |
+| `widget_controller.dart` | 413 | 213 |
+| `notes_controller.dart` | 621 | 421 |
+
+The split that was intended for notes is `notesProvider` for the list, selection
+and search, and a separate one for corrupt-file recovery — because recovery is the
+part that most needs a test of its own, and it currently cannot have one without
+also constructing the whole list.
+
+It is in `AGENTS.md` §4 as a divergence rather than quietly reworded here, because
+lowering the cap to 650 to match the code would make this section a description of
+what happened instead of a rule.
 
 ### 3.7 Repositories are plain classes; controllers are providers
 
 `data/` stays as it is: plain classes over `AtomicJsonFile`, constructed by
 providers, injected into them. The one-writer-per-file rule in
 `docs/storage_pattern.md` is unchanged and is not a provider concern.
+
+### 3.8 A `WidgetRef` has a short life
+
+Riverpod invalidates a `WidgetRef` in two situations, and both throw
+`Bad state: Using "ref" when a widget is about to or has been unmounted`:
+
+- **across an `await`** — the ref is stale by the time the continuation runs;
+- **inside `dispose`** — asserted on *any* `ref` use there, not merely use after
+  an await, so even `unawaited(ref.read(x).flush())` throws.
+
+Both were hit during the migration, and both are invisible until something goes
+wrong at the wrong moment:
+
+- `EditorBootstrap.start(ref)` was called from `initState` and held the ref across
+  four awaits. It only failed when the window was closed while the startup ladder
+  was still running — which is exactly what a user quitting immediately does.
+- `dispose` failures land during *tree finalisation*, after the test that closed
+  the surface has already passed. Flutter reports them as a separate error, so a
+  suite can be green and the failure still scrolls past.
+
+The rule is short: **read what you need into ordinary objects, then do the async
+work.** `EditorBootstrap` and `EditorTeardown` take notifiers and futures as
+constructor fields and are built in `initState`, which is the one place a
+`ConsumerState` may read its ref. `WidgetSurface` captures its notifier the same
+way, because it has to tell the runner to give the keyboard back when torn down
+with its composer open — a widget destroyed mid-compose would otherwise leave the
+native window holding the keyboard with no field visible to type into.
 
 ---
 
@@ -163,8 +232,10 @@ providers, injected into them. The one-writer-per-file rule in
 1. Put the state in a provider, not in a `State`.
 2. `ref.watch` it where it is drawn. `ref.read` it in handlers.
 3. If a widget needs it, do not add a parameter — add a `ref.watch`.
-4. Keep the provider under 200 lines; split before you cross it.
-5. Remove the `setState` budget line you just emptied, or the guard goes red.
+4. If it is one frame long, use a `ValueNotifier` **and a listener**. Writing the
+   field is not enough; see §3.4.
+5. Never keep a `WidgetRef` past an `await` or into `dispose`; see §3.8.
+6. Keep the provider under 200 lines; split before you cross it.
 
 ---
 
@@ -178,11 +249,19 @@ Recorded so nobody discovers it later and thinks the migration was a mistake:
   (841 lines).** Together they are 38% of `lib/`, both are pure UI, and neither
   moves.
 - **It does not fix the unawaited flush in `dispose()`.** `ref.onDispose` is
-  synchronous and cannot await; the four existing `unawaited(...flush())` calls
-  are a pre-existing hazard with its own entry in `docs/isolate_pattern.md` §5.
+  synchronous and cannot await; the `unawaited(...flush())` calls are a
+  pre-existing hazard with its own entry in `docs/isolate_pattern.md` §4.3 and a
+  guard that keeps it named.
 - **Prop-drilling savings are smaller here than in hellobiller.** This tree is
-  shallow — `MaterialApp → EditorView → panes`. The real win is deleting a
-  duplicated bootstrap, not flattening a deep tree.
+  shallow — `MaterialApp → EditorView → panes`. The real win was deleting a
+  duplicated bootstrap and the three divergent brightness resolvers inside it, not
+  flattening a deep tree.
+- **It does not make a widget test see the file system.** A provider builds on
+  first read, and a first read during `pumpWidget` issues its file I/O under the
+  fake clock — which never completes, so the provider stays in `isLoading` and
+  every finder returns nothing. No exception and no log. Tests must warm the
+  providers inside `tester.runAsync` *before* the first pump; see
+  `docs/testing_pattern.md` §4.
 
 ---
 
@@ -202,13 +281,15 @@ it; `ui/` never reaches past `state/` to build one.
 
 | § | Rule | Pinned by |
 |---|---|---|
-| 3.1 | Providers construct; widgets read | **guard** `isolate_guard_test` · *no widget constructs a dependency beyond the recorded countdown*; *construction in a third file is a fault*; *the two roots are named, and they are the two roots* |
-| 3.2 | One container per isolate | **guard** `isolate_guard_test` · *main() still branches rather than being given both surfaces* |
-| 3.3 | Notifier, not ChangeNotifier | `notes_controller_test`; no new test until the rewrite lands |
-| 3.4 | No `setState` | **guard** `no_set_state_test` · *lib/ has no setState beyond the recorded countdown*; *a new setState is a fault*; *one more in a counted file is a fault*; *one fewer is also a fault, and says why*; *a file emptied completely has its budget line removed*; *the scanner counts a setState wherever it is written*; *a name containing setState is not a setState call* |
-| 3.5 | No dependency by parameter | **guard** `provider_guard_test` · *lib/src/ui has no injected state beyond the recorded countdown*; *a new injected parameter is a fault*; *a removed parameter has its budget line taken out*; *a value type passed as a parameter is not a fault*; *a widget holding state by parameter is a fault*; *a load result is not an injected dependency*; *the budget names every file that currently injects* |
-| 3.6 | A provider is under 200 lines | **manual** — no provider exists to measure yet; the cap is checked by `dart analyze` file sizes at review |
+| 3.1 | Providers construct; widgets read | **guard** `isolate_guard_test` * no widget constructs a repository or a controller*; *the scanner still finds the six types it claims to*; *the theme provider is under ui/, not state/* |
+| 3.2 | One container per isolate | **guard** `isolate_guard_test` * main() builds the scope and passes no state to either root*; **manual** - a probe reading both windows at once |
+| 3.3 | Notifier, not ChangeNotifier | `notes_controller_test`, `widget_integration_test` |
+| 3.4 | No `setState`, and a `ValueNotifier` has a listener | **guard** `no_set_state_test` * lib/ has no setState calls at all*; *the scanner still finds them, or the rule above is vacuous*; *the two replacements are the only two*; *every ValueNotifier is listened to, or nothing rebuilds* |
+| 3.5 | No dependency by parameter | **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*; *the scanner still matches the names it claims to*; *a value is not a dependency*; *a load result is not an injected dependency*; *callbacks are allowed, and are what the roots pass* |
+| - | Two providers are over the 200-line cap | **manual** - `AGENTS.md` §4 records it; the sizes are in §3.6 and nothing checks them automatically |
+| 3.6 | A provider is under 200 lines | **manual** - two files are over, see the row above |
 | 3.7 | Repositories stay plain | `storage_guard_test` |
+| 3.8 | A `WidgetRef` is not held across an `await` or into `dispose` | **guard** `isolate_guard_test` * the flush-on-teardown hazard is still named* |
 
 ---
 

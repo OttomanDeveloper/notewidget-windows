@@ -17,18 +17,28 @@ and pointers, not essays. Detail lives in `docs/*.md`.
 3. **Never delete or overwrite a data file the app could not read.** Renaming
    with a timestamp is the correct move. See `docs/storage_pattern.md` §3.11.
 4. **Dependencies are enumerated, not open-ended.** `pubspec.yaml` carries
-   `flutter` and exactly one package: `markdown`, the CommonMark parser, added
-   on 2026-10-04 when the owner reversed "no Markdown". Windows behaviour is
-   still hand-written in `windows/runner/` — do not add a package to get a
-   window effect. **Why one is allowed:** the rule was never "never depend on
-   anything", it was "do not buy a platform capability instead of owning it",
-   and a conforming Markdown parser is the opposite case: writing a CommonMark
-   implementation is a project in itself and hand-rolling one would have been
-   *less* ownership, not more. **What stayed in this repo** is everything the
-   dependency does not do — the renderer, the density budgets, the palette
-   styling, and every decision about what is and is not rendered. Adding a
-   second package needs the owner to say so, because the argument that carried
-   the first one does not carry automatically.
+   `flutter` and three packages: `markdown`, the CommonMark parser, added
+   on 2026-10-04 when the owner reversed "no Markdown"; and `riverpod` plus
+   `flutter_riverpod`, added on 2026-10-05 to complete the provider pattern.
+   Windows behaviour is still hand-written in `windows/runner/` — do not add a
+   package to get a window effect. **Why the parser is allowed:** the rule was
+   never "never depend on anything", it was "do not buy a platform capability
+   instead of owning it", and a conforming Markdown parser is the opposite case:
+   writing a CommonMark implementation is a project in itself and hand-rolling
+   one would have been *less* ownership, not more. **What stayed in this repo**
+   is everything the dependency does not do — the renderer, the density
+   budgets, the palette styling, and every decision about what is and is not
+   rendered. **Why Riverpod is allowed, given `PROJECT.md`'s "verifiable by
+   reading the code instead of by trusting a dependency":** it does no I/O,
+   spawns nothing, touches no platform channel and generates no code. Its whole
+   behaviour is `watch`/`read` and disposal, every line of which is written down
+   in `docs/provider_pattern.md`. What stays owned here is every provider, the
+   rule that state does not arrive by constructor parameter, and the decision of
+   what is state at all — which is more than the app had before, because it had
+   no rule. The two packages are one decision split across a pure-Dart core and
+   its Flutter binding, so they are counted once and are asserted to be the same
+   version by `dependency_guard_test`. **Adding a fourth** needs the owner to say
+   so; the argument above does not carry automatically.
 5. **Palette ids are frozen.** The ids in `lib/src/ui/palette.dart` live in
    people's `settings.json`. Renaming one silently resets anyone who chose it;
    add palettes instead. The default is index zero, not a named constant, for
@@ -54,33 +64,58 @@ and pointers, not essays. Detail lives in `docs/*.md`.
    be gone next frame. There are two replacements and the choice is about
    lifetime, not importance. State that outlives the widget is a provider; state
    that is true for one frame and that nothing else will ever ask for is a
-   `ValueNotifier` read by a `ValueListenableBuilder`. A `State` survives as the
-   disposal shell for a controller or a focus node.
+   `ValueNotifier` **read through a listener** — a `ValueListenableBuilder`, a
+   `ListenableBuilder`, or `Listenable.merge` over several of them. A `State`
+   survives as the disposal shell for a controller or a focus node.
    **Why:** 24 call sites, and the reason they are all navigation, loading and
    responsive layout is that they are all state that was never given anywhere to
-   live. **Enforced** by `no_set_state_test`.
+   live. **Enforced** by `no_set_state_test`, which also checks the half that
+   deleting `setState` does not give you: `setState` held a value *and* rebuilt,
+   and a `ValueNotifier` only does the first. The 2026-10-05 migration produced four
+   notifiers that were written and never listened to — a stale Preview label, a
+   silent "Locked in place" hint, and a hotkey dialog that kept showing the
+   combination it opened with. Each compiled, analyzed clean, and did nothing.
 8. **No widget below a `ProviderScope` receives a dependency by parameter.** A
    `value` may cross a boundary - an `int index`, a `String path`, a
    `void Function()` callback. A controller may not; it is read with `ref.watch`
-   to draw and `ref.read` to act.
+   to draw and `ref.read` to act. A plain class may hold one, and two do:
+   `EditorBootstrap` and `EditorTeardown` take notifiers, because a `WidgetRef`
+   cannot be held across an `await` or read inside `dispose` — Riverpod throws in
+   both cases, so the dependencies are resolved in `initState` and handed to an
+   object with no widget to be unmounted from.
    **Why:** the rule is about where state comes from, not about which library is
-   installed, which is why it has teeth before `riverpod` is in `pubspec.yaml`.
-   Introducing a state package without this rule changes nothing: the next thing
-   anyone writes is `Pane(controller: ref.read(notesProvider))` and the plumbing
-   is back. **Enforced** by `provider_guard_test`.
-9. **The Dart-to-runner contract is declared, not inferred.** 28 method names
-   live in `platformMethodRegistry` and in `docs/platform_pattern.md` §2, and a
-   guard checks the registry, the calls in `shell_channel.dart` and the runner's
-   handlers are the same set. Every method's behaviour on failure is written down.
-   **Why:** `result->Success()` is returned whether or not the runner handles a
-   method, so a one-sided addition is a silent no-op that no test notices.
-   **Enforced** by `platform_guard_test`.
-10. **Construction happens in a provider, once, and both surfaces build the same
+   installed — which is why it was written with `pubspec.yaml` still untouched, and
+   why it would still bite with `riverpod` removed. Introducing a state package
+   without this rule changes nothing: the next thing anyone writes is
+   `Pane(controller: ref.read(notesProvider))` and the plumbing is back.
+   **Enforced** by `provider_guard_test`, which decides "is this a widget" from the
+   nearest preceding `class` line — an approximation, stated in `guards.dart`, and
+   the reason the two plain helper classes are exempt rather than hidden.
+9. **Never hold a `WidgetRef` across an `await`, and never read one inside
+   `dispose`.** Both throw `Bad state: Using "ref" when a widget is about to or has
+   been unmounted` — the second because Riverpod asserts on *any* `ref` use in
+   `dispose`, not merely on use after an await. Read what you need in `initState` or
+   at the top of a method and hold ordinary objects. **Why:** the `dispose` failure
+   lands during tree finalisation, after the test that closed the window has already
+   passed, so it is reported separately and is easy to miss; and the `await` version
+   fails only when the widget happens to be torn down mid-flight, which is exactly
+   what closing the window while the startup ladder is running does.
+   **Enforced** by `isolate_guard_test`.
+10. **The Dart-to-runner contract is declared, not inferred.** 28 method names
+    live in `platformMethodRegistry` and in `docs/platform_pattern.md` §2, and a
+    guard checks the registry, the calls in `shell_channel.dart` and the runner's
+    handlers are the same set. Every method's behaviour on failure is written down.
+    **Why:** `result->Success()` is returned whether or not the runner handles a
+    method, so a one-sided addition is a silent no-op that no test notices.
+    **Enforced** by `platform_guard_test`.
+11. **Construction happens in a provider, once, and both surfaces build the same
     graph.** Nothing under `lib/src/ui/` constructs a repository or a controller.
-    Each root owns its own `ProviderScope`; nothing goes in `main()`.
-    **Why:** the two roots construct the same five things separately, and
-    `_resolveBrightness` has already forked into three copies that disagree - see
-    §4.7. **Enforced** by `isolate_guard_test`.
+    `main()` builds one `ProviderScope` with the three values a container cannot
+    discover for itself, which is what lets both roots take no parameters at all.
+    **Why:** the two roots used to construct the same five things separately, and
+    `_resolveBrightness` had already forked into three copies that disagreed. That
+    is fixed rather than recorded — one provider, one function. **Enforced** by
+    `isolate_guard_test`.
 
 ---
 
@@ -106,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 389 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 381 tests, and the ten traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -134,7 +169,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 98 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 90 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -143,10 +178,10 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 | `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode; the editor created topmost; `SetAlwaysOnTop` reachable for the editor; no `WM_ACTIVATE`; the widget demoted **without** the editor being raised; no `WM_GETMINMAXINFO`; the editor's minimum size written unscaled, as `ptMinSize`, or alongside `ptMaxPosition` |
 | `docs_test` | a rule in §3 of a pattern doc with no row in its test table; a cited test that no longer exists; a cited guard that does not exist; this file claiming a fixed rule is still broken |
 | `changelog_guard_test` | a `CHANGELOG.md` entry longer than one bullet, or a second paragraph hung off the same bullet (§0.6) |
-| `no_set_state_test` | a `setState(` call in `lib/` beyond the recorded countdown; a stale budget line left behind after one is removed (§0.7) |
-| `provider_guard_test` | a widget below a scope holding a controller, the shell channel or settings as a constructor parameter (§0.8) |
-| `platform_guard_test` | a method in the registry that Dart never sends or the runner never handles; a call in `shell_channel.dart` that is not in the registry; an `event.*` name in the outbound set (§0.9) |
-| `isolate_guard_test` | a repository or controller constructed under `lib/src/ui/` beyond the recorded countdown; a `ProviderScope` in `main()` rather than in a root (§0.10) |
+| `no_set_state_test` | any `setState(` call in `lib/` (§0.7); and a file declaring a `ValueNotifier` with no listener anywhere in it, which is the half of the rule that deleting `setState` does not give you |
+| `provider_guard_test` | a widget below a scope holding a controller, the shell channel or settings as a constructor parameter (§0.8); a widget whose constructor cannot be seen, which would make the check vacuous |
+| `platform_guard_test` | a method in the registry that Dart never sends or the runner never handles; a call in `shell_channel.dart` that is not in the registry; an `event.*` name in the outbound set (§0.10) |
+| `isolate_guard_test` | a repository or controller constructed under `lib/src/ui/` (§0.11); either root taking a parameter; a root reading `ref` inside `dispose()`, or a root that resolves the theme any other way than the shared provider (§0.9); the flush-on-teardown hazard being renamed out of existence |
 | `dependency_guard_test` | a runtime dependency in `pubspec.yaml` that is not on the enumerated list in §0.4; an approved list that has quietly grown into "anything goes" |
 
 The guard has **no allowlist**, on purpose. If a write genuinely cannot go
@@ -191,21 +226,27 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ---
 
-7. **`_resolveBrightness` exists in three copies and they disagree.**
-   `editor_app.dart` has one; `widget_app.dart` has two. The editor's falls back to
-   a live `_systemBrightness` field, the widget's hardcodes `Brightness.light`. If
-   both surfaces are open and Windows changes theme while the app runs, the two can
-   resolve "system" differently and the widget's palette will not match the
-   editor's. Not fixed, because §0.10 is the fix and §0.10 is not landed.
-   `docs/isolate_pattern.md` §3.1.
-8. **Four `unawaited(...flush())` calls run inside `dispose()`.**
-   `editor_app.dart` and `widget_app.dart` both flush pending writes without
-   awaiting, in a teardown whose isolate is about to end. `docs/storage_pattern.md`
-   §3.11 says never lose a data file, so this is a live hazard and it is
-   **pre-existing** - not caused by any provider work, and not to be fixed as a
-   drive-by. Riverpod's `ref.onDispose` cannot fix it either, being synchronous:
-   the real fix is making the write durable where it happens, which is a
-   `docs/storage_pattern.md` question. `docs/isolate_pattern.md` §4.3.
+7. **Three `unawaited(...flush())` calls run inside `dispose()`.**
+   Both roots flush pending writes without awaiting, in a teardown whose isolate is
+   about to end. `docs/storage_pattern.md` §3.11 says never lose a data file, so this
+   is a live hazard and it is **pre-existing** — not caused by the provider work, and
+   deliberately not fixed by it. Riverpod's `ref.onDispose` cannot fix it either,
+   being synchronous: the real fix is making the write durable where it happens,
+   which is a `docs/storage_pattern.md` question. `isolate_guard_test` keeps it named
+   so it cannot be forgotten by being quietly changed. `docs/isolate_pattern.md` §4.3.
+8. **Two providers are over the 200-line cap.**
+   `notes_controller.dart` is 621 and `widget_controller.dart` is 413;
+   `docs/provider_pattern.md` §3.6 sets 200. The split was written as a follow-up to
+   the rewrite and did not happen in the same change, so the recovery half of the
+   notes provider cannot be tested without constructing the whole list. Nothing
+   checks the sizes automatically, which is why this is here rather than discovered
+   later.
+9. **The widget surface's notes cannot be re-read on demand from outside its
+   provider.** `WidgetNotifier.reloadNotes()` exists so a change to `notes.json` can
+   be applied without waiting for the directory watcher, and so a test can drive it
+   under a fake clock that never fires a real watcher. It is public API with one
+   caller in this repo, which is a smell rather than a defect; it stays because the
+   alternative is a private method reachable only through a callback CI cannot run.
 
 ## 5. Known Bugs
 
@@ -224,7 +265,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 389 passing
+flutter test             # 381 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying

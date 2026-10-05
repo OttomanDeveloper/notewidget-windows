@@ -1,134 +1,252 @@
-/// `AGENTS.md` §0.10 and `docs/isolate_pattern.md`: the two surfaces build the
-/// same graph, from one place.
+/// `AGENTS.md` §0.10 and `docs/isolate_pattern.md`: the two surfaces build the same
+/// graph, from one place.
 ///
-/// This app has no DI framework. `EditorApp` and `WidgetApp` are each a
-/// `StatefulWidget` whose `initState` constructs four repositories, loads settings
-/// and wires an event stream - and then `dispose` flushes three of them in an
-/// order that matters, with a comment explaining that there is no quit hook to do
-/// it later. The two roots do this separately, and the duplication has already
-/// produced a real divergence: `_resolveBrightness` exists in three copies across
-/// the two files, and they disagree about what happens when the theme is "system"
-/// and no system brightness has been reported yet.
+/// This was a countdown. Ten constructions inside `lib/src/ui/` on 2026-10-05, five
+/// in `EditorApp` and five in `WidgetApp`. Every one reached zero.
 ///
-/// So the rule is not "use Riverpod". It is that **construction happens in a
-/// provider, once**, and both surfaces build the same graph from the same
-/// declarations. That is what makes the duplication impossible rather than
-/// discouraged.
+/// The reason it mattered was never tidiness. Each root built its own copy of the
+/// same five things, and the duplication had already produced a live divergence:
+/// `_resolveBrightness` existed in three copies across the two files and the widget's
+/// copies disagreed with the editor's about the system-dark fallback. Both surfaces
+/// could resolve "system" theme differently after a Windows theme change, and the
+/// only symptom would be a widget that no longer matched the editor.
 ///
-/// The budget exists because the migration has not happened yet. Ten construction
-/// sites, in two files, and the guard falls in both directions - see
-/// `no_set_state_test` for why a countdown that can only rise is not a countdown.
+/// That is fixed, and the reason it is fixed rather than merely recorded is in the
+/// guards below: one graph is built from one declaration in `lib/src/state/`, and
+/// this check makes a second one impossible to reintroduce without a red build.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'guards.dart';
 
-/// The ten constructions that exist today, inside widgets.
-const Map<String, int> constructionBudget = {
-  'lib/src/ui/editor/editor_app.dart': 5,
-  'lib/src/ui/widget/widget_app.dart': 5,
-};
-
-const RemovalBudget _construction = RemovalBudget(
-  what: 'dependency construction',
-  allowance: constructionBudget,
-  rule: 'Construct it in a provider and read it with ref '
-      '(`docs/provider_pattern.md` §3.1). Both surfaces build the same graph, so '
-      'a repository that changes constructor takes one edit instead of two.',
-);
-
 void main() {
   final tree = SourceTree();
 
   group('one graph, built once', () {
-    test('no widget constructs a dependency beyond the recorded countdown', () {
+    test('no widget constructs a repository or a controller', () {
       final live = uiConstructionCounts(tree);
-      final faults = _construction.faults(live);
 
       expect(
-        faults,
+        live,
         isEmpty,
-        reason: 'AGENTS.md §0.10.\n'
-            '${live.values.fold(0, (a, b) => a + b)} of '
-            '${_construction.allowanceTotal} recorded sites remain.\n\n'
-            '${faults.join('\n')}',
+        reason: 'AGENTS.md §0.10.\n\n'
+            '${live.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
+            '    Construction belongs in lib/src/state/providers.dart, so both '
+            'surfaces get the same graph. A repository that changes its constructor '
+            'is then one edit instead of two.',
       );
     });
 
-    test('the countdown is still counting', () {
+    test('the scanner still finds the six types it claims to', () {
       final live = uiConstructionCounts(tree);
-      expect(live, isNotEmpty, reason: 'The scanner found nothing.');
-      expect(
-        live.values.fold(0, (a, b) => a + b),
-        _construction.allowanceTotal,
+
+      expect(live, isEmpty, reason: 'precondition: nothing to count');
+
+      // Checked against the pattern rather than against the tree, because a scanner
+      // that finds nothing and a clean codebase look identical from here.
+      final pattern = RegExp(
+        // `WidgetStateRepository` first: `Widget` followed by `Repository` does not
+        // match it, because `State` is in between. The original pattern had that
+        // hole and this test is what found it - a guard whose own test is the only
+        // thing checking the scanner is a guard nobody has checked.
+        r'\b(?:Notes|Settings|WidgetState|Selection)Repository\s*\(|\b(?:Notes|Settings|Widget)Controller\s*\(',
       );
+      for (final declaration in [
+        'NotesRepository(AtomicJsonFile(p))',
+        'SettingsRepository(file, shell)',
+        'WidgetStateRepository(file)',
+        'SelectionRepository(file)',
+        'NotesController(repository: r)',
+        'SettingsController(repository: r, shell: s)',
+        'WidgetController(shell: s)',
+      ]) {
+        expect(
+          pattern.hasMatch(declaration),
+          isTrue,
+          reason: '$declaration must be caught by the scanner',
+        );
+      }
     });
 
-    test('construction in a third file is a fault', () {
-      final live = Map<String, int>.from(constructionBudget);
-      live['lib/src/ui/editor/editor_view.dart'] = 1;
-
-      final faults = _construction.faults(live);
-      expect(faults.single, contains('is not in the budget at all'));
-    });
-
-    test('the two roots are named, and they are the two roots', () {
-      // If a third surface appears - a settings window, a second editor - the
-      // duplication this doc exists to stop has already happened, and the budget
-      // is the place it shows up first.
-      expect(constructionBudget.keys, hasLength(2));
-      expect(
-        constructionBudget.keys.every((p) =>
-            p == 'lib/src/ui/editor/editor_app.dart' ||
-            p == 'lib/src/ui/widget/widget_app.dart'),
-        isTrue,
-      );
-      expect(
-        constructionBudget.values.every((n) => n == 5),
-        isTrue,
-        reason: 'Both roots construct the same five things. If that stops being '
-            'true, the two surfaces need different graphs and that is a decision, '
-            'not an accident.',
-      );
-    });
-
-    test('main() still branches rather than being given both surfaces', () {
-      // The rule that a ProviderScope must be per-isolate rests on this. Both
-      // isolates call the same main(), so anything hoisted above the branch is
-      // built twice - once per surface - which is correct, and anything that looks
-      // like shared state across that line does not exist.
+    test('main() builds the scope and passes no state to either root', () {
+      // The structure that made zero parameters possible. `main()` runs once per
+      // isolate, so building the scope here gives each isolate its own container -
+      // `docs/isolate_pattern.md` §2 - and means neither root widget takes a shell, a
+      // launch info or a path.
       final main_ = tree.read('lib/main.dart');
-      expect(main_, contains('launch.isWidgetSurface'));
-      expect(main_, contains('runApp('));
+
       expect(
         main_.contains('ProviderScope'),
-        isFalse,
-        reason: 'A ProviderScope in main() would be above the branch, so both '
-            'isolates would build it - which is correct - but it would also hide '
-            'the per-isolate boundary that docs/isolate_pattern.md §3.2 is about. '
-            'Each root owns its own scope instead.',
+        isTrue,
+        reason: 'The container is created once, with the three values it cannot '
+            'discover for itself.',
       );
+      expect(
+        main_.contains('shellProvider.overrideWithValue'),
+        isTrue,
+        reason: 'The runner channel exists before any widget does.',
+      );
+      expect(
+        main_.contains('launchInfoProvider.overrideWithValue'),
+        isTrue,
+      );
+      expect(main_.contains('appPathsProvider.overrideWithValue'), isTrue);
+
+      // And the roots themselves take nothing. Scoped to the root class rather
+      // than the file, because `EditorEventRouter` in the same file legitimately
+      // takes a `Widget child` - that is a value, not state.
+      for (final root in {
+        'lib/src/ui/editor/editor_app.dart': 'EditorApp',
+        'lib/src/ui/widget/widget_app.dart': 'WidgetApp',
+      }.entries) {
+        final source = tree.read(root.key);
+        final declaration = RegExp(
+          'class ${root.value} extends ConsumerWidget \\{\\s*const ${root.value}\\(\\{([^}]*)\\}',
+        ).firstMatch(source);
+
+        expect(
+          declaration,
+          isNotNull,
+          reason: '${root.value} must be a ConsumerWidget with an explicit const '
+              'constructor, or this check cannot see what it takes.',
+        );
+        expect(
+          RegExp(r'required\s+this\.').hasMatch(declaration!.group(1) ?? ''),
+          isFalse,
+          reason: '${root.value} takes a parameter. Whatever it needs belongs in '
+              'a provider; `AGENTS.md` §0.8 has nothing carved out of it. Got: '
+              '${declaration.group(1)}',
+        );
+      }
+    });
+
+    test('both roots read the same providers, from the same declarations', () {
+      // The actual fix for §4.7: one place decides what a `ThemeData` is, and both
+      // surfaces ask it. Three copies of a brightness resolver is not a style
+      // problem; two of them already disagreed.
+      final editor = tree.read('lib/src/ui/editor/editor_app.dart');
+      final widgetApp = tree.read('lib/src/ui/widget/widget_app.dart');
+      final themeScope = tree.read('lib/src/ui/theme_scope.dart');
+
+      expect(
+        themeScope.contains('widgetSurfaceThemeProvider'),
+        isTrue,
+        reason: 'precondition: there is one theme provider',
+      );
+      for (final entry in {'editor': editor, 'widget': widgetApp}.entries) {
+        expect(
+          entry.value.contains('widgetSurfaceThemeProvider'),
+          isTrue,
+          reason: 'the ${entry.key} surface must resolve its theme through the '
+              'shared provider, not through its own copy of the logic',
+        );
+        // A declaration, not a mention. Both files *name* `_resolveBrightness` in a
+        // comment saying it is gone, and checking the raw text would fail on its own
+        // documentation - which is the trap `changelog_guard_test` already had to
+        // be taught about.
+        expect(
+          RegExp(r'Brightness\s+_resolveBrightness\s*\(|void\s+_resolveBrightness\s*\(')
+              .hasMatch(entry.value.replaceAll(RegExp(r'//.*'), '')),
+          isFalse,
+          reason: 'the ${entry.key} surface still declares its own brightness '
+              'resolver, which is the divergence this replaced',
+        );
+      }
+    });
+
+    test('the theme provider is under ui/, not state/', () {
+      // `state/` must not reach up into `ui/`, so a provider that needs
+      // `theme.dart` cannot live beside the repositories. Asserted because the
+      // natural place to put it was `providers.dart`, and someone will try again.
+      final providers = tree.read('lib/src/state/providers.dart');
+
+      expect(
+        providers.contains('theme.dart') || providers.contains('palette.dart'),
+        isFalse,
+        reason: 'lib/src/state/providers.dart must not import from ui/. The theme '
+            'providers live in lib/src/ui/theme_scope.dart for exactly that reason.',
+      );
+      expect(tree.exists('lib/src/ui/theme_scope.dart'), isTrue);
     });
 
     test('the flush-on-teardown hazard is still named', () {
-      // Not a fault. A recorded fact, in the same spirit as the singleton: four
-      // `unawaited(...flush())` calls run inside `dispose()`, and an unawaited
-      // async write in a dispose whose isolate is being torn down can lose a
-      // write. `docs/storage_pattern.md` §3.11 says never lose a data file. This
-      // is pre-existing, it is not caused by any provider work, and Riverpod's
-      // `ref.onDispose` cannot await - so it needs an answer, not a refactor.
+      // Not a fault. A recorded fact. The writes are still unawaited and still race
+      // isolate death; `ref.onDispose` is synchronous and cannot await, so no amount
+      // of provider work fixes it. `docs/storage_pattern.md` §3.11 says never lose a
+      // data file, so it needs an answer rather than a migration.
       //
-      // The test exists so the hazard cannot be forgotten by being fixed
-      // accidentally without a word in the docs.
+      // The test exists so the hazard cannot be forgotten by being quietly changed.
       final editor = tree.read('lib/src/ui/editor/editor_app.dart');
+
+      // `EditorTeardown.run` awaits each flush internally and is itself called
+      // unawaited from `dispose`, which is the same hazard in a new shape. The first
+      // version of this test matched the old `unawaited(...flush())` text and passed
+      // vacuously once the calls moved - so it checks the two halves separately,
+      // because that is the only way it fails for the right reason.
       expect(
-        RegExp(r'unawaited\(_?\w+\.flush\(\)\)').hasMatch(editor),
+        RegExp(r'unawaited\(_teardown\.run\(\)\)').hasMatch(editor),
         isTrue,
-        reason: 'The unawaited flushes are gone. Before deleting this budget: is '
-            'the write actually awaited now, and does docs/isolate_pattern.md §5 '
-            'say so?',
+        reason: 'Teardown must be called exactly once, unawaited, from dispose.',
       );
+      expect(
+        RegExp(r'await \w+\.flush\(\);').hasMatch(editor),
+        isTrue,
+        reason: 'The flushes themselves must still be awaited *inside* '
+            'EditorTeardown - which is what makes the outer unawaited a hazard.',
+      );
+
+      // The widget surface has no teardown object, so it is checked on its own: the
+      // flush is still unawaited, which is the recorded hazard.
+      final widgetApp = tree.read('lib/src/ui/widget/widget_app.dart');
+      expect(
+        RegExp(r'unawaited\(_notifier\.flush\(\)\)').hasMatch(widgetApp),
+        isTrue,
+        reason: 'The widget surface has no EditorTeardown equivalent; its flush is '
+            'still unawaited, and that is the hazard `AGENTS.md` section 4.8 records.',
+      );
+
+      // And the two roots must not reach for `ref` in `dispose`, which Riverpod
+      // forbids outright - it throws during tree finalisation, after the test that
+      // closed the surface has already passed.
+      for (final root in {
+        'editor': editor,
+        'widget': widgetApp,
+      }.entries) {
+        final dispose = _disposeBody(root.value);
+        expect(
+          dispose,
+          isNotNull,
+          reason: 'the ${root.key} root has no dispose() to check',
+        );
+        expect(
+          // Comments stripped first. Both roots *explain in a comment* why they do
+          // not use `ref` here, so matching raw text fails on the file's own
+          // documentation - the same trap `changelog_guard_test` had to be taught
+          // about, and the reason this check cannot simply look for the word.
+          RegExp(r'\bref\b').hasMatch(_stripComments(dispose!)),
+          isFalse,
+          reason: 'the ${root.key} root reads `ref` inside dispose(). Riverpod '
+              'asserts on any `ref` use there, and the failure lands during tree '
+              'finalisation - after the test has passed. Capture in initState.',
+        );
+      }
     });
   });
 }
+
+/// The body of the first `dispose()` in [source], or null if there is none.
+///
+/// Extracted so the assertions above can be about *what* the method does rather than
+/// about how its text is shaped. Ends at the closing brace at two-space indent, which
+/// is where a `State`'s `dispose` ends in every file here - and if that ever stops
+/// being true the test fails rather than quietly passing on a prefix.
+String? _disposeBody(String source) =>
+    RegExp(r'void dispose\(\) \{([\s\S]*?)\n  \}').firstMatch(source)?.group(1);
+
+/// [source] with `//` comments removed.
+///
+/// Crude on purpose: a `//` inside a string literal would confuse it, and none
+/// appears in a `dispose`. Getting it wrong here means failing a guard that was
+/// passing, which is the safe direction to be wrong in.
+String _stripComments(String source) => source.replaceAll(RegExp(r'//.*'), '');

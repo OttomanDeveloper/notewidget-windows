@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:win_notes/src/core/app_paths.dart';
-import 'package:win_notes/src/platform/shell_channel.dart';
 import 'package:win_notes/src/ui/editor/editor_app.dart';
+
+import 'helpers/provider_harness.dart';
 import 'package:win_notes/src/ui/settings/settings_dialog.dart';
 
 /// Tests for the editor surface's own navigation.
@@ -26,7 +26,9 @@ import 'package:win_notes/src/ui/settings/settings_dialog.dart';
 /// descendant widget whose context is genuinely below the MaterialApp. These
 /// tests pin that distinction down by driving the real menu.
 void main() {
-  late Directory temp;
+  // The container behind the editor, so the surface's providers resolve to a temp
+  // profile and the test can read them back.
+  late TestHarness harness;
 
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -34,49 +36,40 @@ void main() {
       const MethodChannel('dev.winnotes/shell'),
       (call) async => null,
     );
-    temp = Directory.systemTemp.createTempSync('winnotes_editor_test');
+    harness = TestHarness.build();
   });
 
-  tearDown(() {
-    if (temp.existsSync()) temp.deleteSync(recursive: true);
+  tearDown(() async {
+      await harness.drain();
+      await harness.dispose();
   });
-
-  LaunchInfo launchInfo() => LaunchInfo(
-        role: 'editor',
-        launchMode: 'plain',
-        isWidgetSurface: false,
-        dataDirectory: temp.path,
-        executablePath: r'E:\app\win_notes.exe',
-        isSystemDark: false,
-        animationsEnabled: true,
-        highContrast: false,
-        acrylicSupported: false,
-        buildNumber: 1,
-        monitors: const [],
-        autostartEnabled: false,
-        autostartCommand: '',
-        defaultWidgetBounds:
-            const NativeBounds(left: 0, top: 0, width: 360, height: 420),
-      );
 
   Future<void> pumpEditor(WidgetTester tester) async {
-    final paths = AppPaths(
-      dataDirectory: temp.path,
-      executablePath: r'E:\app\win_notes.exe',
-    );
-    File(paths.notesFile).writeAsStringSync(
+    File(harness.notesFile).writeAsStringSync(
       '{"format":"winnotes","version":1,"notes":['
       '{"id":"a","title":"Groceries","body":"Milk",'
       '"createdAt":"2026-01-01T09:00:00.000Z",'
       '"updatedAt":"2026-01-01T09:00:00.000Z"}]}',
     );
 
-    await tester.pumpWidget(
-      EditorApp(shell: ShellChannel(), launch: launchInfo(), paths: paths),
-    );
-    // The bootstrap reads notes and settings off disk before the first frame
-    // settles, and those are real file reads.
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 400)));
+    // **Warm the providers inside `runAsync`, before the first `pumpWidget`.**
+    //
+    // This is the trap that makes the whole migration look broken, and it is worth
+    // stating plainly: a provider is built the first time it is *read*, and reading it
+    // for the first time during `pumpWidget` means its file I/O is issued under the
+    // test's fake clock. That clock never advances, so the read never completes, the
+    // provider stays in `isLoading`, and the editor renders the empty frame forever.
+    // Nothing throws, nothing logs - the app simply looks like it is stuck.
+    //
+    // Awaiting `notesProvider.future` under `runAsync` lets the real event loop run, so
+    // by the time the widget tree is pumped the state is already there. See
+    // `docs/testing_pattern.md` §4 and the same shape in `palette_test`.
+    await tester.runAsync(() async {
+      await harness.notes();
+      await harness.settings();
+    });
+
+    await tester.pumpWidget(harness.wrap(const EditorApp()));
     await tester.pumpAndSettle();
   }
 

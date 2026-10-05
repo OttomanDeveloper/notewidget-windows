@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/note.dart';
 import '../../data/notes_repository.dart';
-import '../../platform/shell_channel.dart';
 import '../../state/notes_controller.dart';
+import '../../state/providers.dart';
 import '../common/widgets.dart';
 import '../theme.dart';
 import 'note_editor_pane.dart';
@@ -15,18 +16,20 @@ import 'note_list_pane.dart';
 /// width rather than on a device check, because the editor can be resized
 /// freely and a pane layout that breaks at 700px is worse than one that
 /// responds to it.
-class EditorView extends StatefulWidget {
+class EditorView extends ConsumerStatefulWidget {
   const EditorView({
     super.key,
-    required this.controller,
-    required this.shell,
     required this.onOpenSettings,
     required this.exportNotes,
     required this.importNotes,
   });
 
-  final NotesController controller;
-  final ShellChannel shell;
+  /// A callback, not a controller.
+  ///
+  /// All three of these are allowed to cross as parameters (`AGENTS.md` §0.8) because
+  /// they are behaviour, not state: a function that opens a dialog does not rebuild
+  /// when the settings change. What *is* state - the notes, the corrupt-file state,
+  /// the channel - is read with `ref`.
   final VoidCallback onOpenSettings;
   final Future<void> Function() exportNotes;
   final Future<List<Note>?> Function() importNotes;
@@ -34,37 +37,62 @@ class EditorView extends StatefulWidget {
   static const double _narrowBreakpoint = 760;
 
   @override
-  State<EditorView> createState() => _EditorViewState();
+  ConsumerState<EditorView> createState() => _EditorViewState();
 }
 
-class _EditorViewState extends State<EditorView> {
-  bool _showListOnNarrow = true;
+class _EditorViewState extends ConsumerState<EditorView> {
+  /// Which pane a *narrow* editor is showing.
+  ///
+  /// A `ValueNotifier` rather than a field on this State, and that is the whole
+  /// replacement for six `setState` calls. The line is lifetime: this is true for as
+  /// long as the editor stays narrow, and nothing else in the app asks - but it is
+  /// not shared either, so it does not belong in a provider where a second reader
+  /// would find it and a test would have to seed it.
+  ///
+  /// Read through a `ValueListenableBuilder` in [build], which rebuilds only the
+  /// part of the tree that depends on it.
+  final ValueNotifier<bool> _showListOnNarrow = ValueNotifier<bool>(true);
+
+  @override
+  void dispose() {
+    _showListOnNarrow.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final controller = widget.controller;
+    final notes = ref.watch(notesProvider);
+    final shell = ref.read(shellProvider);
+    final notifier = ref.read(notesProvider.notifier);
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        if (controller.corrupt != null) {
-          return CorruptNotesScreen(
-            error: controller.corrupt!,
-            shell: widget.shell,
-            hasBackup: controller.hasBackup,
-            onRestore: widget.importNotes,
-            onReveal: () => widget.shell.revealPath(controller.corrupt!.path),
-            onRestoreBackup: controller.restoreBackup,
-            onRetry: controller.retryLoad,
-            onStartFresh: controller.startFresh,
-          );
-        }
+    final corrupt = notes.value?.corrupt;
+    if (corrupt != null) {
+      return CorruptNotesScreen(
+        error: corrupt,
+        hasBackup: notifier.hasBackup,
+        onRestore: widget.importNotes,
+        onReveal: () => shell.revealPath(corrupt.path),
+        onRestoreBackup: notifier.restoreBackup,
+        onRetry: notifier.retryLoad,
+        onStartFresh: notifier.startFresh,
+      );
+    }
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final narrow = constraints.maxWidth < EditorView._narrowBreakpoint;
-            final showList = !narrow || _showListOnNarrow;
+    // Still loading. A blank frame beats a frame that says "no notes" and then
+    // corrects itself - which is exactly the first-launch bug in `AGENTS.md` §5.1,
+    // and the reason the loading case is drawn at all.
+    if (!notes.hasValue) {
+      return const Scaffold(body: SizedBox.shrink());
+    }
 
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < EditorView._narrowBreakpoint;
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: _showListOnNarrow,
+          builder: (context, showListOnNarrow, _) {
+            final showList = !narrow || showListOnNarrow;
             return Scaffold(
               appBar: _buildAppBar(context, narrow, showList),
               body: narrow
@@ -74,22 +102,20 @@ class _EditorViewState extends State<EditorView> {
                         SizedBox(
                           width: 300,
                           child: NoteListPane(
-                            controller: controller,
-                            onOpenNote: () => setState(() => _showListOnNarrow = false),
+                            onOpenNote: () => _showListOnNarrow.value = false,
                             onNewNote: () {
-                              controller.createNote();
-                              if (narrow) setState(() => _showListOnNarrow = false);
+                              notifier.createNote();
+                              if (narrow) _showListOnNarrow.value = false;
                               _focusBody();
                             },
                             onCloseList: () {},
                           ),
                         ),
-                        VerticalDivider(width: 1, color: Theme.of(context).dividerColor),
-                        Expanded(
-                          child: NoteEditorPane(
-                            controller: controller,
-                          ),
+                        VerticalDivider(
+                          width: 1,
+                          color: Theme.of(context).dividerColor,
                         ),
+                        const Expanded(child: NoteEditorPane()),
                       ],
                     ),
             );
@@ -100,25 +126,24 @@ class _EditorViewState extends State<EditorView> {
   }
 
   Widget _buildNarrow(bool showList) {
+    final notifier = ref.read(notesProvider.notifier);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 160),
       child: showList
           ? NoteListPane(
               key: const ValueKey('list'),
-              controller: widget.controller,
               showCloseButton: false,
-              onOpenNote: () => setState(() => _showListOnNarrow = false),
+              onOpenNote: () => _showListOnNarrow.value = false,
               onNewNote: () {
-                widget.controller.createNote();
-                setState(() => _showListOnNarrow = false);
+                notifier.createNote();
+                _showListOnNarrow.value = false;
                 _focusBody();
               },
               onCloseList: () {},
             )
           : NoteEditorPane(
               key: const ValueKey('editor'),
-              controller: widget.controller,
-              onBack: () => setState(() => _showListOnNarrow = true),
+              onBack: () => _showListOnNarrow.value = true,
             ),
     );
   }
@@ -160,7 +185,7 @@ class _EditorViewState extends State<EditorView> {
           IconButton(
             icon: const Icon(Icons.list),
             tooltip: 'Show notes',
-            onPressed: () => setState(() => _showListOnNarrow = true),
+            onPressed: () => _showListOnNarrow.value = true,
           ),
         PopupMenuButton<String>(
           tooltip: 'More',
@@ -275,11 +300,10 @@ class _BrandGlyph extends StatelessWidget {
 /// telling someone to rename a file in Explorer by hand and restart. That is the
 /// right instruction for someone who reads it calmly and the wrong experience for
 /// someone whose notes have just failed them, so it is a button now.
-class CorruptNotesScreen extends StatefulWidget {
+class CorruptNotesScreen extends ConsumerStatefulWidget {
   const CorruptNotesScreen({
     super.key,
     required this.error,
-    required this.shell,
     required this.onRestore,
     required this.onReveal,
     required this.onRestoreBackup,
@@ -289,7 +313,6 @@ class CorruptNotesScreen extends StatefulWidget {
   });
 
   final CorruptDataFileError error;
-  final ShellChannel shell;
   final Future<List<Note>?> Function() onRestore;
   final VoidCallback onReveal;
   final Future<RecoveryOutcome> Function() onRestoreBackup;
@@ -298,40 +321,59 @@ class CorruptNotesScreen extends StatefulWidget {
   final bool hasBackup;
 
   @override
-  State<CorruptNotesScreen> createState() => _CorruptNotesScreenState();
+  ConsumerState<CorruptNotesScreen> createState() => _CorruptNotesScreenState();
 }
 
-class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
-  bool _busy = false;
-  String? _message;
+class _CorruptNotesScreenState extends ConsumerState<CorruptNotesScreen> {
+  /// Whether a recovery action is running, and what it last said.
+  ///
+  /// Two fields rather than one, because they answer different questions and the
+  /// screen shows them differently: `_busy` disables every button, `_message` is
+  /// read after the action finishes. Folding them into one enum would mean every
+  /// message doubled as a "still busy" state, which is wrong the moment two messages
+  /// can be showing - or none.
+  ///
+  /// A `ValueNotifier` and not a provider: this state is true for the length of one
+  /// button press and nobody outside this screen will ever ask whether it is true.
+  /// That is the `ValueNotifier` half of `AGENTS.md` §0.7.
+  final ValueNotifier<bool> _busy = ValueNotifier<bool>(false);
+  final ValueNotifier<String?> _message = ValueNotifier<String?>(null);
 
+  @override
+  void dispose() {
+    _busy.dispose();
+    _message.dispose();
+    super.dispose();
+  }
+
+  /// Runs a recovery action with the buttons disabled and the old message cleared.
+  ///
+  /// `_busy` is set before the first `await` and cleared in a `finally`, so a thrown
+  /// error cannot leave the screen permanently disabled - which is the failure a
+  /// `setState` version had available to it and could not have.
   Future<void> _run(Future<void> Function() action) async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
+    if (_busy.value) return;
+    _busy.value = true;
+    _message.value = null;
     try {
       await action();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _busy.value = false;
     }
   }
 
   Future<void> _restoreBackup() => _run(() async {
         final outcome = await widget.onRestoreBackup();
         if (!mounted) return;
-        setState(() {
-          _message = switch (outcome) {
-            RecoveryOutcome.restoredBackup =>
-              'Restored the previous version of your notes.',
-            RecoveryOutcome.nothingToRecover =>
-              'There is no earlier version to go back to.',
-            RecoveryOutcome.startedFresh => null,
-            RecoveryOutcome.fileIsHeld =>
-              'Something else is holding the file. Try again in a moment.',
-          };
-        });
+        _message.value = switch (outcome) {
+          RecoveryOutcome.restoredBackup =>
+            'Restored the previous version of your notes.',
+          RecoveryOutcome.nothingToRecover =>
+            'There is no earlier version to go back to.',
+          RecoveryOutcome.startedFresh => null,
+          RecoveryOutcome.fileIsHeld =>
+            'Something else is holding the file. Try again in a moment.',
+        };
       });
 
   Future<void> _startFresh() async {
@@ -349,19 +391,17 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
     await _run(() async {
       final result = await widget.onStartFresh();
       if (!mounted) return;
-      setState(() {
-        _message = switch (result.outcome) {
-          RecoveryOutcome.startedFresh => result.keptAt == null
-              ? 'The unreadable file was already gone. Starting a new one.'
-              : 'The unreadable file was kept as '
-                  '"${result.keptAt!.split('\\').last}".',
-          RecoveryOutcome.fileIsHeld =>
-            'Something else is holding the file, so it could not be moved aside. '
-                'Try again in a moment.',
-          RecoveryOutcome.restoredBackup => null,
-          RecoveryOutcome.nothingToRecover => null,
-        };
-      });
+      _message.value = switch (result.outcome) {
+        RecoveryOutcome.startedFresh => result.keptAt == null
+            ? 'The unreadable file was already gone. Starting a new one.'
+            : 'The unreadable file was kept as '
+                '"${result.keptAt!.split('\\').last}".',
+        RecoveryOutcome.fileIsHeld =>
+          'Something else is holding the file, so it could not be moved aside. '
+              'Try again in a moment.',
+        RecoveryOutcome.restoredBackup => null,
+        RecoveryOutcome.nothingToRecover => null,
+      };
     });
   }
 
@@ -412,15 +452,23 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                 ),
                 const SizedBox(height: 20),
                 _DetailCard(error: widget.error),
-                if (_message != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    _message!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ],
+                ValueListenableBuilder<String?>(
+                  valueListenable: _message,
+                  builder: (context, message, _) => message == null
+                      ? const SizedBox.shrink()
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 16),
+                            Text(
+                              message,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
                 const SizedBox(height: 24),
                 Wrap(
                   spacing: 10,
@@ -432,19 +480,19 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                     // "of what?", and the honest answer is easier to just not ask.
                     if (widget.hasBackup)
                       FilledButton.icon(
-                        onPressed: _busy ? null : _restoreBackup,
+                        onPressed: _busy.value ? null : _restoreBackup,
                         icon: const Icon(Icons.history, size: 18),
                         label: const Text('Restore the previous version'),
                       ),
                     if (transient)
                       FilledButton.icon(
-                        onPressed: _busy ? null : () => _run(widget.onRetry),
+                        onPressed: _busy.value ? null : () => _run(widget.onRetry),
                         icon: const Icon(Icons.refresh, size: 18),
                         label: const Text('Try again'),
                       ),
                     if (!widget.hasBackup && !transient)
                       FilledButton.icon(
-                        onPressed: _busy
+                        onPressed: _busy.value
                             ? null
                             : () => _run(() async {
                                   final restored = await widget.onRestore();
@@ -460,7 +508,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                       ),
                     if (widget.hasBackup)
                       OutlinedButton.icon(
-                        onPressed: _busy
+                        onPressed: _busy.value
                             ? null
                             : () => _run(() async {
                                   final restored = await widget.onRestore();
@@ -475,16 +523,16 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                         label: const Text('Restore from a backup'),
                       ),
                     OutlinedButton.icon(
-                      onPressed: _busy ? null : widget.onReveal,
+                      onPressed: _busy.value ? null : widget.onReveal,
                       icon: const Icon(Icons.folder_open, size: 18),
                       label: const Text('Open the folder'),
                     ),
                     TextButton(
-                      onPressed: _busy ? null : _startFresh,
+                      onPressed: _busy.value ? null : _startFresh,
                       child: const Text('Start fresh instead'),
                     ),
                     TextButton(
-                      onPressed: _busy ? null : () => widget.shell.quit(),
+                      onPressed: _busy.value ? null : () => ref.read(shellProvider).quit(),
                       child: const Text('Quit'),
                     ),
                   ],

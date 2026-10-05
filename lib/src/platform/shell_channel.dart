@@ -208,7 +208,7 @@ class ShellChannel {
   /// contain a text field at all. This drops that for exactly as long as the
   /// composer is open, and the runner hands the keyboard back to the window that
   /// had it when `active` goes false again.
-  Future<void> setWidgetComposeMode(bool active) =>
+  Future<void> setWidgetComposeMode({required bool active}) =>
       _fire('widget.setComposeMode', {'active': active, 'role': 'widget'});
 
   /// Asks the editor isolate to add a note, which is the only writer of
@@ -310,7 +310,7 @@ class ShellChannel {
     }
   }
 
-  Future<bool> setAutoStart(bool enabled) async {
+  Future<bool> setAutoStart({required bool enabled}) async {
     try {
       final raw = await methodChannel.invokeMapMethod<String, dynamic>('autostart.set', {
         'enabled': enabled,

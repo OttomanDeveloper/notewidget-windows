@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/hotkey_binding.dart';
-import '../../data/settings.dart';
-import '../../platform/shell_channel.dart';
+import '../../data/settings_repository.dart';
+import '../../state/providers.dart';
 import '../../state/settings_controller.dart';
 import '../palette.dart';
 import '../theme.dart';
@@ -13,32 +14,28 @@ import '../theme.dart';
 /// Appearance, Widget, Startup, Hotkey and Storage. Each is a `Card` rather than
 /// an `ExpansionTile`, because a setting hidden behind a click is a setting
 /// nobody changes.
-class SettingsDialog extends StatefulWidget {
+class SettingsDialog extends ConsumerWidget {
   const SettingsDialog({
     super.key,
-    required this.controller,
-    required this.shell,
     required this.defaultDataDirectory,
   });
 
-  final SettingsController controller;
-  final ShellChannel shell;
+  /// The runner channel, and the default folder.
+  ///
+  /// Both are allowed to cross as parameters because neither is *state*: they do
+  /// not change, so nothing here rebuilds when they do. What would not be allowed
+  /// is the settings controller the old version took - that is state, and it is now
+  /// read with `ref.watch` in each group. `AGENTS.md` section 0.8.
   final String defaultDataDirectory;
 
   @override
-  State<SettingsDialog> createState() => _SettingsDialogState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The dialog itself does not read the settings; each group watches what it
+    // draws, so toggling the theme repaints the appearance group and not the
+    // storage group's folder path.
+    final theme = Theme.of(context);
 
-class _SettingsDialogState extends State<SettingsDialog> {
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: widget.controller,
-      builder: (context, _) {
-        final settings = widget.controller.settings;
-        final theme = Theme.of(context);
-
-        return Dialog(
+    return Dialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
@@ -51,33 +48,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                     children: [
-                      _AppearanceGroup(
-                        settings: settings,
-                        controller: widget.controller,
-                        acrylicSupported: widget.controller.acrylicSupported,
-                      ),
+                      const _AppearanceGroup(),
                       const SizedBox(height: 20),
-                      _WidgetGroup(
-                        settings: settings,
-                        controller: widget.controller,
-                      ),
+                      const _WidgetGroup(),
                       const SizedBox(height: 20),
-                      _StartupGroup(
-                        settings: settings,
-                        controller: widget.controller,
-                      ),
+                      const _StartupGroup(),
                       const SizedBox(height: 20),
-                      _HotkeyGroup(
-                        settings: settings,
-                        controller: widget.controller,
-                      ),
+                      const _HotkeyGroup(),
                       const SizedBox(height: 20),
-                      _StorageGroup(
-                        settings: settings,
-                        controller: widget.controller,
-                        shell: widget.shell,
-                        defaultDirectory: widget.defaultDataDirectory,
-                      ),
+                      _StorageGroup(defaultDirectory: defaultDataDirectory),
                     ],
                   ),
                 ),
@@ -85,8 +64,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ),
           ),
         );
-      },
-    );
   }
 
   Widget _header(BuildContext context, ThemeData theme) {
@@ -334,19 +311,16 @@ class _Swatch extends StatelessWidget {
   }
 }
 
-class _AppearanceGroup extends StatelessWidget {
-  const _AppearanceGroup({
-    required this.settings,
-    required this.controller,
-    required this.acrylicSupported,
-  });
-
-  final WinNotesSettings settings;
-  final SettingsController controller;
-  final bool acrylicSupported;
+class _AppearanceGroup extends ConsumerWidget {
+  const _AppearanceGroup();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings =
+        ref.watch(settingsProvider).value?.settings ?? SettingsRepository.defaults;
+    final controller = ref.read(settingsProvider.notifier);
+    final acrylicSupported =
+        ref.watch(settingsProvider).value?.acrylicSupported ?? false;
     return _Group(
       title: 'Appearance',
       children: [
@@ -363,7 +337,7 @@ class _AppearanceGroup extends StatelessWidget {
             ],
             selected: {settings.themeMode},
             onSelectionChanged: (value) =>
-                controller.update((s) => s.copyWith(themeMode: value.first)),
+                controller.apply((s) => s.copyWith(themeMode: value.first)),
           ),
         ),
         const _Separator(),
@@ -372,7 +346,7 @@ class _AppearanceGroup extends StatelessWidget {
           description: 'The accent, and the surfaces built around it.',
           trailing: _PalettePicker(
             selected: paletteById(settings.accentPalette),
-            onSelected: (palette) => controller.update(
+            onSelected: (palette) => controller.apply(
               (s) => s.copyWith(accentPalette: palette.id),
             ),
           ),
@@ -393,7 +367,7 @@ class _AppearanceGroup extends StatelessWidget {
                     max: 100,
                     divisions: 14,
                     label: '${settings.widgetOpacity}%',
-                    onChanged: (value) => controller.update(
+                    onChanged: (value) => controller.apply(
                       (s) => s.copyWith(widgetOpacity: value.round()),
                     ),
                   ),
@@ -413,7 +387,7 @@ class _AppearanceGroup extends StatelessWidget {
             value: settings.acrylicEnabled && acrylicSupported,
             onChanged: !acrylicSupported
                 ? null
-                : (value) => controller.update(
+                : (value) => controller.apply(
                       (s) => s.copyWith(acrylicEnabled: value),
                     ),
           ),
@@ -430,14 +404,14 @@ class _AppearanceGroup extends StatelessWidget {
 /// looks. A lock and an always-on-top switch sitting together also make the
 /// trade-off obvious: a widget you cannot move is worth more if it is also not
 /// covering your work.
-class _WidgetGroup extends StatelessWidget {
-  const _WidgetGroup({required this.settings, required this.controller});
-
-  final WinNotesSettings settings;
-  final SettingsController controller;
+class _WidgetGroup extends ConsumerWidget {
+  const _WidgetGroup();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings =
+        ref.watch(settingsProvider).value?.settings ?? SettingsRepository.defaults;
+    final controller = ref.read(settingsProvider.notifier);
     return _Group(
       title: 'Widget',
       children: [
@@ -447,7 +421,7 @@ class _WidgetGroup extends StatelessWidget {
           trailing: Switch(
             value: settings.alwaysOnTop,
             onChanged: (value) =>
-                controller.update((s) => s.copyWith(alwaysOnTop: value)),
+                controller.apply((s) => s.copyWith(alwaysOnTop: value)),
           ),
         ),
         const _Separator(),
@@ -462,7 +436,7 @@ class _WidgetGroup extends StatelessWidget {
                   'it. Turn this on to stop an accidental drag moving it.',
           trailing: Switch(
             value: settings.widgetPositionLocked,
-            onChanged: (value) => controller.update(
+            onChanged: (value) => controller.apply(
               (s) => s.copyWith(widgetPositionLocked: value),
             ),
           ),
@@ -472,14 +446,14 @@ class _WidgetGroup extends StatelessWidget {
   }
 }
 
-class _StartupGroup extends StatelessWidget {
-  const _StartupGroup({required this.settings, required this.controller});
-
-  final WinNotesSettings settings;
-  final SettingsController controller;
+class _StartupGroup extends ConsumerWidget {
+  const _StartupGroup();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings =
+        ref.watch(settingsProvider).value?.settings ?? SettingsRepository.defaults;
+    final controller = ref.read(settingsProvider.notifier);
     return _Group(
       title: 'Startup',
       children: [
@@ -489,7 +463,7 @@ class _StartupGroup extends StatelessWidget {
               'rights are needed and it shows up in Task Manager.',
           trailing: Switch(
             value: settings.autoStart,
-            onChanged: controller.setAutoStart,
+            onChanged: (enabled) => controller.setAutoStart(enabled: enabled),
           ),
         ),
         const _Separator(),
@@ -508,7 +482,7 @@ class _StartupGroup extends StatelessWidget {
               max: 15000,
               divisions: 30,
               label: '${(settings.autoStartDelayMs / 1000).toStringAsFixed(1)}s',
-              onChanged: (value) => controller.update(
+              onChanged: (value) => controller.apply(
                 (s) => s.copyWith(autoStartDelayMs: value.round()),
               ),
             ),
@@ -519,26 +493,35 @@ class _StartupGroup extends StatelessWidget {
   }
 }
 
-class _HotkeyGroup extends StatelessWidget {
-  const _HotkeyGroup({required this.settings, required this.controller});
+class _HotkeyGroup extends ConsumerWidget {
+  const _HotkeyGroup();
 
-  final WinNotesSettings settings;
-  final SettingsController controller;
-
-  Future<void> _capture(BuildContext context) async {
+  /// Opens the capture dialog and stores whatever combination was pressed.
+  ///
+  /// Reads through `ref` rather than taking the settings as a field, because the
+  /// old version of this class held them and this method is the one thing in the
+  /// dialog that runs outside `build`.
+  Future<void> _capture(BuildContext context, WidgetRef ref) async {
+    final settings =
+        ref.read(settingsProvider).value?.settings ?? SettingsRepository.defaults;
     final binding = settings.editorHotkey;
     final captured = await showDialog<HotkeyBinding>(
       context: context,
       builder: (context) => _HotkeyCaptureDialog(initial: binding),
     );
     if (captured == null) return;
-    await controller.update((s) => s.copyWith(editorHotkey: captured));
+    await ref
+        .read(settingsProvider.notifier)
+        .apply((s) => s.copyWith(editorHotkey: captured));
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings =
+        ref.watch(settingsProvider).value?.settings ?? SettingsRepository.defaults;
+    final controller = ref.read(settingsProvider.notifier);
     final theme = Theme.of(context);
-    final problem = controller.hotkeyProblem;
+    final problem = ref.watch(settingsProvider).value?.hotkeyProblem;
 
     return _Group(
       title: 'Hotkey',
@@ -546,7 +529,7 @@ class _HotkeyGroup extends StatelessWidget {
         _Row(
           label: 'Open the editor from anywhere',
           description: 'Works from any application, including full-screen ones.',
-          onTap: () => _capture(context),
+          onTap: () => _capture(context, ref),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -561,7 +544,7 @@ class _HotkeyGroup extends StatelessWidget {
                   ),
                 ),
               OutlinedButton(
-                onPressed: () => _capture(context),
+                onPressed: () => _capture(context, ref),
                 child: Text(settings.editorHotkey.display),
               ),
               const SizedBox(width: 6),
@@ -569,7 +552,7 @@ class _HotkeyGroup extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.restart_alt, size: 18),
                   tooltip: 'Back to ${HotkeyBinding.defaultBinding.display}',
-                  onPressed: () => controller.update(
+                  onPressed: () => controller.apply(
                     (s) => s.copyWith(editorHotkey: HotkeyBinding.defaultBinding),
                   ),
                 ),
@@ -603,7 +586,7 @@ class _HotkeyGroup extends StatelessWidget {
           description: 'The tray menu still opens the editor.',
           trailing: Switch(
             value: settings.editorHotkey.enabled,
-            onChanged: (value) => controller.update(
+            onChanged: (value) => controller.apply(
               (s) => s.copyWith(
                 editorHotkey: s.editorHotkey.copyWith(enabled: value),
               ),
@@ -628,7 +611,20 @@ class _HotkeyCaptureDialog extends StatefulWidget {
 }
 
 class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
-  late HotkeyBinding _pending = widget.initial;
+  /// The combination captured so far, held while this dialog is open.
+  ///
+  /// A `ValueNotifier` and not a provider, and not a `setState`. The dividing line
+  /// is lifetime: this exists for as long as the capture dialog does, is read by
+  /// nothing outside it, and is thrown away when it closes. That is the
+  /// `ValueNotifier` half of `AGENTS.md` §0.7 - the same rule that made
+  /// `_CorruptNotesScreenState` use one for its busy flag.
+  late final ValueNotifier<HotkeyBinding> _pending;
+
+  @override
+  void initState() {
+    super.initState();
+    _pending = ValueNotifier<HotkeyBinding>(widget.initial);
+  }
 
   // Modifier keys, as a plain final Set rather than a const one:
   // LogicalKeyboardKey overrides == and hashCode, which Dart forbids in a
@@ -673,24 +669,24 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
           _ => 'win',
         };
         // Which physical modifier is held does not matter; only which ones.
-        final next = {..._pending.modifiers};
+        final next = {..._pending.value.modifiers};
         if (next.contains(name)) {
           next.remove(name);
         } else {
           next.add(name);
         }
-        setState(() => _pending = _pending.copyWith(modifiers: next.toList()));
+        _pending.value = _pending.value.copyWith(modifiers: next.toList());
         return KeyEventResult.handled;
       }
 
       final character = event.character;
       if (character != null && character.isNotEmpty) {
-        setState(() => _pending = _pending.copyWith(key: character));
+        _pending.value = _pending.value.copyWith(key: character);
         return KeyEventResult.handled;
       }
       final named = _nameFor(key);
       if (named != null) {
-        setState(() => _pending = _pending.copyWith(key: named));
+        _pending.value = _pending.value.copyWith(key: named);
         return KeyEventResult.handled;
       }
     }
@@ -729,9 +725,21 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final registrable = _pending.isRegistrable;
+    // The draft this dialog shows, read through a listener.
+    //
+    // `_pending` replaced a `setState` field, and the first version of this build
+    // read it with nothing listening - so pressing a combination updated the field
+    // and the dialog carried on showing the one it opened with, with "Use this" still
+    // disabled. `no_set_state_test`'s "every ValueNotifier is listened to" check found
+    // it, and nothing else would have: this dialog is driven by key events rather than
+    // by a control a test can find and tap.
+    return ListenableBuilder(
+      listenable: _pending,
+      builder: (context, _) {
+        final registrable = _pending.value.isRegistrable;
 
-    return AlertDialog(
+        return AlertDialog(
+
       title: const Text('Set the shortcut'),
       content: Focus(
         autofocus: true,
@@ -751,7 +759,7 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
               ),
               child: Center(
                 child: Text(
-                  _pending.display,
+                  _pending.value.display,
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: registrable
@@ -783,30 +791,27 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
         ),
         FilledButton(
           onPressed: registrable
-              ? () => Navigator.of(context).pop(_pending)
+              ? () => Navigator.of(context).pop(_pending.value)
               : null,
           child: const Text('Use this'),
         ),
       ],
+        );
+      },
     );
   }
 }
 
-class _StorageGroup extends StatelessWidget {
-  const _StorageGroup({
-    required this.settings,
-    required this.controller,
-    required this.shell,
-    required this.defaultDirectory,
-  });
+class _StorageGroup extends ConsumerWidget {
+  const _StorageGroup({required this.defaultDirectory});
 
-  final WinNotesSettings settings;
-  final SettingsController controller;
-  final ShellChannel shell;
   final String defaultDirectory;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings =
+        ref.watch(settingsProvider).value?.settings ?? SettingsRepository.defaults;
+    final controller = ref.read(settingsProvider.notifier);
     final theme = Theme.of(context);
     final active = controller.resolveStorageDirectory(defaultDirectory);
     final isCustom = settings.storageDirectory.trim().isNotEmpty;
@@ -823,15 +828,15 @@ class _StorageGroup extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.folder_open, size: 18),
                 tooltip: 'Show the folder',
-                onPressed: () => shell.revealPath(active),
+                onPressed: () => ref.read(shellProvider).revealPath(active),
               ),
               IconButton(
                 icon: const Icon(Icons.drive_file_rename_outline, size: 18),
                 tooltip: 'Choose another folder',
                 onPressed: () async {
-                  final picked = await shell.pickFolder(start: active);
+                  final picked = await ref.read(shellProvider).pickFolder(start: active);
                   if (picked == null) return;
-                  await controller.update(
+                  await controller.apply(
                     (s) => s.copyWith(storageDirectory: picked),
                   );
                 },
@@ -840,7 +845,7 @@ class _StorageGroup extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.restart_alt, size: 18),
                   tooltip: 'Back to the default folder',
-                  onPressed: () => controller.update(
+                  onPressed: () => controller.apply(
                     (s) => s.copyWith(storageDirectory: ''),
                   ),
                 ),
