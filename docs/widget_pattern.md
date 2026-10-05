@@ -438,6 +438,44 @@ the screen stops at exactly 520×360, each edge clamps independently, and maximi
 and restore are unaffected. `docs/testing_pattern.md` §2 puts that in tier C;
 `widget_guard_test` covers the four source-level facts that can be in CI.
 
+### 3.19 Widgets do not hold state; they render it
+
+The composition rules live here rather than in `docs/provider_pattern.md` because
+they are about widgets. The state rules live there because they are not.
+
+**`setState` is not called anywhere in `lib/`.** Not for shared state, not for
+local state, no excuse accepted (`AGENTS.md` §0.7). There are 24 call sites today
+and they are all on a per-file countdown that falls in both directions — see
+`no_set_state_test`. The two replacements:
+
+| The state is | Replacement | Sites today |
+|---|---|---|
+| shared, outlives the widget | a provider | `_busy`, `_ready`, `_settingsOpen`, `_showListOnNarrow`, `_narrowShowsPreview` |
+| genuinely ephemeral | `ValueNotifier` + `ValueListenableBuilder` | `_hovering`, `_lockedHint`, `_composing`, `_pending` |
+
+The line between them is **lifetime, not importance**. `_hovering` is not
+unimportant, but it is true for one frame and nothing else will ever ask. `_busy`
+is true for the length of an await, and a button six rows away has to know.
+
+`widget_surface.dart:49` already does this for thumb opacity, so the pattern is in
+the tree rather than being imported from somewhere else.
+
+A `State` is not deleted. It stays as the disposal shell for a
+`TextEditingController`, a `ScrollController`, a `FocusNode`. What it must not do
+is hold a bool a provider could hold — that is `setState` with extra steps, and
+the budget is what makes the difference visible rather than a matter of taste.
+
+**No widget below a `ProviderScope` receives a dependency by parameter.** 23
+constructor parameters do this by hand today, 13 of them in `settings_dialog.dart`.
+A `value` may still cross — an `int index`, a `String path`, a `void Function()`
+callback. A controller may not. The rule is about where state comes from, not about
+which package is installed, which is why it has teeth before Riverpod is in
+`pubspec.yaml`.
+
+**A provider is per-isolate.** `main()` runs in both, so a scope belongs inside
+each root — see `docs/isolate_pattern.md` §3.2 for why putting it above the branch
+is the trap.
+
 ---
 
 ## 4. The traps
@@ -532,6 +570,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | — | Completion from the widget | `widget_integration_test` → *with an editor open, the widget asks rather than writes*, *a finished card draws a line through its text* |
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |
+| 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` *lib/ has no setState beyond the recorded countdown*, *a new setState is a fault*, *one more in a counted file is a fault*, *one fewer is also a fault, and says why*, *a file emptied completely has its budget line removed*, *the scanner counts a setState wherever it is written*, *a name containing setState is not a setState call*, *the rule does not exempt tests*; **guard** `provider_guard_test` *lib/src/ui has no injected state beyond the recorded countdown* *a new injected parameter is a fault* *a removed parameter has its budget line taken out* *a value type passed as a parameter is not a fault* *a widget holding state by parameter is a fault* *a load result is not an injected dependency* *the budget names every file that currently injects*; **guard** `isolate_guard_test` *main() still branches rather than being given both surfaces* |
 
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,

@@ -649,3 +649,273 @@ Set<String> allTestNames(SourceTree tree) {
 
 String _rel(SourceTree tree, String path) =>
     path.replaceAll(r'\', '/').replaceFirst('${tree.root.replaceAll(r'\', '/')}/', '');
+
+// --- Removal budgets -------------------------------------------------------------
+//
+// The repo has decided that `setState`, injected controllers, and construction
+// inside a widget all go. Removing 24 call sites is one piece of work, and this
+// class is how the rule is enforced *during* that work rather than after it.
+//
+// It is deliberately not a list of exempted *paths*. `AGENTS.md` §3.1 says the
+// layer guards carry no such list on purpose, and the reason applies here too: an
+// exemption list is where exceptions go to hide, and a bare path says nothing about
+// how many sites sit under it.
+//
+// So what is recorded is a **count per file**, which is a budget. Two properties
+// follow, and both are load-bearing:
+//
+//   - A file with *more* sites than its budget is a fault. So is a file not in
+//     the budget at all. Adding one is caught.
+//   - A file with *fewer* is also a fault: the budget line is stale and must be
+//     deleted. Fixing a site and leaving the number behind is caught too, which
+//     is what stops the countdown from being quietly raised to match the code.
+//
+// A budget that only ever goes down is the only kind worth having.
+
+/// A per-file count of a construct this repo is removing.
+class RemovalBudget {
+  const RemovalBudget({
+    required this.what,
+    required this.allowance,
+    required this.rule,
+  });
+
+  /// What is being counted, for the failure message.
+  final String what;
+
+  /// Repo-relative path -> the number of sites still permitted there.
+  final Map<String, int> allowance;
+
+  /// What to do instead, named in every fault.
+  final String rule;
+
+  int get allowanceTotal =>
+      allowance.values.fold(0, (sum, n) => sum + n);
+
+  /// The budget's own sites that no longer exist, sorted.
+  List<String> staleAllowances(Map<String, int> live) => allowance.keys
+      .where((p) => !live.containsKey(p))
+      .toList()
+    ..sort();
+
+  int liveTotal(Map<String, int> live) =>
+      live.values.fold(0, (sum, n) => sum + n);
+
+  List<String> faults(Map<String, int> live) {
+    final out = <String>[];
+    final paths = {...live.keys, ...allowance.keys}.toList()..sort();
+
+    for (final path in paths) {
+      final now = live[path] ?? 0;
+      final allowed = allowance[path];
+
+      if (allowed == null) {
+        out.add(
+          '$path has $now ${now == 1 ? 'site' : 'sites'} of $what and is not in '
+          'the budget at all.\n'
+          '    $rule\n'
+          '    If this is genuinely unavoidable, say so in the pattern doc and '
+          'record it in AGENTS.md §4. A budget line added silently is the '
+          'exception this exists to prevent.',
+        );
+        continue;
+      }
+
+      if (now > allowed) {
+        out.add(
+          '$path has $now ${now == 1 ? 'site' : 'sites'} of $what; the budget '
+          'allows $allowed.\n'
+          '    $rule',
+        );
+      } else if (now < allowed) {
+        out.add(
+          '$path has $now ${now == 1 ? 'site' : 'sites'} of $what but the '
+          'budget still allows $allowed.\n'
+          '    You removed one and left the number behind. Delete the line: a '
+          'budget that does not fall is how a countdown stops counting.',
+        );
+      }
+    }
+
+    return out;
+  }
+}
+
+/// Occurrences of [pattern] per file under [relative], excluding `*.g.dart`.
+///
+/// Counting per file rather than in total is what lets [RemovalBudget] notice a
+/// site moving between files, and what lets the fault name the file a reader
+/// has to open.
+Map<String, int> countPerFile(
+  SourceTree tree,
+  String relative,
+  String pattern, {
+  bool excludeGenerated = true,
+}) {
+  final out = <String, int>{};
+  for (final entry in tree.dartFilesUnder(relative).entries) {
+    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    if (excludeGenerated && path.endsWith('.g.dart')) continue;
+    final n = RegExp(pattern).allMatches(entry.value.join('\n')).length;
+    if (n > 0) out[path] = n;
+  }
+  return out;
+}
+
+/// Every `setState(` call site under `lib/`, per file.
+///
+/// `AGENTS.md` §0.7: none, no excuse accepted. The three replacements are a
+/// Riverpod provider, a `ValueNotifier`, and a `State` that only holds things it
+/// is allowed to hold.
+Map<String, int> setStateCounts(SourceTree tree) =>
+    countPerFile(tree, 'lib', r'\bsetState\s*\(');
+
+/// Every widget constructor field that carries shared state in from outside.
+///
+/// `AGENTS.md` §0.8: a widget below a `ProviderScope` reads state with `ref`, not
+/// through a parameter. This counts the hand-rolled equivalent that exists today.
+///
+/// `notes` is deliberately absent from the alternation. `NotesLoaded(this.notes)`
+/// is a load result, not an injected dependency, and a scan that cannot tell the
+/// difference would carry a false positive forever — which is how a budget stops
+/// being believed.
+Map<String, int> injectedStateParamCounts(SourceTree tree) => countPerFile(
+      tree,
+      'lib/src/ui',
+      r'\bthis\.(controller|shell|settings)\b',
+    );
+
+/// Every repository or controller constructed inside `lib/src/ui/`.
+///
+/// `AGENTS.md` §0.9 and `docs/isolate_pattern.md` §3.1: construction belongs to a
+/// provider, so that both surfaces build the same graph instead of each writing
+/// its own.
+Map<String, int> uiConstructionCounts(SourceTree tree) => countPerFile(
+      tree,
+      'lib/src/ui',
+      r'\b(?:Notes|Settings|Widget|Selection)Repository\s*\(|\b'
+      r'(?:Notes|Settings|Widget)Controller\s*\(',
+    );
+
+/// Every method name Dart sends to the runner, across **all four** dispatch idioms.
+///
+/// `shell_channel.dart` dispatches four ways, and the original version of this
+/// scanner matched two of them *line by line*, which missed every call whose name
+/// sat on the following line. Five real methods were never parity-checked as a
+/// result: `dialog.confirmQuit`, `path.pickFile`, `path.pickFolder`,
+/// `path.saveFile` and `widget.beginResize`. All five are handled by the runner,
+/// so no code was wrong — but the guard was reporting on 19 of 24 methods and
+/// calling that parity.
+///
+/// `\s` matches a newline in a Dart RegExp, so matching against the joined text
+/// rather than line by line is the whole fix. `docs/platform_pattern.md` §3.1 is
+/// why the registry exists at all: once the names are declared in one place, a
+/// blind spot in a scanner is a smaller loss than an undeclared contract.
+///
+/// The four idioms, all of which must be covered:
+///
+///  1. `_fire('name')` - fire and forget, failures swallowed.
+///  2. `_invoke('name')` - returns a value, `PlatformException` becomes null.
+///  3. `methodChannel.invokeMethod<T>('name')` - direct, hand-rolled catch.
+///  4. `methodChannel.invokeMapMethod<T,V>('name')` - as 3, returning a map.
+Set<String> channelMethodNames(SourceTree tree) {
+  final names = <String>{};
+  final text = tree.read('lib/src/platform/shell_channel.dart');
+
+  final idioms = <RegExp>[
+    RegExp(r"_fire\s*\(\s*'([^']+)'"),
+    RegExp(r"_invoke(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
+    RegExp(r"invokeMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
+    RegExp(r"invokeMapMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
+  ];
+
+  for (final idiom in idioms) {
+    for (final m in idiom.allMatches(text)) {
+      names.add(m.group(1)!);
+    }
+  }
+  return names;
+}
+
+/// The inbound namespace the runner pushes *up* to Dart.
+///
+/// Separate from [channelMethodNames] by construction rather than by convention:
+/// `event.*` is runner-to-Dart and `everything else` is Dart-to-runner, and the
+/// two sets being disjoint is checked rather than assumed. They travel on one
+/// channel, which is exactly why they are easy to confuse.
+const Set<String> inboundEventPrefixes = {'event.'};
+
+/// Faults between a declared method registry and the two sides of the channel.
+///
+/// Three-way on purpose: the doc, the Dart calls and the runner's handler list
+/// must all say the same thing. A registry is only worth having if nothing can
+/// drift away from it.
+List<String> platformRegistryFaults({
+  required Set<String> registry,
+  required Set<String> called,
+  required Set<String> handled,
+}) {
+  final faults = <String>[];
+
+  final declaredButNeverCalled = registry.difference(called).toList()..sort();
+  if (declaredButNeverCalled.isNotEmpty) {
+    faults.add(
+      'The registry declares methods Dart never sends: '
+      '${declaredButNeverCalled.join(', ')}.\n'
+      '    Either the declaration is aspirational or the call was deleted. '
+      'docs/platform_pattern.md §3.1 records what the contract *is*, not what '
+      'it might become.',
+    );
+  }
+
+  final calledButNotDeclared = called.difference(registry).toList()..sort();
+  if (calledButNotDeclared.isNotEmpty) {
+    faults.add(
+      'Dart sends methods that are not in the registry: '
+      '${calledButNotDeclared.join(', ')}.\n'
+      '    An undeclared method is the failure this file exists to prevent: it '
+      'works until the runner is renamed, and then result->Success() is '
+      'returned anyway so the Dart await completes and nothing happens.',
+    );
+  }
+
+  final declaredButUnhandled =
+      registry.difference(handled).toList()..sort();
+  if (declaredButUnhandled.isNotEmpty) {
+    faults.add(
+      'The registry declares methods the runner does not handle: '
+      '${declaredButUnhandled.join(', ')}.',
+    );
+  }
+
+  final handledButNotDeclared =
+      handled.difference(registry).toList()..sort();
+  if (handledButNotDeclared.isNotEmpty) {
+    faults.add(
+      'The runner handles methods that are not in the registry: '
+      '${handledButNotDeclared.join(', ')}.',
+    );
+  }
+
+  final inboundLeaked = registry
+      .where((name) => inboundEventPrefixes.any(name.startsWith))
+      .toList()
+    ..sort();
+  if (inboundLeaked.isNotEmpty) {
+    faults.add(
+      'Inbound event names in the outbound registry: ${inboundLeaked.join(', ')}.\n'
+      '    `event.*` travels runner-to-Dart. It shares the channel, not the '
+      'direction, and listing it here would mean a Dart call that no runner '
+      'ever answers.',
+    );
+  }
+
+  if (registry.isEmpty) {
+    faults.add(
+      'The registry is empty, which would make every check above pass '
+      'vacuously.',
+    );
+  }
+
+  return faults;
+}

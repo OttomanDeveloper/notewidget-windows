@@ -151,7 +151,7 @@ Close it first, or use the in-app export.
 git clone https://github.com/OttomanDeveloper/notewidget-windows.git
 cd notewidget-windows
 flutter pub get
-flutter test          # 349 tests
+flutter test          # 389 tests
 flutter run -d windows
 ```
 

@@ -5,6 +5,20 @@
 ### Added
 
 - `changelog_guard_test`: fails on an entry longer than one bullet.
+- `docs/provider_pattern.md`, `docs/isolate_pattern.md`, `docs/platform_pattern.md`.
+- `AGENTS.md` section 0.7 to 0.10: no `setState`, no injected dependencies, a declared channel contract, construction in providers.
+- `no_set_state_test`, `provider_guard_test`, `platform_guard_test`, `isolate_guard_test`, all on per-file countdowns.
+- `channelMethodNames` scans joined text and all four dispatch idioms; it had been missing five real methods.
+- `_resolveBrightness` has three copies that disagree, and `dispose()` has four unawaited flushes. Both recorded as divergences.
+- Lints: `unawaited_futures`, `cancel_subscriptions`, `close_sinks`,
+  `parameter_assignments`, `avoid_catching_errors`, `use_string_buffers`,
+  `prefer_final_locals`, `require_trailing_commas`, `avoid_positional_boolean_parameters`.
+
+### Changed
+
+- Ten positional `bool` parameters are now named, across
+  `NotesController.setMarkdown`, `SettingsController.setAutoStart`,
+  `WidgetController` and `ShellChannel`.
 
 ## 1.2.0
 

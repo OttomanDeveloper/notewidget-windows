@@ -18,6 +18,9 @@ import 'guards.dart';
 const _tables = <String, String>{
   'docs/storage_pattern.md': '## 8. Tests',
   'docs/widget_pattern.md': '## 7. Tests',
+  'docs/provider_pattern.md': '## 7. Tests',
+  'docs/isolate_pattern.md': '## 7. Tests',
+  'docs/platform_pattern.md': '## 7. Tests',
 };
 
 void main() {
@@ -168,7 +171,7 @@ void main() {
           .map((p) => p.replaceAll(r'\', '/').split('/').last)
           .toSet();
 
-      for (final path in ['docs/storage_pattern.md', 'docs/widget_pattern.md']) {
+      for (final path in _tables.keys) {
         final markdown = tree.read(path);
         final cited = RegExp(r'\*\*guard\*\*\s+`(\w+_test)`')
             .allMatches(markdown)
