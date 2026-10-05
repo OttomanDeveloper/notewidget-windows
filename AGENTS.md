@@ -141,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 390 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 401 tests, and the sixteen traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -282,11 +282,45 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ---
 
+## 5.1 What the verification run destroyed
+
+Recorded because the code is fixed, and a record of a fix does not say what was wrong
+with it.
+
+On 2026-10-05, `tool/verify/verify_release.ps1` — written during this session, to
+verify the release build — deleted a real profile of real notes. It moved
+`%APPDATA%\WinNotes` aside, restored it in a `finally`, and then ran
+`Remove-Item $profile -Recurse -Force` **one line after the restore**, on the success
+path. It ran six times. The notes were not recoverable from the machine.
+
+Three things about it are worth more than the incident:
+
+1. **It printed `[PASS] the previous profile is back` while doing it.** The restore
+   check passed. It verified the restore and nothing about the line after it. *A passing
+   check is not a safety property.*
+2. **The script had a guard against destroying the stash and still destroyed the
+   profile.** The guard covered the wrong directory at the wrong moment. A guard has to
+   cover the delete, not the thing the delete undoes.
+3. **The fix was not a better `finally`.** It was `WIN_NOTES_DATA_DIR`
+   (`docs/storage_pattern.md` §3.0): the app can now be pointed at a directory in
+   `%TEMP%`, so nothing has to be moved, stashed or restored. **Anything that
+   manipulates a person's data files is a hazard; the fix is to not touch them.**
+
+`main()` had the same bug independently — it created `launch.dataDirectory` rather
+than the resolved path, so an isolated run still created the real profile. Fixed, and
+`isolate_guard_test` now checks the two names are not confused.
+
+The rule this adds: **a script may only delete a directory it created itself.**
+`verify_release.ps1` tracks that with one `$owned` flag, and every `Remove-Item` in it
+is guarded by that flag.
+
+---
+
 ## 6. Before You Push
 
 ```
 flutter analyze          # must be clean
-flutter test             # 390 passing
+flutter test             # 401 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying

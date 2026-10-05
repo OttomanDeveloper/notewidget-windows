@@ -37,7 +37,7 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**390 tests: 293 about behaviour, 97 about the rules themselves, 65 about
+**401 tests: 303 about behaviour, 97 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
 The 51 in `markdown_test` are the densest in the suite, because the renderer has
@@ -134,19 +134,47 @@ caught automatically.
 
 #### The startup path has its own unattended probe
 
-`tool/verify/verify_release.ps1` drives a **release build** through first launch on a
-thrown-away profile: it moves `%APPDATA%\WinNotes` aside, checks the editor opens,
-checks no widget appears for an empty library, checks `notes.json` is created and
-holds a note, then relaunches with `--widget` and checks a small frameless window
-appears at the screen edge. It restores the profile in a `finally`, and refuses to run
-if a stash already exists — that stash is the only copy of somebody's notes.
+`tool/verify/verify_release.ps1` drives a **release build** through first launch and
+checks that the editor opens, that no widget appears for an empty library, that
+`notes.json` is created and holds a note, then relaunches with `--widget` and checks a
+small frameless window appears at the screen edge. 13 checks.
 
-It is not a replacement for `WN.Probe.cs` and does not claim to be. It cannot send
-keystrokes: `SetForegroundWindow` returns false from a process Windows does not
-consider foreground, so `SendKeys` goes nowhere. What it checks instead is the
-startup ladder — which window exists, and what is on disk — and that is exactly the
-part `flutter test` cannot see, because a Dart test has no second isolate and no
-desktop. It found the first-launch regression in `AGENTS.md` §5.2.
+**It runs against a directory in `%TEMP%`, set through `WIN_NOTES_DATA_DIR`** — which
+`AppPaths.resolve` reads in `main()`. Nothing is moved, stashed or restored, because
+there is nothing to restore.
+
+That is the second version. The first moved `%APPDATA%\WinNotes` aside, restored it in
+a `finally`, and then ran `Remove-Item $profile -Recurse -Force` **one line after the
+restore** — on the success path. It ran six times and deleted the notes it had just
+restored, and it printed `[PASS] the previous profile is back` while doing it: a check
+that the restore happened, immediately followed by a deletion of what it had restored.
+
+Three lessons, all of which generalise past this script:
+
+- **A passing check is not a safety property.** The restore check passed. It said the
+  restore worked, and nothing about whether what came after was safe.
+- **Restoring and cleaning up in the same script is a trap.** Every instinct says a
+  `finally` makes it safe, and here the `finally` was correct while the line after it
+  was not. Better: have nothing to restore. An override in the app is strictly safer
+  than moving somebody's files to a stash and hoping.
+- **A safety guard can be vacuous on the machine you are standing on.** The probe's
+  "the real profile was not created" check passed with the bug still present, because
+  the profile already existed — creating it again is indistinguishable from not
+  creating it. That check now states only what it can prove, and the real guarantee
+  comes from `isolate_guard_test` (which catches `main()` creating the reported
+  directory) plus a SHA-256 comparison of the profile before and after.
+
+`WIN_NOTES_DATA_DIR` is absolute-path-only and rejects `..`. A relative override would
+resolve against the runner's working directory, and `..` walks out of whatever was
+intended — either of which turns "somewhere else" into "somewhere unexpected", which
+is where notes are lost.
+
+The probe cannot send keystrokes: `SetForegroundWindow` returns false from a process
+Windows does not consider foreground, so `SendKeys` goes nowhere. It checks the startup
+ladder instead — which window exists, and what is on disk — which is exactly the part
+`flutter test` cannot see, because a Dart test has no second isolate and no desktop.
+The keystroke path is the Dart suite's job. It found the first-launch regression in
+`AGENTS.md` §5.2.
 
 ### Tier D — not verified at all
 
@@ -177,6 +205,19 @@ pay again.
   describe a user-visible moment must reach that moment the way the app reaches it**,
   with no setup call that the app itself does not make. `test/first_launch_test.dart`
   is the same claim written that way — read the provider, look at the filesystem.
+- **A cleanup line can undo the line above it.** `verify_release.ps1` restored the
+  real profile in a `finally` and then, on the success path, deleted it. Both lines
+  were individually reasonable and together they destroyed a profile of real notes.
+  The general form: **a `finally` makes the restore safe and says nothing about what
+  runs after it**, so a script that both restores and cleans up needs the two to be
+  visibly different operations rather than a `Remove-Item` either side of a check.
+- **A guard can pass because the thing it checks is already true.** The probe's "the
+  real profile was not created by this run" check passed with `main()` still creating
+  it, because the profile already existed on the machine doing the verifying. On a
+  genuinely fresh machine it would have caught the bug; there is no way to tell those
+  two situations apart from inside the check. When a guard depends on a precondition,
+  assert the precondition too — which is why the `provider_guard_test` scanner checks
+  ask for the sample they are about to search.
 - **`TestHarness.dispose()` deletes the profile directory.** So the obvious way to
   write "a second launch" — `await dispose(); build(at: dir)` — is a *first* launch:
   the folder is gone and will be recreated empty, so the new harness finds nothing,

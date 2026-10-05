@@ -58,6 +58,37 @@ Four shipped bugs live in this seam, and each one is a rule below:
 
 ## 3. The rules
 
+### 3.0 The data directory is resolved once, and can be redirected
+
+`%APPDATA%\WinNotes`, named once by the native runner and handed to Dart in the
+bootstrap payload. `AppPaths.resolve` is the single place that turns it into a path,
+and every file — `notes.json`, `settings.json`, `widget_state.json`, `selection.json`
+— hangs off the result.
+
+`WIN_NOTES_DATA_DIR` overrides it, and exists for one reason: **tooling must be able to
+run this app without touching a real profile.** A verification run against
+`%APPDATA%\WinNotes` is not a test, it is a hazard — and the first version of
+`tool/verify/verify_release.ps1` was one, because it moved the real profile aside,
+restored it, and then deleted it on the next line. The override is the fix that removes
+the need to move anything at all.
+
+Two constraints, both load-bearing:
+
+- **Absolute only.** A relative value resolves against the runner's working directory,
+  which is not anywhere the caller chose.
+- **No `..`.** It walks out of whatever was intended, which is how an override becomes
+  the thing it promised not to be.
+
+A blank value is ignored rather than honoured, because an environment variable set to
+`""` is a thing that happens and the empty string is a data directory where every read
+is a silent miss.
+
+Note the sharp edge this created: `main()` also *creates* the data directory before any
+widget exists, and that line originally used the reported path rather than the resolved
+one — so the real profile was created anyway on every isolated run. An override that is
+honoured for reading and writing but not for setup is worse than no override, because it
+looks like isolation. `isolate_guard_test` checks the two names are not confused.
+
 ### 3.1 One writer per file, decided by the runner
 
 The two surfaces are separate isolates with separate memory. They never talk
@@ -371,6 +402,7 @@ cited test stops existing.
 
 | § | Rule | Pinned by |
 |---|---|---|
+| 3.0 | The data directory is resolved once, and can be redirected | `app_paths_test` *an absolute path wins over the reported one*, *the real profile is not named anywhere in the result*, *a relative path is refused*, *a path with .. is refused*, *an empty override is ignored rather than resolving to nowhere*; **guard** `isolate_guard_test` *main() never touches the reported directory when an override is set* |
 | 3.1 | One writer per file, decided by the runner | **guard** `storage_guard_test` * only the two notifiers write notes.json*, *every widget-side write asks the runner first*, *the editor notifier is the writer and does not ask itself*; `widget_integration_test` * a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
 | 3.2 | Writes are atomic | `notes_repository_test` → *a concurrent reader never observes a partially written file*, *no temp file is left behind after a successful write*, *writes replace the file rather than appending to it* |
 | 3.2 | …and the export too | **guard** `storage_guard_test` → *exportTo goes through the atomic writer*, *the backup is taken before the replace, not after*, *the export does not write the destination directly*; `backup_service_test` → *the file appears whole, not in pieces*, *nothing is left half-written beside the target* |

@@ -31,14 +31,26 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  final paths = AppPaths(
-    dataDirectory: launch.dataDirectory,
+  final paths = AppPaths.resolve(
+    reported: launch.dataDirectory,
     executablePath: launch.executablePath,
+    // Read once, from the real environment rather than injected, because this is
+    // the entry point and there is nothing above it to pass anything down. Tests do
+    // not come through here; they override `appPathsProvider` instead.
+    environment: Platform.environment,
   );
 
   // Belt and braces: the runner also creates the directory before Dart starts,
   // but a data directory that does not exist means every read is a silent miss.
-  Directory(launch.dataDirectory).createSync(recursive: true);
+  //
+  // `paths.dataDirectory`, not `launch.dataDirectory`. They differ whenever
+  // `WIN_NOTES_DATA_DIR` is set, and using the reported one here created the real
+  // `%APPDATA%\WinNotes` even when the caller had asked for a different directory
+  // entirely - so the override was honoured for reading and writing while still
+  // touching the profile it exists to avoid. A directory that appears where nobody
+  // asked for one is a small thing; on a verification run it is the difference
+  // between a throwaway profile and somebody's notes.
+  Directory(paths.dataDirectory).createSync(recursive: true);
 
   // The `ProviderScope` lives here rather than inside each root widget, and that
   // is what lets both roots take **no parameters at all** - `AGENTS.md` §0.8 with

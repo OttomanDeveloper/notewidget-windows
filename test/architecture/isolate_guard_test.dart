@@ -155,6 +155,34 @@ void main() {
       }
     });
 
+    test('main() never touches the reported directory when an override is set', () {
+      // The one line in `main()` that can write to the real profile: it creates the
+      // data directory before any widget exists. It read `launch.dataDirectory` -
+      // what the runner reported - rather than `paths.dataDirectory`, which is the
+      // same directory unless `WIN_NOTES_DATA_DIR` overrides it.
+      //
+      // So the override was honoured for every read and write and the real
+      // `%APPDATA%\WinNotes` was still created anyway, by the app, on every run. That
+      // is the bug this whole change exists to remove: an override that touches the
+      // directory it exists to avoid is worse than no override, because it looks like
+      // isolation and is not.
+      final main_ = tree.read('lib/main.dart');
+
+      expect(
+        main_.contains('AppPaths.resolve('),
+        isTrue,
+        reason: 'precondition: the override is resolved rather than ignored.',
+      );
+      expect(
+        RegExp(r'Directory\(launch\.dataDirectory\)').hasMatch(main_),
+        isFalse,
+        reason: '`main()` must create `paths.dataDirectory`. `launch.dataDirectory` '
+            'is what the runner reported - %APPDATA%\\WinNotes - and creating that '
+            'when an override is in effect puts the real profile back on disk for a '
+            'run that was supposed to be isolated from it. Use the resolved path.',
+      );
+    });
+
     test('the theme provider is under ui/, not state/', () {
       // `state/` must not reach up into `ui/`, so a provider that needs
       // `theme.dart` cannot live beside the repositories. Asserted because the
