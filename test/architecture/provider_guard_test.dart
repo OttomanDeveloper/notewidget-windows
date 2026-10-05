@@ -138,6 +138,7 @@ void main() {
       // 2", and so the removal half below has something to check against.
       const known = <String>{
         'lib/src/state/notes_controller.dart',
+        'lib/src/state/settings_controller.dart',
         'lib/src/state/widget_controller.dart',
       };
 

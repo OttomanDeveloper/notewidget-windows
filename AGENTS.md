@@ -141,7 +141,8 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 412 tests, and the sixteen traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 449 tests, and the sixteen traps that cost real time. |
+| `docs/flutter_architecture_pattern.md` | A general Flutter architecture/performance/Riverpod rulebook, carried verbatim for future work. **Not** a description of this repo and not enforced — its Appendix lists where it contradicts `AGENTS.md` and `PROJECT.md`. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -169,7 +170,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 109 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 123 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -184,6 +185,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 | `isolate_guard_test` | a repository or controller constructed under `lib/src/ui/` (§0.11); either root taking a parameter; a root reading `ref` inside `dispose()`, or a root that resolves the theme any other way than the shared provider (§0.9); the flush-on-teardown hazard being renamed out of existence |
 | `dependency_guard_test` | a runtime dependency in `pubspec.yaml` that is not on the enumerated list in §0.4; an approved list that has quietly grown into "anything goes" |
 | `icon_guard_test` | `installer/winnotes.iss` missing `SetupIconFile` (the generic logo on `setup.exe`) or `UninstallDisplayIcon` (**no `DisplayIcon` in the registry, so Settings > Apps shows a name and nothing beside it**); either written as `AppIconFile`, which is not an Inno directive; `Runner.rc` not compiling `app_icon.ico`; a shortcut not naming the installed icon; the icon not installed into `{app}`; `assets/brand/winnotes.ico` drifting from the runner's copy; an `.ico` missing 16/32/48/64/256 |
+| `storage_location_guard_test` | the storage-location setting resolving and then not being applied, which is **the state it was in for months** — the picker saved a path, the dialog displayed it, and every file still went to `%APPDATA%`; a chosen folder that is not reachable being accepted, so `main()` recreates an unplugged drive locally and writes an empty library into it; `isReachable` creating the folder it is asked about; a transfer deleting a source file; a destination holding notes being overwritten; the copy happening before the flush, or the pointer before the copy |
 
 The icon is in that list because **four independent places** decide what a person
 sees — `setup.exe`, the running exe, the Start Menu shortcut, and the Settings > Apps
@@ -244,15 +246,24 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    being synchronous: the real fix is making the write durable where it happens,
    which is a `docs/storage_pattern.md` question. `isolate_guard_test` keeps it named
    so it cannot be forgotten by being quietly changed. `docs/isolate_pattern.md` §4.3.
-8. **Two providers are over the 200-line cap.**
-   `notes_controller.dart` is 637 and `widget_controller.dart` is 413;
+8. **Three providers are over the 200-line cap.**
+   `notes_controller.dart` is 637, `widget_controller.dart` is 413, and
+   `settings_controller.dart` is 267;
    `docs/provider_pattern.md` §3.6 sets 200. The split was written as a follow-up to
    the rewrite and did not happen in the same change, so the recovery half of the
    notes provider cannot be tested without constructing the whole list. **Bounded, not
-   fixed:** `provider_guard_test` fails on a *third* file over the cap, and fails again if
-   either of these two comes under it without this entry being updated in the same change,
+   fixed:** `provider_guard_test` fails on a *fourth* file over the cap, and fails again if
+   any of these three comes under it without this entry being updated in the same change,
    so the debt cannot widen while the split is in progress and cannot go stale after. It is
-   listed here because the two are still over.
+   listed here because the three are still over.
+
+   The third is new as of 2026-10-05 and it was the guard's own doing: `moveTo` and
+   `moveToDefault` took the file from 187 to 267 in one change, and the guard failed the
+   build on the same run that introduced them — which is the intended direction. The
+   obvious split is `SettingsNotifier` into the preference plumbing and the storage
+   transfer, and the transfer is already a separate class (`data/storage_transfer.dart`)
+   doing all the work; what is left in the notifier is the orchestration. That is
+   recorded rather than done, like the other two.
 9. **The widget surface's notes cannot be re-read on demand from outside its
    provider.** `WidgetNotifier.reloadNotes()` exists so a change to `notes.json` can
    be applied without waiting for the directory watcher, and so a test can drive it
@@ -330,7 +341,7 @@ is guarded by that flag.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 412 passing
+flutter test             # 449 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying

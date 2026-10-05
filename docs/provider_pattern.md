@@ -178,7 +178,7 @@ written as a follow-up rather than as part of the same change:
 
 | File | Lines | Over by |
 |---|---|---|
-| `settings_controller.dart` | 187 | — |
+| `settings_controller.dart` | 267 | 67 |
 | `providers.dart` | 133 | — |
 | `widget_controller.dart` | 413 | 213 |
 | `notes_controller.dart` | 637 | 437 |

@@ -89,6 +89,57 @@ one — so the real profile was created anyway on every isolated run. An overrid
 honoured for reading and writing but not for setup is worse than no override, because it
 looks like isolation. `isolate_guard_test` checks the two names are not confused.
 
+### 3.0a The chosen folder is honoured, or the setting is a lie
+
+`PROJECT.md` §114 promised a storage location in Settings. For a long time it was one,
+and it did nothing: the picker saved a path, the dialog displayed it, and every file
+went to `%APPDATA%\WinNotes` regardless. Verified on a release build — point the app at
+an empty folder, launch, and the folder stays empty.
+
+**A setting that is displayed but not obeyed has no symptom.** The build was clean, the
+tests were green, and the app was honest in the one place that read the setting back.
+So this is stated as a rule rather than left to review:
+
+- **The configured location reaches `AppPaths`.** `main()` resolves it and applies it;
+  computing it and not applying it is the same failure wearing a hat.
+- **A chosen folder that is not reachable is refused, not created.** `main()` creates
+  the data directory, so a well-shaped path to an unplugged drive would be *recreated*
+  locally and filled with an empty library — total loss wearing the costume of a
+  successful launch. The reachability check therefore must not create the folder it
+  asks about, which is the only way it can answer "no".
+- **A corrupt or unreadable `settings.json` is "no folder chosen",** never an exception.
+  Losing preferences is a nuisance; refusing to start would leave somebody unable to
+  reach their notes to fix it. This is deliberately the opposite of §3.7.
+
+Two copies of `settings.json` exist once a folder is chosen, and both are load-bearing:
+
+| Copy | Where | Why |
+|---|---|---|
+| pointer | always `reportedDirectory` | it is how the next launch finds the chosen folder, and it has to be readable before the answer is known |
+| library | `dataDirectory` | it makes the chosen folder self-contained, so it can be moved, backed up or handed over on its own |
+
+When they disagree the chosen folder's own copy wins, because that is what makes a moved
+folder keep working.
+
+### 3.0b Changing the folder copies; it never moves
+
+`StorageTransfer` implements it. Three rules, all about not losing notes:
+
+- **Copy, never move.** Nothing is deleted from the source. A person who has seen the
+  copy arrive can remove the old one themselves, having checked. An app that deletes it
+  has taken the check away.
+- **Never overwrite a library that was never read.** A destination already holding
+  notes is refused, and the refusal is worded as the app protecting them rather than as
+  a failure. An empty `notes.json` is not a library and does not block anything.
+- **Flush before copying, and write the pointer last.** A keystroke can still be in the
+  debounce window, and a pointer written first would point the next launch at a folder
+  the copy never reached.
+
+**A restart is required and the UI says so.** `appPathsProvider` is overridden in
+`main()` with a value fixed for the life of the process, so a session keeps writing
+where it started. Rebuilding every repository under a running editor to avoid a restart
+is not a trade worth making; the honest answer is "restart".
+
 ### 3.1 One writer per file, decided by the runner
 
 The two surfaces are separate isolates with separate memory. They never talk
@@ -403,6 +454,8 @@ cited test stops existing.
 | § | Rule | Pinned by |
 |---|---|---|
 | 3.0 | The data directory is resolved once, and can be redirected | `app_paths_test` *an absolute path wins over the reported one*, *the real profile is not named anywhere in the result*, *a relative path is refused*, *a path with .. is refused*, *an empty override is ignored rather than resolving to nowhere*; **guard** `isolate_guard_test` *main() never touches the reported directory when an override is set* |
+| 3.0a | The chosen folder is honoured, or the setting is a lie | **guard** `storage_location_guard_test` *the data directory comes from the resolver, not from the runner*, *and it is applied to the paths, not just computed*, *the reported directory is still what settings.json is read from*, *the resolver asks whether the folder is reachable*, *and the reachability check never creates the folder it is asked about*, *main() creates the directory it resolved, which is the only creator*, *the bootstrap reader never throws*; `storage_location_test` *a pointer names the folder, and files go there*, *a chosen folder that has gone is not silently replaced by an empty one*, *the chosen folder's own settings.json wins when the two disagree*, *a corrupt settings file is treated as no choice at all* |
+| 3.0b | Changing the folder copies; it never moves | **guard** `storage_location_guard_test` *the transfer code contains no delete of a source file*, *a destination that already has notes is refused*, *the source is flushed before anything is copied*, *the pointer is written last*; `storage_location_test` *every file arrives, and the original is left alone*, *the destination settings.json names the destination*, *a destination that already has notes is refused, and nothing is touched*, *the same folder is reported rather than copied onto itself* |
 | 3.1 | One writer per file, decided by the runner | **guard** `storage_guard_test` * only the two notifiers write notes.json*, *every widget-side write asks the runner first*, *the editor notifier is the writer and does not ask itself*; `widget_integration_test` * a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
 | 3.2 | Writes are atomic | `notes_repository_test` → *a concurrent reader never observes a partially written file*, *no temp file is left behind after a successful write*, *writes replace the file rather than appending to it* |
 | 3.2 | …and the export too | **guard** `storage_guard_test` → *exportTo goes through the atomic writer*, *the backup is taken before the replace, not after*, *the export does not write the destination directly*; `backup_service_test` → *the file appears whole, not in pieces*, *nothing is left half-written beside the target* |

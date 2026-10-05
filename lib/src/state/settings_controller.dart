@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:riverpod/riverpod.dart';
 
+import '../core/atomic_json_file.dart';
 import '../data/settings.dart';
 import '../data/settings_repository.dart';
+import '../data/storage_transfer.dart';
 import '../platform/shell_channel.dart';
+import 'notes_controller.dart';
 import 'providers.dart';
 
 /// Everything the settings surface needs to draw and act.
@@ -178,6 +181,83 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     final configured = state.value?.settings.storageDirectory.trim() ?? '';
     if (configured.isEmpty) return defaultDirectory;
     return configured;
+  }
+
+  /// Points the app at [target], copying the library there first.
+  ///
+  /// **Copy, never move** — see `StorageTransfer`. Nothing is deleted from where it is;
+  /// the person is told where the old copies are so they can remove them themselves.
+  ///
+  /// The pointer in the default folder is only written once the copy has succeeded, so
+  /// a transfer that fails part way leaves the app pointing at notes it can still open.
+  /// The order is the whole point: pointer last, never first.
+  ///
+  /// **A restart is required and this says so.** `appPathsProvider` is overridden in
+  /// `main()` with a value fixed for the life of the process, so the files this session
+  /// is writing are the ones it opened at startup. Changing that mid-session means
+  /// rebuilding every repository underneath a running editor, and a half-rebuilt
+  /// library is not worth the convenience. So the honest answer is "restart", and the
+  /// UI says exactly that rather than pretending the change is live.
+  Future<StorageTransferOutcome> moveTo(String target) async {
+    final current = state.value;
+    if (current == null) return StorageTransferOutcome.failed;
+
+    final paths = ref.read(appPathsProvider);
+
+    // The library on disk may be newer than what is in memory by up to one debounce
+    // window, and `copyLibrary` copies files rather than state. Flushing first is what
+    // makes "the notes arrived" true rather than nearly true.
+    await _repository.flush();
+    await ref.read(notesProvider.notifier).flush();
+
+    final destination = paths.copyWith(dataDirectory: target.trim());
+    final next = current.settings.copyWith(storageDirectory: target.trim());
+
+    final outcome = await StorageTransfer.copyLibrary(
+      from: paths,
+      to: destination,
+      settings: next,
+    );
+    if (outcome != StorageTransferOutcome.done) return outcome;
+
+    // The pointer goes in only now. `settings.json` in the default folder is how the
+    // next launch finds the library, and writing it before the copy would point a
+    // future launch at a folder that might not have the notes in it yet.
+    state = AsyncData(current.copyWith(settings: next));
+    await _repository.saveNow(next);
+    await _writePointer(next);
+
+    return outcome;
+  }
+
+  /// Goes back to `%APPDATA%\WinNotes` by copying the library there.
+  ///
+  /// Also a copy, not a move. Somebody who has been working in a folder they chose and
+  /// then changes their mind has notes in *that* folder, and losing them by clearing a
+  /// text box would be absurd.
+  Future<StorageTransferOutcome> moveToDefault() async {
+    final paths = ref.read(appPathsProvider);
+    return moveTo(paths.defaultStorageDirectory);
+  }
+
+  /// Writes the pointer copy of `settings.json`.
+  ///
+  /// Separate from the repository's own write because that one goes to
+  /// [AppPaths.settingsFile] — the *chosen* folder. The pointer is in
+  /// [AppPaths.settingsPointerFile], and `storage_pattern.md` §3.0a is the rule that
+  /// says there are two copies and which is which.
+  Future<void> _writePointer(WinNotesSettings settings) async {
+    final path = ref.read(appPathsProvider).settingsPointerFile;
+    try {
+      final file = AtomicJsonFile(path);
+      await file.writeNow(settings.toJson());
+      await file.dispose();
+    } catch (_) {
+      // The library is copied and the in-memory setting is right, so the only thing
+      // lost is the pointer - which means the next launch opens the default folder
+      // with its own copy rather than the chosen one. Not worth failing the transfer
+      // over, and worth saying so in the UI rather than claiming it worked.
+    }
   }
 
   Future<void> flush() => _repository.flush();

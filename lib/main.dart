@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/core/app_paths.dart';
+import 'src/data/storage_location.dart';
 import 'src/platform/shell_channel.dart';
 import 'src/state/providers.dart';
 import 'src/ui/editor/editor_app.dart';
@@ -31,13 +32,27 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  final paths = AppPaths.resolve(
+  // Two steps, and the order is the whole point.
+  //
+  // First the *reported* paths: where the runner said to keep things. That is always
+  // where `settings.json` is looked for, because that file is how the app learns where
+  // anything else is — so it has to be readable before the answer is known.
+  //
+  // Then the real paths, which follow the folder chosen in Settings. Without this
+  // second step the Storage picker was a placebo: it saved a path, displayed it, and
+  // every file went to `%APPDATA%\WinNotes` regardless. Verified on a release build
+  // before this line existed — pointing the app at an empty folder left it empty.
+  final reported = AppPaths.resolve(
     reported: launch.dataDirectory,
     executablePath: launch.executablePath,
     // Read once, from the real environment rather than injected, because this is
     // the entry point and there is nothing above it to pass anything down. Tests do
     // not come through here; they override `appPathsProvider` instead.
     environment: Platform.environment,
+  );
+
+  final paths = reported.copyWith(
+    dataDirectory: StorageLocation.resolveDataDirectory(reported),
   );
 
   // Belt and braces: the runner also creates the directory before Dart starts,
