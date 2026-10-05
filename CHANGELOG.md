@@ -13,6 +13,10 @@
 - `WidgetNotifier.reloadNotes()`, so a change to `notes.json` can be applied without the directory watcher.
 - `TestHarness` in `test/helpers/`, so tests build a container rather than a controller.
 - `channelMethodNames` scans joined text and all four dispatch idioms; it had been missing five real methods.
+- `platform_guard_test`: every argument key Dart sends is read by the runner, and the set of methods bypassing `_fire`/`_invoke` is computed rather than counted in prose.
+- `storage_guard_test`: only the two notifiers write `notes.json`, and every widget-side write asks the runner first.
+- `provider_guard_test`: a third provider file over the 200-line cap is a red build; the two recorded breaches cannot widen or go stale.
+- `SourceTree.relativePath` and `dartFilesUnderRelative`: repo-relative keys with forward slashes, so a guard cannot match nothing and report a clean scan.
 - Lints: `unawaited_futures`, `cancel_subscriptions`, `close_sinks`,
   `parameter_assignments`, `avoid_catching_errors`, `use_string_buffers`,
   `prefer_final_locals`, `require_trailing_commas`, `avoid_positional_boolean_parameters`.

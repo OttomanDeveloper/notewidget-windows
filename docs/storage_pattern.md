@@ -371,7 +371,7 @@ cited test stops existing.
 
 | § | Rule | Pinned by |
 |---|---|---|
-| 3.1 | One writer per file | `widget_integration_test` → *a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
+| 3.1 | One writer per file, decided by the runner | **guard** `storage_guard_test` * only the two notifiers write notes.json*, *every widget-side write asks the runner first*, *the editor notifier is the writer and does not ask itself*; `widget_integration_test` * a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
 | 3.2 | Writes are atomic | `notes_repository_test` → *a concurrent reader never observes a partially written file*, *no temp file is left behind after a successful write*, *writes replace the file rather than appending to it* |
 | 3.2 | …and the export too | **guard** `storage_guard_test` → *exportTo goes through the atomic writer*, *the backup is taken before the replace, not after*, *the export does not write the destination directly*; `backup_service_test` → *the file appears whole, not in pieces*, *nothing is left half-written beside the target* |
 | 3.3 | Debounce plus ceiling | `notes_repository_test` → *a burst of writes coalesces into one file change*, *the ceiling fires even while writes keep arriving*, *a continuous burst still reaches disk before the process dies* |

@@ -37,7 +37,7 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**381 tests: 291 about behaviour, 90 about the rules themselves, 65 about colour
+**388 tests: 291 about behaviour, 97 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
 The 51 in `markdown_test` are the densest in the suite, because the renderer has

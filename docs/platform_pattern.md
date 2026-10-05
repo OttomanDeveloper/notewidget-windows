@@ -165,7 +165,7 @@ assertion is not evidence that a scan is complete.
 than lines is the entire fix. `platform_guard_test` pins it with
 *the scan covers all four dispatch idioms*.
 
-### 4.3 Seven methods bypass the helpers
+### 4.3 Eight methods bypass the helpers
 
 `bootstrap`, `autostart.query`, `autostart.set`, `hotkey.register`, `dialog.
 confirmQuit`, `path.pickFolder`, `path.pickFile` and `path.saveFile` call
@@ -217,8 +217,8 @@ method called from Dart that the runner does not handle.
 |---|---|---|
 | 3.1 | Contract declared three ways | **guard** `platform_guard_test` · *registry, Dart calls and runner handlers all agree*; *the registry names exactly what the runner handles*; *the doc lists the same 28 names the registry does*; *an inbound event in the outbound registry is a fault*; *a method called but not declared is a fault*; *a declared method the runner ignores is a fault*; *an empty registry is a fault, not a pass* |
 | 3.2 | `bootstrap` is un-namespaced | **guard** `platform_guard_test` · *the doc lists the same 28 names the registry does* |
-| 3.3 | Failure policy is chosen, not inherited | `layer_test`; no test — the seven bypassing methods are `docs/platform_pattern.md` §4.3 |
-| 3.4 | Argument keys are the contract | `layer_test`; no test — the map is untyped on both sides |
+| 3.3 | Failure policy is chosen, not inherited | **guard** `platform_guard_test` * the set of methods bypassing the helpers is exactly the documented one*; `layer_test` |
+| 3.4 | Argument keys are the contract | **guard** `platform_guard_test` * every argument key Dart sends, the runner reads* |
 | 3.5 | Events use a method-call handler | `layer_test` · *every method called from Dart is handled by the runner* |
 | 3.6 | `ShellEvents` is a singleton | **guard** `platform_guard_test` · *ShellEvents is still a process-wide singleton, and that is named* |
 | - | A name on the next line is still seen | **guard** `platform_guard_test` · *the scan covers all four dispatch idioms*; `layer_test` · *every method called from Dart is handled by the runner* |
@@ -231,7 +231,11 @@ method called from Dart that the runner does not handle.
 - 28 outbound methods, declared in one place, agreed by both sides, checked in CI.
 - 6 inbound events, provably disjoint from the outbound set.
 - Adding a method on one side only is a red build, not a silent no-op.
+- **Every argument key Dart sends is read by the runner** — a renamed key is a red
+  build, not a silent no-op either.
 - Every method's behaviour on failure is written down before it is written.
 
-The seven methods that bypass the helpers (§4.3) are the known gap. It is
-recorded, it is harmless today, and it is not in §8's guarantees.
+The eight methods that bypass the helpers (§4.3) are the known gap: *which* set
+bypasses is now checked, so the set cannot silently grow, but *that* they bypass is
+not enforced — each still re-decides its own failure policy. It is recorded, it is
+harmless today, and it is not in §8's guarantees.

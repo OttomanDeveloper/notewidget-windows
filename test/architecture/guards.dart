@@ -59,6 +59,26 @@ class SourceTree {
   String read(String relative) =>
       File('$root/$relative').readAsStringSync();
 
+  /// Project-relative path for [absolute], with forward slashes.
+  ///
+  /// `dartFilesUnder` keys by `entity.path`, which on Windows is absolute and
+  /// backslashed. Anything comparing those keys against a set of repo-relative names
+  /// - a list of files that are allowed to do something - matches nothing, finds
+  /// nothing wrong, and reports a clean scan. That is the worst way for a guard to
+  /// fail, so the normalisation lives here and is used by name rather than re-derived
+  /// per guard; two guards each doing it by hand is how they came to disagree.
+  String relativePath(String absolute) {
+    final full = absolute.replaceAll(r'\', '/');
+    final base = root.replaceAll(r'\', '/');
+    return full.startsWith('$base/') ? full.substring(base.length + 1) : full;
+  }
+
+  /// As [dartFilesUnder], keyed by repo-relative path with forward slashes.
+  Map<String, List<String>> dartFilesUnderRelative(String relative) => {
+        for (final entry in dartFilesUnder(relative).entries)
+          relativePath(entry.key): entry.value,
+      };
+
   String get runnerSource {
     final dir = Directory('$root/windows/runner');
     if (!dir.existsSync()) return '';
@@ -930,6 +950,42 @@ Set<String> channelMethodNames(SourceTree tree) {
     }
   }
   return names;
+}
+
+/// The same four idioms, kept apart, so a test can ask *how* a method is called and
+/// not merely *that* it is.
+///
+/// Split out rather than re-derived in each test because the two answers have to
+/// come from one list. The first version of the §4.3 drift check listed the
+/// bypassing methods in the test body while the parity scanner listed them
+/// separately, which is two definitions of the same thing and therefore two things
+/// that can disagree - and they did, by one.
+///
+/// Keys are `fire`, `invoke`, `direct`, `directMap`. The last two are the ones
+/// `docs/platform_pattern.md` §3.3 says to avoid: they reach the channel without a
+/// helper, so each one re-decides its own failure policy.
+Map<String, Set<String>> channelMethodNamesByIdiom(SourceTree tree) {
+  final text = tree.read('lib/src/platform/shell_channel.dart');
+  final out = <String, Set<String>>{
+    'fire': <String>{},
+    'invoke': <String>{},
+    'direct': <String>{},
+    'directMap': <String>{},
+  };
+
+  final idioms = <String, RegExp>{
+    'fire': RegExp(r"_fire\s*\(\s*'([^']+)'"),
+    'invoke': RegExp(r"_invoke(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
+    'direct': RegExp(r"(?<!Map)invokeMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
+    'directMap': RegExp(r"invokeMapMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
+  };
+
+  for (final entry in idioms.entries) {
+    for (final m in entry.value.allMatches(text)) {
+      out[entry.key]!.add(m.group(1)!);
+    }
+  }
+  return out;
 }
 
 /// The inbound namespace the runner pushes *up* to Dart.

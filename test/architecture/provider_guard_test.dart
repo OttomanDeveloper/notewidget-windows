@@ -119,4 +119,99 @@ void main() {
       );
     });
   });
+
+  group('a provider file may not grow past the cap', () {
+    // `docs/provider_pattern.md` §3.6 sets 200 lines, and two files are over it:
+    // `notes_controller.dart` at 621 and `widget_controller.dart` at 413. That is
+    // recorded in `AGENTS.md` §4 rather than hidden, so the rule currently reads as
+    // broken.
+    //
+    // This group does not pretend otherwise. It makes the breach *bounded in one
+    // direction*: a third file over the cap is a red build. Without that, "we are
+    // already over" quietly becomes "we are all over", and a cap that is already
+    // violated is not a cap - it is a number in a document. The two existing
+    // breaches stay visible and named, and the count is what gets pinned.
+    test('no more provider files are over the cap than are already recorded', () {
+      const cap = 200;
+
+      // Named, so the message can say which is which rather than "3 files, expected
+      // 2", and so the removal half below has something to check against.
+      const known = <String>{
+        'lib/src/state/notes_controller.dart',
+        'lib/src/state/widget_controller.dart',
+      };
+
+      final over = _filesOverCap(
+        tree.dartFilesUnderRelative('lib/src/state'),
+        cap,
+      );
+
+      expect(
+        over.keys.toSet().difference(known),
+        isEmpty,
+        reason: 'A new file is over the $cap-line cap in `lib/src/state/`.\n'
+            '  over the cap: ${over.entries.map((e) => '${e.key} (${e.value})').join(', ')}\n'
+            '  already recorded in AGENTS.md §4: ${(known.toList()..sort()).join(', ')}\n\n'
+            'Split it before adding to it. Two files over the cap is recorded debt; '
+            'three is drift, and the only difference between the two is whether '
+            'anything notices.',
+      );
+
+      // And the recorded two must still be the ones that are over, so a split that
+      // brings one under the cap has to update the record in the same commit rather
+      // than leaving a file named as a breach that no longer is.
+      expect(
+        known.difference(over.keys.toSet()),
+        isEmpty,
+        reason: 'A recorded breach is no longer over the cap:\n'
+            '  ${known.difference(over.keys.toSet()).join(', ')}\n'
+            'Remove it from the list in this test, from `AGENTS.md` §4 and from '
+            '`docs/provider_pattern.md` §3.6 in the same change. A record that '
+            'overstates the debt is the same failure as one that hides it.',
+      );
+    });
+
+    test('the scanner measures what it claims to measure', () {
+      // A cap guard that silently measures nothing passes forever, and the way it
+      // silently measures nothing is by keying on paths that never match. So this
+      // asks for the two named files directly rather than trusting the absence in
+      // the test above to mean anything.
+      final over = _filesOverCap(
+        tree.dartFilesUnderRelative('lib/src/state'),
+        200,
+      );
+
+      expect(
+        over,
+        containsPair('lib/src/state/notes_controller.dart', 621),
+        reason: 'precondition: `notes_controller.dart` is 621 lines against a cap of '
+            '200, so it must appear with that count. The number changes as the split '
+            'lands - update it then, and in `AGENTS.md` §4 in the same change.',
+      );
+      expect(
+        over.keys,
+        contains('lib/src/state/widget_controller.dart'),
+        reason: 'precondition: and `widget_controller.dart` is over the cap too.',
+      );
+      expect(
+        _filesOverCap(tree.dartFilesUnderRelative('lib/src/state'), 10000),
+        isEmpty,
+        reason: 'precondition: a cap of 10000 excludes everything, so the scanner '
+            'does discriminate rather than always returning a set.',
+      );
+    });
+  });
+}
+
+/// Files over [cap] lines, keyed by repo-relative path with forward slashes.
+Map<String, int> _filesOverCap(
+  Map<String, List<String>> files,
+  int cap,
+) {
+  final out = <String, int>{};
+  for (final entry in files.entries) {
+    final lines = entry.value.length;
+    if (lines > cap) out[entry.key] = lines;
+  }
+  return out;
 }

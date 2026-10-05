@@ -192,6 +192,13 @@ It is in `AGENTS.md` §4 as a divergence rather than quietly reworded here, beca
 lowering the cap to 650 to match the code would make this section a description of
 what happened instead of a rule.
 
+What *is* enforced is the direction that was still open. A cap nobody checks is a
+number in a document, and two files over it is a very short way from being three —
+so `provider_guard_test` fails on a **third**, and fails again if either of the two
+recorded files comes under the cap without the record being updated in the same
+change. That makes the breach bounded rather than fixed: it cannot widen while
+someone is working on the split, and it cannot be quietly forgotten after.
+
 ### 3.7 Repositories are plain classes; controllers are providers
 
 `data/` stays as it is: plain classes over `AtomicJsonFile`, constructed by
@@ -286,8 +293,7 @@ it; `ui/` never reaches past `state/` to build one.
 | 3.3 | Notifier, not ChangeNotifier | `notes_controller_test`, `widget_integration_test` |
 | 3.4 | No `setState`, and a `ValueNotifier` has a listener | **guard** `no_set_state_test` * lib/ has no setState calls at all*; *the scanner still finds them, or the rule above is vacuous*; *the two replacements are the only two*; *every ValueNotifier is listened to, or nothing rebuilds* |
 | 3.5 | No dependency by parameter | **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*; *the scanner still matches the names it claims to*; *a value is not a dependency*; *a load result is not an injected dependency*; *callbacks are allowed, and are what the roots pass* |
-| - | Two providers are over the 200-line cap | **manual** - `AGENTS.md` §4 records it; the sizes are in §3.6 and nothing checks them automatically |
-| 3.6 | A provider is under 200 lines | **manual** - two files are over, see the row above |
+| 3.6 | A provider is under 200 lines | **guard** `provider_guard_test` * no more provider files are over the cap than are already recorded*, *the scanner measures what it claims to measure* — the two breaches stay named and the count cannot grow |
 | 3.7 | Repositories stay plain | `storage_guard_test` |
 | 3.8 | A `WidgetRef` is not held across an `await` or into `dispose` | **guard** `isolate_guard_test` * the flush-on-teardown hazard is still named* |
 

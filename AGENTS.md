@@ -141,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 381 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 388 tests, and the ten traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -169,7 +169,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 90 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 97 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -238,9 +238,11 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    `notes_controller.dart` is 621 and `widget_controller.dart` is 413;
    `docs/provider_pattern.md` §3.6 sets 200. The split was written as a follow-up to
    the rewrite and did not happen in the same change, so the recovery half of the
-   notes provider cannot be tested without constructing the whole list. Nothing
-   checks the sizes automatically, which is why this is here rather than discovered
-   later.
+   notes provider cannot be tested without constructing the whole list. **Bounded, not
+   fixed:** `provider_guard_test` fails on a *third* file over the cap, and fails again if
+   either of these two comes under it without this entry being updated in the same change,
+   so the debt cannot widen while the split is in progress and cannot go stale after. It is
+   listed here because the two are still over.
 9. **The widget surface's notes cannot be re-read on demand from outside its
    provider.** `WidgetNotifier.reloadNotes()` exists so a change to `notes.json` can
    be applied without waiting for the directory watcher, and so a test can drive it
@@ -265,7 +267,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 381 passing
+flutter test             # 388 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying
