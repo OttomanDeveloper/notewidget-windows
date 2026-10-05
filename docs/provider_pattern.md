@@ -181,7 +181,7 @@ written as a follow-up rather than as part of the same change:
 | `settings_controller.dart` | 187 | — |
 | `providers.dart` | 133 | — |
 | `widget_controller.dart` | 413 | 213 |
-| `notes_controller.dart` | 621 | 421 |
+| `notes_controller.dart` | 637 | 437 |
 
 The split that was intended for notes is `notesProvider` for the list, selection
 and search, and a separate one for corrupt-file recovery — because recovery is the

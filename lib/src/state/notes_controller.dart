@@ -209,6 +209,22 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       var next = loaded;
       if (next.notes.isEmpty) {
         next = _insert(next, _blankNote(next.notes));
+
+        // ...and it is written, which `_insert` does not do. Two reasons this has to
+        // be explicit rather than a side effect of inserting:
+        //
+        // A note that exists only in memory is not a note. It is not on disk, so the
+        // next launch mints a fresh one with a new id, and the widget's selection -
+        // which refers to a note by id - points at something that no longer exists.
+        // It also means the very first keystroke is the thing that creates the file,
+        // so a first launch that is closed without typing leaves nothing behind at
+        // all, which is the same as having never launched.
+        //
+        // `ensureAtLeastOneNote` is `createNote`, and `createNote` does save - so the
+        // same missing line is not needed there, which is why this is not a call to
+        // it. `build` runs before `state` exists, which is the constraint the comment
+        // on that method is about.
+        _repository.save(next.notes);
       }
       next = next.copyWith(selectedId: _selectionOrNewest(next));
       return next.withVisible();

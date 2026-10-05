@@ -95,7 +95,7 @@ class TestHarness {
 ///
 /// The retry is bounded and generous - five seconds - because the alternative is a
 /// suite that fails roughly one run in six for no reason anyone can see.
-Future<void> dispose() async {
+Future<void> dispose({bool keepProfile = false}) async {
     if (_disposed) return;
     _disposed = true;
     container.dispose();
@@ -109,6 +109,7 @@ Future<void> dispose() async {
 
     final deadline = DateTime.now().add(const Duration(seconds: 5));
     while (_temp.existsSync()) {
+      if (keepProfile) return;
       try {
         _temp.deleteSync(recursive: true);
       } catch (_) {
@@ -122,10 +123,34 @@ Future<void> dispose() async {
     }
   }
 
+  /// Disposes without deleting the profile directory.
+  ///
+  /// For a **second launch over the same profile**, which [build] can then be pointed
+  /// at with `at:`. This exists because the obvious sequence -
+  /// `await dispose(); build(at: dir)` - is a first launch wearing a second one's
+  /// name: dispose has already deleted the directory, so the rebuild starts from
+  /// nothing, creates a fresh note, and the test that means to prove persistence
+  /// passes against a provider that never wrote anything. Which is exactly what
+  /// happened the first time this was written.
+  Future<void> disposeKeepingProfile() => dispose(keepProfile: true);
+
   /// Builds a harness whose data directory is a fresh temp folder.
   ///
   /// [isWidgetSurface] decides which graph the repository providers see, and defaults
   /// to the editor.
+  ///
+  /// [at] points the harness at an existing directory instead of a new one, which is
+  /// what a **second launch** over the same profile is. Added because "build a second
+  /// harness in a new folder and read notes from it" is not a second launch at all -
+  /// it finds an empty directory, creates a note, and looks like it worked, which is
+  /// how a provider that never writes anything can pass a test that means to prove it
+  /// does.
+  ///
+  /// The trap that made this necessary twice: **[dispose] deletes the directory.** So
+  /// "dispose, then build again `at` the same path" is another first launch - the
+  /// folder is gone and will be recreated empty - and the test that means to check
+  /// persistence silently checks nothing. A second launch has to dispose *without*
+  /// removing the directory; see [disposeKeepingProfile].
   ///
   /// Watchers are **not** started. `AtomicJsonFile` watches with real timers that
   /// `flutter_test`'s fake clock never advances, so a watched repository leaves a test
@@ -135,8 +160,11 @@ Future<void> dispose() async {
   static TestHarness build({
     bool isWidgetSurface = false,
     LaunchInfo? launch,
+    String? at,
   }) {
-    final temp = Directory.systemTemp.createTempSync('winnotes_providers');
+    final temp = at == null
+        ? Directory.systemTemp.createTempSync('winnotes_providers')
+        : Directory(at);
     final paths = AppPaths(
       dataDirectory: temp.path,
       executablePath: temp.path,

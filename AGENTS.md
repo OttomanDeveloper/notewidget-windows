@@ -141,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 388 tests, and the ten traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 390 tests, and the ten traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -235,7 +235,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    which is a `docs/storage_pattern.md` question. `isolate_guard_test` keeps it named
    so it cannot be forgotten by being quietly changed. `docs/isolate_pattern.md` §4.3.
 8. **Two providers are over the 200-line cap.**
-   `notes_controller.dart` is 621 and `widget_controller.dart` is 413;
+   `notes_controller.dart` is 637 and `widget_controller.dart` is 413;
    `docs/provider_pattern.md` §3.6 sets 200. The split was written as a follow-up to
    the rewrite and did not happen in the same change, so the recovery half of the
    notes provider cannot be tested without constructing the whole list. **Bounded, not
@@ -256,9 +256,28 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    Reproduced 4/4 on a genuinely fresh profile with valid JSON: the widget paints
    "No notes" while visible. Every candidate show/hide site has been read and
    ruled out. **Unrooted.** Needs an instrumented build. Do not "fix" it by
-   changing the visibility rule — that is §4.5 and it is a decision.
+   changing the visibility rule — that is §4.4 and it is a decision.
 
-2. **Nothing else is known broken.** If you find something, add it here before
+   The 2026-10-05 verification narrowed it without closing it. A release build driven
+   by `tool/verify/verify_release.ps1` on a genuinely fresh profile shows **no** widget
+   before a note has text and a correct one after — so the visibility rule is not
+   simply inverted, and the bug is timing rather than the rule. What the same run found
+   *was* real is now item 2. Treat the probe as the regression net for the first-launch
+   path; it is not a reproduction of this one.
+
+2. **A first launch wrote no note to disk until the user typed.** Found and fixed
+   2026-10-05, listed second because it was found second. `build()` inserted the
+   ready-to-type note through `_insert`, which does not save, and nothing else on that
+   path does either — so `notes.json` did not exist until the first keystroke, and a
+   first launch closed without typing left nothing behind. Every launch also minted a
+   fresh note id, so the widget's selection referred to a note that no longer existed.
+   `notes_controller_test.dart` passed throughout: its test named "the first launch has
+   a note ready to type into" calls `ensureAtLeastOneNote()` by hand and so pins that
+   *method*, which nobody calls on a first launch. Fixed by saving in `build`;
+   `test/first_launch_test.dart` reads the provider the way `main()` does and looks at
+   the filesystem.
+
+3. **Nothing else is known broken.** If you find something, add it here before
    fixing it, so the record is honest about the order things were found in.
 
 ---
@@ -267,7 +286,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 388 passing
+flutter test             # 390 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying

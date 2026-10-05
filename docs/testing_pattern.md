@@ -37,7 +37,7 @@ tool/screenshots/
   capture.ps1 / compose_hero.ps1 screenshot runs
 ```
 
-**388 tests: 291 about behaviour, 97 about the rules themselves, 65 about
+**390 tests: 293 about behaviour, 97 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
 The 51 in `markdown_test` are the densest in the suite, because the renderer has
@@ -132,12 +132,30 @@ Everything else in that doc is a test or a guard.
 plainly rather than implied away: a regression in any of these rows would not be
 caught automatically.
 
+#### The startup path has its own unattended probe
+
+`tool/verify/verify_release.ps1` drives a **release build** through first launch on a
+thrown-away profile: it moves `%APPDATA%\WinNotes` aside, checks the editor opens,
+checks no widget appears for an empty library, checks `notes.json` is created and
+holds a note, then relaunches with `--widget` and checks a small frameless window
+appears at the screen edge. It restores the profile in a `finally`, and refuses to run
+if a stash already exists — that stash is the only copy of somebody's notes.
+
+It is not a replacement for `WN.Probe.cs` and does not claim to be. It cannot send
+keystrokes: `SetForegroundWindow` returns false from a process Windows does not
+consider foreground, so `SendKeys` goes nowhere. What it checks instead is the
+startup ladder — which window exists, and what is on disk — and that is exactly the
+part `flutter test` cannot see, because a Dart test has no second isolate and no
+desktop. It found the first-launch regression in `AGENTS.md` §5.2.
+
 ### Tier D — not verified at all
 
 - **The first-launch bug.** Reproduced 4/4 on a genuinely fresh profile with
   valid JSON: the widget paints "No notes" while visible when it should hide.
   Every candidate show/hide site has been read and ruled out. Needs an
-  instrumented build. Unrooted.
+  instrumented build. Unrooted. Narrowed on 2026-10-05: the release probe shows the
+  visibility rule behaving correctly in both directions on a fresh profile, so the
+  rule is not inverted and the fault is timing.
 - Acrylic compositing, tray icon and menu, global hotkey registration and
   collision, the `HKCU\...\Run` autostart entry, single-instance activation,
   multi-monitor DPI and the per-monitor position restore, the native move/size
@@ -150,6 +168,23 @@ caught automatically.
 Every one of these cost real time. They are listed so the next person does not
 pay again.
 
+- **A test that calls the method under test is testing the method.** The clearest
+  example in this repo: `notes_controller_test.dart` has a test named *"the first
+  launch has a note ready to type into"*, it passed throughout, and the app's first
+  launch wrote nothing to disk. It calls `ensureAtLeastOneNote()` by hand, which pins
+  that method — and nothing on a real first launch calls it, because `build()` inserts
+  the note itself through a different path. The rule that follows: **a test claiming to
+  describe a user-visible moment must reach that moment the way the app reaches it**,
+  with no setup call that the app itself does not make. `test/first_launch_test.dart`
+  is the same claim written that way — read the provider, look at the filesystem.
+- **`TestHarness.dispose()` deletes the profile directory.** So the obvious way to
+  write "a second launch" — `await dispose(); build(at: dir)` — is a *first* launch:
+  the folder is gone and will be recreated empty, so the new harness finds nothing,
+  creates a note, and the test passes against a provider that never wrote anything.
+  Use `disposeKeepingProfile()`. Two traps nested inside that one: building a second
+  harness in a **new** directory (which is what this originally did) is the same
+  mistake wearing a different hat, and `MainWindowHandle` skips hidden windows, so a
+  window count cannot see a widget that is correctly hidden.
 - **`dart:io` cannot hold an exclusive lock.** `File.openSync` uses
   `FILE_SHARE_READ | FILE_SHARE_WRITE`, so no Dart-only test can reproduce a
   scanner holding the file — which is exactly why the missing read-retry ladder
