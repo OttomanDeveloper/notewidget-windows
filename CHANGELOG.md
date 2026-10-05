@@ -20,6 +20,7 @@
 - `test/first_launch_test.dart`: the first launch, checked the way the app reaches it.
 - `tool/verify/verify_release.ps1`: drives a release build through first launch against a throw-away profile in `%TEMP%`, and checks yours is unchanged.
 - `WIN_NOTES_DATA_DIR`: points the app at a different data directory. For verification runs only.
+- `icon_guard_test` and `tool/verify/verify_icons.ps1`: the project icon, in the four places Windows reads one.
 - Lints: `unawaited_futures`, `cancel_subscriptions`, `close_sinks`,
   `parameter_assignments`, `avoid_catching_errors`, `use_string_buffers`,
   `prefer_final_locals`, `require_trailing_commas`, `avoid_positional_boolean_parameters`.
@@ -32,6 +33,7 @@
 
 ### Fixed
 
+- **The installer and the Windows 11 Apps list now show the project logo.** The installer drew Inno Setup's own icon, and the app was blank in Settings > Apps.
 - **A first launch no longer creates its first note only when you type.** Opening the app on a fresh profile and closing it again without typing left nothing behind, and every launch gave the note a new id.
 - The widget window was never configured on launch; the call read state that did not exist yet and returned early.
 - A refused drag showed no hint, and the hotkey dialog kept showing the combination it opened with; both read a `ValueNotifier` nothing was listening to.

@@ -59,6 +59,14 @@ class SourceTree {
   String read(String relative) =>
       File('$root/$relative').readAsStringSync();
 
+  /// The bytes of a file, for checking binary structure.
+  ///
+  /// Separate from [read] because a `.ico` is not text and reading one as a string
+  /// loses the bytes above 0x7F - which for a PNG-backed icon is most of the file, and
+  /// would make every frame size read as 0.
+  List<int> readBytes(String relative) =>
+      File('$root/$relative').readAsBytesSync();
+
   /// Project-relative path for [absolute], with forward slashes.
   ///
   /// `dartFilesUnder` keys by `entity.path`, which on Windows is absolute and

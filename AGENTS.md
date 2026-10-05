@@ -141,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 401 tests, and the sixteen traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 412 tests, and the sixteen traps that cost real time. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -169,7 +169,7 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 97 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 109 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -183,6 +183,16 @@ ui/  ──>  state/  ──>  data/  ──>  core/
 | `platform_guard_test` | a method in the registry that Dart never sends or the runner never handles; a call in `shell_channel.dart` that is not in the registry; an `event.*` name in the outbound set (§0.10) |
 | `isolate_guard_test` | a repository or controller constructed under `lib/src/ui/` (§0.11); either root taking a parameter; a root reading `ref` inside `dispose()`, or a root that resolves the theme any other way than the shared provider (§0.9); the flush-on-teardown hazard being renamed out of existence |
 | `dependency_guard_test` | a runtime dependency in `pubspec.yaml` that is not on the enumerated list in §0.4; an approved list that has quietly grown into "anything goes" |
+| `icon_guard_test` | `installer/winnotes.iss` missing `SetupIconFile` (the generic logo on `setup.exe`) or `UninstallDisplayIcon` (**no `DisplayIcon` in the registry, so Settings > Apps shows a name and nothing beside it**); either written as `AppIconFile`, which is not an Inno directive; `Runner.rc` not compiling `app_icon.ico`; a shortcut not naming the installed icon; the icon not installed into `{app}`; `assets/brand/winnotes.ico` drifting from the runner's copy; an `.ico` missing 16/32/48/64/256 |
+
+The icon is in that list because **four independent places** decide what a person
+sees — `setup.exe`, the running exe, the Start Menu shortcut, and the Settings > Apps
+entry — and the fourth is invisible from all the others. The installer compiled, ran,
+installed cleanly and made a working shortcut, and the Apps list was still blank. One
+source of truth (`windows/runner/resources/app_icon.ico`, read by the `.rc`, the
+`.iss` and the guard) rather than four copies that currently agree.
+`tool/verify/verify_icons.ps1` checks the same facts against a real build and a real
+install; the guard checks the source, so it runs in CI with no Inno Setup present.
 
 The guard has **no allowlist**, on purpose. If a write genuinely cannot go
 through `data/`, the fix is to edit the scanner where the diff shows it.
@@ -320,7 +330,7 @@ is guarded by that flag.
 
 ```
 flutter analyze          # must be clean
-flutter test             # 401 passing
+flutter test             # 412 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying
