@@ -1166,3 +1166,297 @@ int codeOnlyLines(List<String> lines) {
   }
   return n;
 }
+
+/// The bodies of every `marker:` argument in [source], by brace counting.
+///
+/// The parenthesised argument list is returned as well as any braced body: an
+/// arrow callback (`() => t?.cancel()`) has no braces, so a scanner that only
+/// looked for them would report a clean tree.
+List<String> bodiesAfterMarker(String source, String marker) {
+  final out = <String>[];
+  var from = 0;
+  while (true) {
+    final match = RegExp(RegExp.escape(marker)).firstMatch(source.substring(from));
+    if (match == null) break;
+    final start = from + match.end;
+    var parens = 0;
+    var closed = -1;
+    for (var i = start; i < source.length; i++) {
+      final unit = source.codeUnitAt(i);
+      if (unit == 0x28) {
+        parens++;
+      } else if (unit == 0x29) {
+        parens--;
+        if (parens == 0) {
+          closed = i;
+          break;
+        }
+      }
+    }
+    if (closed < 0) break;
+    out.add(source.substring(start, closed));
+    final arrowEnd = source.indexOf(';', closed);
+    final braceStart = source.indexOf('{', closed);
+    if (braceStart >= 0 && (arrowEnd < 0 || braceStart < arrowEnd)) {
+      var depth = 0;
+      var started = false;
+      for (var j = braceStart; j < source.length; j++) {
+        final unit = source.codeUnitAt(j);
+        if (unit == 0x7B) {
+          depth++;
+          started = true;
+        } else if (unit == 0x7D) {
+          depth--;
+          if (started && depth == 0) {
+            out.add(source.substring(braceStart, j));
+            break;
+          }
+        }
+      }
+    }
+    from = closed + 1;
+  }
+  return out;
+}
+
+/// The widget classes declared in each `lib/` file, keyed by repo-relative path.
+///
+/// A `State`/`ConsumerState` paired with its widget is not a second widget —
+/// §3.1 says so explicitly — so the `State` classes are read and dropped
+/// rather than counted. A file that declares two real widgets is the violation.
+final _widgetClassPattern = RegExp(
+  r'^\s*(?:abstract\s+)?class\s+(\w+)\s+extends\s+'
+  r'(?:\w*StatelessWidget|\w*StatefulWidget|ConsumerWidget|'
+  r'ConsumerStatefulWidget|CustomPainter)\b',
+  multiLine: true,
+);
+
+final _stateClassPattern = RegExp(
+  r'^\s*class\s+(\w+)\s+extends\s+(?:Consumer)?State<(\w+)>',
+  multiLine: true,
+);
+
+/// Every widget class in the file, by repo-relative path.
+///
+/// The values are the class names, in declaration order.
+Map<String, List<String>> widgetClassesByFile(SourceTree tree) {
+  final out = <String, List<String>>{};
+  for (final entry in tree.dartFilesUnder('lib').entries) {
+    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final code = entry.value
+        .where((l) => !l.trimLeft().startsWith('//'))
+        .join('\n');
+    final states = _stateClassPattern
+        .allMatches(code)
+        .map((m) => m.group(2)!)
+        .toSet();
+    final widgets = _widgetClassPattern
+        .allMatches(code)
+        .map((m) => m.group(1)!)
+        .where((name) => !states.contains(name))
+        .toList();
+    if (widgets.isNotEmpty) out[path] = widgets;
+  }
+  return out;
+}
+
+/// `docs/flutter_architecture_pattern.md` §3.1: one widget class per file.
+///
+/// Each entry is `path: classA, classB`.
+List<String> findFilesWithSeveralWidgets(SourceTree tree) {
+  final out = <String>[];
+  widgetClassesByFile(tree).forEach((path, names) {
+    if (names.length > 1) out.add('$path: ${names.join(', ')}');
+  });
+  return out..sort();
+}
+
+String _snakeCase(String className) =>
+    className.replaceAllMapped(RegExp(r'(?<!^)([A-Z])'), (m) => '_${m[1]}').toLowerCase();
+
+/// `docs/flutter_architecture_pattern.md` §4: folder and file named after the widget.
+///
+/// A widget whose folder or file is named something else cannot be found by
+/// either name, which is the whole reason for the convention. The class is the
+/// only thing that cannot be renamed cheaply — the folder and file follow it.
+///
+/// Each entry is `path: class C, expected folder/file E`.
+List<String> findWidgetsMisnamed(SourceTree tree) {
+  final out = <String>[];
+  widgetClassesByFile(tree).forEach((path, names) {
+    // A file holding exactly one widget is the case the rule is about. A file
+    // with several is reported by [findFilesWithSeveralWidgets] instead, and
+    // naming one of several after the other would be a second complaint about
+    // the same thing.
+    if (names.length != 1) return;
+    final expected = _snakeCase(names.single);
+    final segments = path.split('/');
+    final folder = segments[segments.length - 2];
+    final file = segments.last.replaceAll('.dart', '');
+    if (folder != expected || file != expected) {
+      out.add('$path: class ${names.single}, expected $expected/');
+    }
+  });
+  return out..sort();
+}
+
+/// The repo-relative path of each feature's root screen.
+const Map<String, String> _featureRoots = {
+  'notes': 'lib/features/notes/presentation/screens/editor_app/editor_app.dart',
+  'widget':
+      'lib/features/widget/presentation/screens/widget_app/widget_app.dart',
+  'settings':
+      'lib/features/settings/presentation/screens/settings_dialog/settings_dialog.dart',
+};
+
+/// The `lib/` files each feature can reach through its imports.
+///
+/// Transitive, because a feature reaches a shared widget through whatever it
+/// imports, not only through what it names. Both `package:win_notes/...` and
+/// relative imports are followed, since the tree uses both.
+Map<String, Set<String>> widgetReachabilityByFeature(SourceTree tree) {
+  final edges = <String, List<String>>{};
+  for (final entry in tree.dartFilesUnder('lib').entries) {
+    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final segments = path.split('/');
+    final directory = segments.sublist(0, segments.length - 1);
+    final deps = <String>[];
+    for (final line in entry.value) {
+      final match = RegExp(r"import\s+'([^']+)'").firstMatch(line);
+      if (match == null) continue;
+      final target = match.group(1)!;
+      if (target.startsWith('package:win_notes/')) {
+        // Both key sets are repo-relative *with* the `lib/` prefix, which is what
+        // `_rel` produces. Dropping it here is what made every core widget look
+        // private to whichever feature was walked first.
+        deps.add(target);
+      } else if (target.startsWith('package:') || target.startsWith('dart:')) {
+        continue;
+      } else {
+        final parts = <String>[...directory];
+        for (final segment in target.split('/')) {
+          if (segment == '..') {
+            if (parts.isNotEmpty) parts.removeLast();
+          } else if (segment != '.' && segment.isNotEmpty) {
+            parts.add(segment);
+          }
+        }
+        deps.add(parts.join('/'));
+      }
+    }
+    edges[path] = deps;
+  }
+
+  final out = <String, Set<String>>{};
+  _featureRoots.forEach((feature, root) {
+    final seen = <String>{};
+    final queue = <String>[root];
+    while (queue.isNotEmpty) {
+      final next = queue.removeLast();
+      if (!seen.add(next)) continue;
+      for (final dep in edges[next] ?? const <String>[]) {
+        if (edges.containsKey(dep)) queue.add(dep);
+      }
+    }
+    out[feature] = seen;
+  });
+  return out;
+}
+
+/// `docs/flutter_architecture_pattern.md` §4: shared means two or more features.
+///
+/// A widget only `notes` reaches is `notes`' private widget and belongs in its
+/// `widgets/` folder; one two features reach is genuinely shared. Reachability
+/// is computed, so this is a fact about the tree rather than an opinion about
+/// a file's location.
+///
+/// Each entry is `path: reached by notes, widget`.
+List<String> findWidgetsInTheWrongHome(SourceTree tree) {
+  final reach = widgetReachabilityByFeature(tree);
+  final out = <String>[];
+  widgetClassesByFile(tree).forEach((path, names) {
+    if (!path.startsWith('lib/core/widgets/')) return;
+    // `core/widgets` also holds plain functions and painters reached from
+    // `main.dart`, which is not a feature. Only a file reachable from exactly
+    // one feature is the violation; zero or two or more is fine.
+    final users = reach.entries
+        .where((e) => e.value.contains(path))
+        .map((e) => e.key)
+        .toList()
+      ..sort();
+    if (users.length == 1) {
+      out.add('$path: ${names.join(', ')} -> reached only by ${users.single}');
+    }
+  });
+  return out..sort();
+}
+
+/// `docs/flutter_architecture_pattern.md` §7.1: `ValueKey(id)` on list rows.
+///
+/// A row built in a `ListView.builder` whose widget takes no `key:` cannot be
+/// matched to its note, so when the list reorders the element state goes with
+/// the index rather than the note.
+///
+/// Each entry is `path:line`.
+List<String> findUnkeyedListRows(SourceTree tree) {
+  final out = <String>[];
+  for (final entry in tree.dartFilesUnder('lib').entries) {
+    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final lines = entry.value;
+    for (var i = 0; i < lines.length; i++) {
+      if (!RegExp(r'ListView\.(builder|separated)\(').hasMatch(lines[i])) continue;
+      // The builder's body, to the closing of that call, by brace counting.
+      final body =
+          bodiesAfterMarker(lines.sublist(i).join('\n'), 'itemBuilder:').join('\n');
+      if (body.isEmpty) continue;
+      final rows = RegExp(r'return\s+(\w+)\(')
+          .allMatches(body)
+          .map((m) => m.group(1)!)
+          .toSet();
+      for (final row in rows) {
+        // `key:` anywhere in the builder body counts: it may be passed through
+        // a named parameter rather than set literally.
+        if (RegExp(r'\bkey\s*:').hasMatch(body)) continue;
+        out.add('$path:${i + 1}  $row has no key: in a ListView.builder');
+      }
+    }
+  }
+  return out..sort();
+}
+
+/// `docs/flutter_architecture_pattern.md` §7.2: a `FocusNode` needs an owner.
+///
+/// `FocusScope.of(context).requestFocus(FocusNode())` attaches a node to the
+/// tree with no field holding it, so `dispose` cannot reach it and it is never
+/// disposed. One per call, and this is on a focus path.
+///
+/// Each entry is `path:line`.
+List<String> findLeakedFocusNodes(SourceTree tree) {
+  final out = <String>[];
+  for (final entry in tree.dartFilesUnder('lib').entries) {
+    out.addAll(focusNodeLeaksIn(
+      entry.value,
+      _rel(tree, entry.key).replaceAll(r'\', '/'),
+    ));
+  }
+  return out..sort();
+}
+
+/// The inline-`FocusNode` leaks in one file's lines. Each is `path:line`.
+///
+/// Split out so a planted body can be checked without planting a file: a
+/// scanner that only ever ran over `lib/` would report a clean tree when the
+/// tree had no such leak, which is the same as reporting one when it did.
+List<String> focusNodeLeaksIn(List<String> lines, String path) {
+  final out = <String>[];
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (line.trimLeft().startsWith('//')) continue;
+    // A `FocusNode()` argument to anything but `attach`/`dispose` is the leak:
+    // a node held in a field is fine, and one being disposed is being fixed.
+    if (!RegExp(r'\(\s*FocusNode\s*\(\s*\)\s*\)').hasMatch(line)) continue;
+    if (RegExp(r'\b(attach|dispose)\s*\(').hasMatch(line)) continue;
+    out.add('$path:${i + 1}  ${line.trim()}');
+  }
+  return out;
+}

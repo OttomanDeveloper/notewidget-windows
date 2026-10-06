@@ -212,7 +212,7 @@ at the docs worth your time:
 | [provider](docs/provider_pattern.md) | Where state lives, `watch` vs `read` vs `select`, and why `setState` is gone |
 | [isolate](docs/isolate_pattern.md) | The two surfaces, who writes each file, and the flush-on-teardown hazard |
 | [platform](docs/platform_pattern.md) | The 28 Dart-to-runner methods and what each one does on failure |
-| [testing](docs/testing_pattern.md) | What the 465 tests are allowed to claim, and the traps that have already cost time |
+| [testing](docs/testing_pattern.md) | What the 473 tests are allowed to claim, and the traps that have already cost time |
 | [rulebook](docs/flutter_architecture_pattern.md) | The architecture, performance and Riverpod rules this app is built to, and where each one is checked |
 
 Each ends with a table naming the tests that pin its rules.

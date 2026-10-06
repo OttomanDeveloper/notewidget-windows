@@ -105,7 +105,7 @@ void main() {
       // The rule has to leave room for something, or it reads as "no parameters".
       // What it leaves room for is behaviour: `EditorView` takes three callbacks and
       // no state, and that is the shape every widget below the roots should have.
-      final editorView = tree.read('lib/features/notes/presentation/screens/editor_screen/editor_screen.dart');
+      final editorView = tree.read('lib/features/notes/presentation/screens/editor_view/editor_view.dart');
 
       expect(
         editorView.contains('final VoidCallback onOpenSettings;'),

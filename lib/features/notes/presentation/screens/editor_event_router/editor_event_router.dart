@@ -75,7 +75,10 @@ class EditorEventRouterState extends ConsumerState<EditorEventRouter> {
     // Closing the editor hands focus back to the widget, so the hotkey has to bring
     // the editor back properly rather than just showing it.
     unawaited(ref.read(shellProvider).focusWindow('editor'));
-    FocusScope.of(context).requestFocus(FocusNode());
+    // Unfocus rather than `requestFocus(FocusNode())`: a node built inline and
+    // handed to the tree has no owner, so nothing can dispose it (§7.2). The
+    // caret goes to the window instead of to a node nobody holds.
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   @override

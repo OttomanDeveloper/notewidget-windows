@@ -171,6 +171,7 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
                       itemBuilder: (context, index) {
                         final note = notes[index];
                         return NoteListItem(
+                          key: ValueKey(note.id),
                           note: note,
                           selected: note.id == selectedId,
                           onTap: () {

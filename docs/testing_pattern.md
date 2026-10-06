@@ -30,7 +30,7 @@ test/
   architecture/                        139   rules that are not about behaviour
     widget_guard_test.dart        22   HTCLIENT, gesture anchor, compose mode
     docs_test.dart                15   the docs must agree with this suite
-    flutter_rules_guard_test.dart 16   the rulebook, section by section
+    flutter_rules_guard_test.dart 24   the rulebook, section by section
     storage_location_guard_test  14   the resolved folder is the one that is used
     storage_guard_test.dart      10   watcher target, atomic export ordering
     icon_guard_test.dart         11   one icon, four places it has to appear in
@@ -52,7 +52,7 @@ tool/screenshots/
 tool/check_architecture.ps1      the §9 size and privacy checks, standalone
 ```
 
-**465 tests: 326 about behaviour, 139 about the rules themselves, 65 about
+**473 tests: 326 about behaviour, 147 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
 The 51 in `markdown_test` are the densest in the suite, because the renderer has
@@ -426,6 +426,8 @@ afterwards. All of these went red; all of them returned to green.
 | A `_fire` call with no runner handler | `layer_test` → *every method called from Dart is handled by the runner* |
 | A cited test renamed | `docs_test` → *every test name it cites actually exists* |
 | A four-line comment block planted in `lib/core/theme/` | `flutter_rules_guard_test` → *no comment block in lib/ is longer than three lines*, reporting `path:line (4 lines)` |
+| A widget planted in `lib/core/widgets/` that only `notes` imported | `flutter_rules_guard_test` → *core/widgets holds only what two or more features reach*, naming the file and the one feature |
+| A widget planted in `lib/core/widgets/zz_probe/` under the wrong file name | `flutter_rules_guard_test` → *every widget's folder and file are named after the widget*, and `tool/check_architecture.ps1` → `misnamed widget: … expected zz_probe/` |
 | The rulebook's Appendix rewritten without naming who declined each conflict | `flutter_rules_guard_test` → *the declined rules name the authority that declined them* |
 | A 368-line private widget with a `_buildBody()`, planted in `lib/core/widgets/` | `tool/check_architecture.ps1` → all three of the size cap, the private widget and the private build method, on one file |
 

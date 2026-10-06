@@ -397,6 +397,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                               itemBuilder: (context, index) {
                                 final note = notes[index];
                                 return WidgetNoteCard(
+                                  key: ValueKey(note.id),
                                   noteId: note.id,
                                   focused: index == 0,
                                   dark: dark,

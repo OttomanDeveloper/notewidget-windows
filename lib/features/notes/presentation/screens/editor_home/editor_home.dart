@@ -6,7 +6,7 @@ import '../../../domain/note.dart';
 import '../../../data/notes_repository.dart';
 import '../../providers/notes_controller.dart';
 import '../../../../settings/presentation/screens/settings_dialog/settings_dialog.dart';
-import '../editor_screen/editor_screen.dart';
+import '../editor_view/editor_view.dart';
 
 /// The editor surface below the `MaterialApp`. Own widget so pushed dialogs get
 /// a context with a `Navigator` ancestor.

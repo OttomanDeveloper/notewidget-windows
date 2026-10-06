@@ -8,7 +8,7 @@ import './features/settings/data/storage_location.dart';
 import './core/platform/shell_channel.dart';
 import './core/utils/app_providers.dart';
 import './features/notes/presentation/screens/editor_app/editor_app.dart';
-import 'core/widgets/shell_missing/shell_missing_app.dart';
+import 'core/widgets/shell_missing_app/shell_missing_app.dart';
 import './features/widget/presentation/screens/widget_app/widget_app.dart';
 
 /// Entry point for both surfaces: two Windows windows, two isolates, one `main()`.

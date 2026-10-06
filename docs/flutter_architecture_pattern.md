@@ -638,6 +638,8 @@ the middle column is the only place that records what the tree looked like befor
 |---|---|---|
 | §4 `features/<feature>/{data,domain,presentation}` | `ui/ → state/ → data/ → core/`, plus `platform/` | §4 as written |
 | §4, §3.2 one widget per file, each in its own folder | `settings_dialog.dart` held 12 widget classes, `widget_surface.dart` 6, `widget_app.dart` 5 | one per file, in its own folder |
+| §4 the folder is the widget, the file is the folder | three files broke it: `shell_missing/shell_missing_app.dart`, `undo_toast/undo_toast.dart`, `editor_screen/editor_screen.dart` | folder and file both snake_case of the class |
+| §4 a widget one feature uses lives in that feature | `EmptyState` sat in `core/widgets/` with only `notes` importing it | placement decided by import reachability |
 | §3.2 no private widgets | 23 private widget classes, collocated on purpose | zero |
 | §3.3 no private build methods | 23 `_buildX` helpers, `markdown_text.dart` alone had 8 | zero |
 | §2 provider cap 300 lines | 200, with two recorded breaches (`docs/provider_pattern.md` §3.6) | 300, code-only |
@@ -645,6 +647,8 @@ the middle column is the only place that records what the tree looked like befor
 | §2 comments do not count toward the cap | `provider_guard_test` counted every line, comments included | one definition, in `guards.dart` |
 | §2 a comment runs at most 2–3 lines | house style was a multi-paragraph comment explaining why, everywhere | enforced; the *why* moved to `docs/*_pattern.md` |
 | §5.4 `valueOrNull` is `value` in Riverpod 3.x | accurate already — `pubspec.yaml` pins `^3.4.3` | unchanged |
+| §7.1 `ValueKey(id)` on list items that reorder | neither list row carried one | `ValueKey(note.id)` on both |
+| §7.2 dispose everything in `dispose()` | two `FocusNode()`s built inline on a focus path, owned by nothing | `unfocus()`, which allocates nothing |
 | §7.2 `cached_network_image`, paginate API data | there is no network code at all | **N/A**, declined by `PROJECT.md` |
 | §7.3 Android `--split-per-abi`, App Bundle | Windows desktop only | **N/A**, declined by `PROJECT.md` |
 | §9 `find lib -path "*screens*"` | matched nothing; no `features/` or `screens/` directory | `tool/check_architecture.ps1` |

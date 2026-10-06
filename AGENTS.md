@@ -141,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 465 tests, and the eighteen traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 473 tests, and the eighteen traps that cost real time. |
 | `docs/flutter_architecture_pattern.md` | The Flutter architecture, performance and Riverpod rulebook this repo is built to. Carried verbatim with an Appendix of original contradictions; enforced by `flutter_rules_guard_test`, whose decision table records applied vs N/A per section. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
@@ -171,7 +171,7 @@ features/  ──>  notes | widget | settings, each with data/ + domain/ + prese
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 139 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 147 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
@@ -332,7 +332,7 @@ is guarded by that flag.
 ```
 tool\check_architecture.ps1   # size and privacy caps; silent and exit 0 when clean
 flutter analyze               # must be clean
-flutter test                  # 465 passing
+flutter test                  # 473 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying

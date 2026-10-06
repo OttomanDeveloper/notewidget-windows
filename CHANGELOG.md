@@ -39,7 +39,7 @@
 
 ### Changed
 
-- `AGENTS.md` §3.1 names `flutter_rules_guard_test`; architecture count is 139 and the suite is 465.
+- `AGENTS.md` §3.1 names `flutter_rules_guard_test`; architecture count is 147 and the suite is 473.
 - The provider cap is 300 lines code-only; only `notes_controller.dart` (333) is over, split separately.
 - The release packaging passes `--obfuscate --split-debug-info` and checks the symbols exist.
 - Ten positional `bool` parameters are now named, across the notes, settings and widget notifiers and `ShellChannel`.
@@ -49,6 +49,9 @@
 ### Fixed
 
 - `first_launch_test.dart` and `palette_test.dart` now wait for the debounced write through `test/helpers/file_io.dart` instead of sleeping 700 ms or reading unguarded.
+- `EditorScreen` is `editor_view/`, `ShellMissingApp` is `shell_missing_app/`, `UndoToastBody` is `undo_toast_body/`, `EmptyState` is `notes`'s own; the folder and file are named after the widget.
+- Each note-list row carries `ValueKey(note.id)`, so a note that moves when you edit it keeps its own element state.
+- Two `FocusNode`s created inline on a focus path are gone; the caret is dropped instead, so nothing is allocated that nothing can dispose.
 - **The installer and the Windows 11 Apps list now show the project logo.** The installer drew Inno Setup's own icon, and the app was blank in Settings > Apps.
 - **A first launch no longer creates its first note only when you type.** Opening the app on a fresh profile and closing it again without typing left nothing behind, and every launch gave the note a new id.
 - The widget window was never configured on launch; the call read state that did not exist yet and returned early.

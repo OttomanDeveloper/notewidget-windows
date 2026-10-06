@@ -132,7 +132,8 @@ class _EditorViewState extends ConsumerState<EditorView> {
 
   void _focusBody() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).requestFocus(FocusNode());
+      // Drop the caret rather than moving it to a node nobody owns (§7.2).
+      if (mounted) FocusManager.instance.primaryFocus?.unfocus();
     });
   }
 }

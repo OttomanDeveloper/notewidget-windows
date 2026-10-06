@@ -73,7 +73,7 @@ List<String> _bodiesOf(String source, String marker) {
 /// | § | Verdict | Pins it / declined by |
 /// |---|---|---|
 /// | 1.1–1.2 size caps | applied | 300/500/350 code-only; `provider_guard_test` + `tool/check_architecture.ps1` |
-/// | 1.3–1.4 private widgets, one-per-file | applied | zero private widgets, one widget per file; `tool/check_architecture.ps1` |
+/// | 1.3–1.4 private widgets, one-per-file | applied | zero private widgets, one widget per file, class matches folder and file; `tool/check_architecture.ps1` |
 /// | 1.5 rebuild only changed | applied | derived providers; cards watch their own note (`widgetNoteByIdProvider.family`) |
 /// | 1.6 watch/read/select | applied | `provider_guard_test`, `no_set_state_test`; `provider_pattern.md` §§2–3 |
 /// | 1.7 logic in providers | applied | `isolate_guard_test`; `provider_pattern.md` §3.1 |
@@ -84,11 +84,12 @@ List<String> _bodiesOf(String source, String marker) {
 /// | 3.3 no private builds | applied | zero found; `tool/check_architecture.ps1` |
 /// | 3.4 composition | applied | screens compose widgets; no screen holds section UI |
 /// | 3.5 habits | applied | this guard (RegExp, sort, MediaQuery.sizeOf, Intrinsic); §9 lints for `const`/`keys` |
-/// | 4 folders | applied (Wave 1) | `lib/core` + `lib/features/*/…` per the tree; pinned by `layer_test` paths |
+/// | 4 folders | applied (Wave 1) | `lib/core` + `lib/features/*/…` per the tree; `layer_test` pins the paths, this guard pins one widget per file and that a widget's folder and file are named after it |
+/// | 4 feature-first placement | applied | a widget reachable from exactly one feature lives in that feature's `widgets/`, two or more in `core/widgets/`; this guard computes reachability |
 /// | 5.1–5.8 riverpod | applied | `provider_pattern.md`; `provider_guard_test`, `no_set_state_test`, `isolate_guard_test` |
 /// | 6 rebuild example | applied | `provider_pattern.md` §2; `ref.select`, low `Consumer`, self-watching cards |
-/// | 7.1 cpu | applied | this guard; `ValueKey`, debounce 250ms+ceiling, `AnimatedOpacity`, `ListenableBuilder`, `RepaintBoundary` |
-/// | 7.2 ram | applied/N/A | `ListView.builder`/`separated`; dispose guarded; images/paginate N/A (`PROJECT.md` no network) |
+/// | 7.1 cpu | applied | this guard; `ValueKey` on every list row, debounce 250ms+ceiling, `AnimatedOpacity`/`FadeTransition` not `Opacity`, `ListenableBuilder` with `child`, `RepaintBoundary`; search debounced 250ms |
+/// | 7.2 ram | applied/N/A | `ListView.builder`/`separated`; `itemExtent` on both; dispose guarded, no node or timer leaked; images/paginate N/A (`PROJECT.md` no network) |
 /// | 7.3 release | applied/N/A | this guard (`--obfuscate`, symbols); Android split N/A (`PROJECT.md` Windows only) |
 /// | 7.4 measure | process | DevTools manual; not CI |
 /// | 8 painter | applied | this guard (hoist `Paint`/`Path`, `shouldRepaint`); `completion_painter.dart` + `RepaintBoundary` |
@@ -496,6 +497,127 @@ void main() {
         greaterThan(200),
         reason: 'precondition: lib/ documents itself; an empty scan would pass '
             'on nothing.',
+      );
+    });
+  });
+
+  group('§3.2 / §4 one widget, one file, named after it', () {
+    test('no file declares more than one widget class', () {
+      expect(
+        findFilesWithSeveralWidgets(tree),
+        isEmpty,
+        reason: '§3.1 counts one widget per file. A second one cannot be moved '
+            'to its own folder without the first being split too, so it is the '
+            'split that has to happen.\n\n  ${findFilesWithSeveralWidgets(tree).join('\n  ')}',
+      );
+    });
+
+    test('every widget\'s folder and file are named after the widget', () {
+      expect(
+        findWidgetsMisnamed(tree),
+        isEmpty,
+        reason: '§4: the folder is the widget in snake_case and the file is the '
+            'folder. A mismatch is not a style preference — it is why '
+            '`check_architecture.ps1` cannot tell you which file to open.\n\n'
+            '  ${findWidgetsMisnamed(tree).join('\n  ')}',
+      );
+    });
+
+    test('the naming check has widgets to check', () {
+      var count = 0;
+      for (final entry in widgetClassesByFile(tree).values) {
+        count += entry.length;
+      }
+      expect(
+        count,
+        greaterThan(50),
+        reason: 'precondition: the tree is full of widgets; a scanner that '
+            'matched none would pass on nothing.',
+      );
+    });
+  });
+
+  group('§4 a widget lives with the features that use it', () {
+    test('core/widgets holds only what two or more features reach', () {
+      expect(
+        findWidgetsInTheWrongHome(tree),
+        isEmpty,
+        reason: '§4: a widget one feature uses goes in that feature\'s '
+            '`widgets/`, and only a widget two or more use is shared. This is '
+            'the only check that follows imports transitively, so it is also '
+            'the only one that can tell a shared widget from a private one.\n\n'
+            '  ${findWidgetsInTheWrongHome(tree).join('\n  ')}',
+      );
+    });
+
+    test('reachability is computed, so it is not three empty sets', () {
+      final reach = widgetReachabilityByFeature(tree);
+      expect(
+        reach.keys.toSet(),
+        {'notes', 'widget', 'settings'},
+        reason: 'precondition: one root per feature. A rename in lib/ would '
+            'make this silently empty.',
+      );
+      for (final entry in reach.entries) {
+        expect(
+          entry.value.length,
+          greaterThan(5),
+          reason: 'precondition: ${entry.key} reaches its own code. If it '
+              'reaches almost nothing, the import walk found no edges and '
+              'every widget above would look misplaced.',
+        );
+      }
+    });
+  });
+
+  group('§7.1 / §7.2 lists and the resources they hold', () {
+    test('every list row carries a key naming the thing it shows', () {
+      expect(
+        findUnkeyedListRows(tree),
+        isEmpty,
+        reason: '§7.1: `ValueKey(id)` on list items that reorder or change. A '
+            'note that moves up when you edit it keeps its old element state '
+            'without one — the wrong note\'s caret, the wrong row\'s '
+            'scroll offset.\n\n  ${findUnkeyedListRows(tree).join('\n  ')}',
+      );
+    });
+
+    test('no FocusNode is created where nothing can dispose it', () {
+      expect(
+        findLeakedFocusNodes(tree),
+        isEmpty,
+        reason: '§7.2: dispose everything. A `FocusNode()` built inline and '
+            'handed to `requestFocus` is attached to the tree and has no '
+            'owner, so it is never disposed — it leaks one node per '
+            'keystroke-triggered call.\n\n  ${findLeakedFocusNodes(tree).join('\n  ')}',
+      );
+    });
+
+    test('the leak check finds a leak when there is one', () {
+      // The scanner is a regex over method bodies, and a regex that matches
+      // nothing reports a clean tree. Fed a planted body it has to bite, or the
+      // test above is decoration.
+      const planted = '''
+class _Probe extends StatefulWidget {
+  const _Probe({super.key});
+
+  @override
+  State<_Probe> createState() => _ProbeState();
+}
+
+class _ProbeState extends State<_Probe> {
+  @override
+  void initState() {
+    super.initState();
+    FocusScope.of(context).requestFocus(FocusNode());
+  }
+}
+''';
+      expect(
+        focusNodeLeaksIn(planted.split('\n'), 'lib/core/theme/zz_probe.dart'),
+        isNotEmpty,
+        reason: 'the planted body creates a FocusNode inline; the scanner must '
+            'say so',
       );
     });
   });
