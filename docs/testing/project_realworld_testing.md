@@ -34,8 +34,10 @@ out of a person's `%APPDATA%\WinNotes`.
 | Gate | **green** — `verify.ps1`, all 7 stages, 473 tests |
 | Release drive | **13/13** — first launch, no widget when empty, a note on disk, the widget window, no orphan, real profile byte-identical |
 | Icon audit | **13/13** — all four places Windows reads an icon from |
-| Row coverage | **0 of 27 closed** — the catalog exists, the ledger does not yet |
-| Open blocker | **Probe, not app** — `WN.Probe.cs` exists but is not driven by a scenario script, so every Tier C row needs a person at the keyboard |
+| Row coverage | **5 of 27 closed, and one of the five is a failure** — `reporting.md`, batch 1 |
+| Probe | **`tool\verify\run_scenarios.ps1`** drives waves 1–3. Wave 1 ran; wave 2 is written but not exercised; wave 3 is blocked on locating the composer's add-note control |
+| Open blocker | **`AGENTS.md` §5.1** — the first-launch widget bug, reproduced and measured for the first time. `verify_release.ps1` fails on it, so the gate is red, and it should stay red |
+| Open blocker | **A person** — waves 4 and 5 (acrylic, tray, global hotkey, autostart, single-instance, multi-monitor) have no automated instrument at all |
 
 The release drive is the strongest evidence this repository has, and it is worth
 being precise about what it covers: **the startup path**. It proves the app

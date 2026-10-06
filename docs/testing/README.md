@@ -78,7 +78,7 @@ the traps in `docs/testing_pattern.md` §3.
 | **Architecture scanners** | `test/architecture/` (13) | host | instant | Rules that must not drift: no `setState`, no injected controllers, one widget per file named after itself, the channel contract, the file caps |
 | **Release drive** | `tool/verify/verify_release.ps1` | release build | ~12s | The startup path: first launch, no widget when empty, a note on disk, no orphan, real profile untouched |
 | **Icon audit** | `tool/verify/verify_icons.ps1` | built artifacts | ~33s | The icon in all four places Windows reads it from |
-| **Probe** | `tool/screenshots/WN.Probe.cs` | release build | seconds | Hit-testing, drag geometry, focus, the keyboard borrow — everything a Dart test cannot assert |
+| **Probe** | `tool/verify/run_scenarios.ps1` | release build | seconds | Hit-testing, drag geometry, focus, the keyboard borrow — everything a Dart test cannot assert |
 | **Manual** | `project_realworld_testing.md` | desktop | minutes | Acrylic, tray, global hotkey, autostart, multi-monitor |
 
 Run a subset:
@@ -87,7 +87,12 @@ Run a subset:
 flutter test test/notes_controller_test.dart
 flutter test test/architecture/
 pwsh -File tool\verify\verify.ps1 -Action Random
+pwsh -File tool\verify\run_scenarios.ps1 -Wave 2
 ```
+
+`run_scenarios.ps1` drives the Windows catalog and writes its verdicts to
+`%TEMP%\wn_scenarios.json`. It exits non-zero while any row is open, because
+"some rows are open" is the normal state and a zero exit would say otherwise.
 
 ## Which tool for which question
 

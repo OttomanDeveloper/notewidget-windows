@@ -5,6 +5,7 @@
 ### Added
 
 - `tool\verify\verify.ps1`: the gate. Seven stages in dependency order, about two minutes, the same command CI runs.
+- `tool\verify\run_scenarios.ps1`: drives the Windows scenarios with synthetic input and records a verdict per row.
 - `docs/testing/`: the Windows test program — 27 scenarios in 6 waves, the A/B/C evidence classes, the feature matrix, and a results ledger.
 - `docs/flutter_architecture_pattern.md`: a Flutter architecture, performance and Riverpod rulebook, carried in verbatim, with an appendix recording where it contradicted this repository and what the migration did about it.
 - `flutter_rules_guard_test`: pins the rules of that rulebook that apply here, with a decision table covering every section.
@@ -50,6 +51,7 @@
 
 ### Fixed
 
+- The "an empty library shows no widget" check counted one window per process, so it could not fail; it now enumerates by window class and reports a real bug.
 - `docs_test` checked a doc citation only when it had no `/` in it, so the five paths added to the docs index were never verified.
 - A test's wait must outlast the retry ladders it is waiting on; `notes_repository_test.dart` waited 6s where the code can legitimately retry for 5.75s.
 - `first_launch_test.dart` and `palette_test.dart` now wait for the debounced write through `test/helpers/file_io.dart` instead of sleeping 700 ms or reading unguarded.

@@ -141,7 +141,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 473 tests, and the nineteen traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 473 tests, and the twenty traps that cost real time. |
 | `docs/testing/README.md` | The gate, the tools, and which one answers which question. Start here. |
 | `docs/testing/project_realworld_testing.md` | The 27 scenarios only Windows can close, in 6 waves, with the method that can verify each. |
 | `docs/testing/project_integration_testing.md` | The A/B/C evidence classes and the rule that assertions come from the row, never from observed output. |
@@ -270,16 +270,40 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 1. **First launch sometimes shows the widget when it should hide it.**
    Reproduced 4/4 on a genuinely fresh profile with valid JSON: the widget paints
-   "No notes" while visible. Every candidate show/hide site has been read and
-   ruled out. **Unrooted.** Needs an instrumented build. Do not "fix" it by
-   changing the visibility rule — that is §4.4 and it is a decision.
+   "No notes" while visible. Do not "fix" it by changing the visibility rule — that
+   is §4.4 and it is a decision.
 
-   The 2026-10-05 verification narrowed it without closing it. A release build driven
-   by `tool/verify/verify_release.ps1` on a genuinely fresh profile shows **no** widget
-   before a note has text and a correct one after — so the visibility rule is not
-   simply inverted, and the bug is timing rather than the rule. What the same run found
-   *was* real is now item 2. Treat the probe as the regression net for the first-launch
-   path; it is not a reproduction of this one.
+   **Measured 2026-10-06** with `tool\verify\run_scenarios.ps1` — the instrumented
+   build this entry used to ask for. Window visibility sampled every 150 ms after a
+   first launch on an empty `%TEMP%` profile:
+
+   | t | windows |
+   |---|---|
+   | 0.35 s | `WinNotes Widget` — **hidden** |
+   | 1.55 s | `WinNotes Widget` hidden, `WinNotes` hidden |
+   | 2.66 s | **both visible**, and both stay visible to 7 s |
+
+   One process owns both windows (`GetWindowThreadProcessId` agrees), and
+   `notes.json` holds one note with `title: ""` and `body: ""`. So the widget
+   surface is *shown*, not merely created and left alone, with nothing to look at.
+
+   **Still unrooted on the Dart side.** The lead, so nobody starts over:
+   `WidgetController.build` computes `shouldShow = next.hasAnyNoteWithText` — false
+   here — and `_applyWindowConfiguration` sends `visible: false`, but it returns
+   early when `settingsProvider` has no value yet, and the settings listener that
+   would correct it may not fire if settings were already resolved. A lead, not a
+   conclusion.
+
+   **Why the 2026-10-05 verification got this wrong, which matters more.** It
+   concluded from `verify_release.ps1` that the visibility rule "behaves correctly
+   in both directions". That script's "an empty library shows no widget" check
+   counted `MainWindowHandle`, which returns one window *per process* — and the
+   editor process owns both the editor and the widget surface. The count was 1
+   whichever way the rule behaved, so **the check could not fail.** It now
+   enumerates by window class, and it does fail.
+
+   *A passing check is not a safety property*, and here it was not even a check.
+   See `docs/testing_pattern.md` §3.
 
 2. **A first launch wrote no note to disk until the user typed.** Found and fixed
    2026-10-05, listed second because it was found second. `build()` inserted the

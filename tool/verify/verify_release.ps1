@@ -100,13 +100,32 @@ Add-Type -Namespace Verify -Name Native -MemberDefinition @'
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr p);
+  public delegate bool EnumWindowsProc(IntPtr h, IntPtr p);
   public struct RECT { public int Left, Top, Right, Bottom; }
 '@
 
 function Get-Windows {
-  Get-Process win_notes -ErrorAction SilentlyContinue |
-    ForEach-Object { $_.MainWindowHandle } |
-    Where-Object { $_ -ne 0 }
+  # **Every** top-level window of the class, not one per process.
+  #
+  # `MainWindowHandle` was used here and it cannot answer this question: the
+  # editor process owns *two* windows - the editor and the widget surface - and
+  # `MainWindowHandle` returns exactly one of them. So "an empty library shows no
+  # widget" was comparing a count that is 1 whichever way the visibility rule
+  # behaves, and passed for a reason that had nothing to do with the rule. A
+  # probe that enumerated windows is what noticed, which is the argument for
+  # having one. See docs\testing_pattern.md §3.
+  $found = New-Object System.Collections.ArrayList
+  $cb = [Verify.Native+EnumWindowsProc] {
+    param($h, $p)
+    $sb = New-Object System.Text.StringBuilder 256
+    [Verify.Native]::GetClassName($h, $sb, 256) | Out-Null
+    if ($sb.ToString() -ne 'FLUTTER_WINNOTES_WINDOW') { return $true }
+    $null = $found.Add($h)
+    return $true
+  }
+  [Verify.Native]::EnumWindows($cb, [IntPtr]::Zero) | Out-Null
+  return $found
 }
 
 function Get-WindowInfo {

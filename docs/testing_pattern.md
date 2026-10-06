@@ -336,6 +336,20 @@ pay again.
   eventually lands", and that is the thing to wait on — not a number guessed
   over a 250 ms debounce on a machine that is busy exactly when the guess is
   tight.
+- **`MainWindowHandle` cannot count this app's windows, and a check built on it
+  is not a check.** `Process.MainWindowHandle` returns *one* window per process.
+  WinNotes' editor process owns **two** — the editor and the widget surface — so a
+  script counting handles to assert "an empty library shows no widget" gets 1
+  whichever way the visibility rule behaves. It sat in `verify_release.ps1`,
+  passing 13/13, and it was the stated reason `AGENTS.md` §5.1's first-launch bug
+  was believed **fixed** in direction on 2026-10-05. A probe that enumerated by
+  window class found the real behaviour in one run: both windows visible at
+  t=2.66 s with an empty library. Two lessons, and the second is the general one:
+  **match windows by class and title, never by count of handles**; and **a check
+  that cannot fail is worse than no check, because it is read as evidence.**
+  The companion trap is already below — a *hidden* window is also invisible to
+  this API — and the two together mean the same call is wrong in both
+  directions: it misses a window that is there, and it counts one that is not.
 - **A wait shorter than the code's own worst case fails while the code is
   right.** `notes_repository_test.dart`'s `landed()` waited six seconds. A write
   that cannot land retries inside `writeTextAtomically` five times
