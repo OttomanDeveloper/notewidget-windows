@@ -5,8 +5,8 @@ import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
 
 void main() {
-  const backup = BackupService();
-  final now = DateTime(2026, 3, 4);
+  const BackupService backup = BackupService();
+  final DateTime now = DateTime(2026, 3, 4);
 
   Note note(String id, String title, String body) => Note(
         id: id,
@@ -18,24 +18,24 @@ void main() {
 
   group('round trip', () {
     test('keeps titles and bodies intact', () {
-      final original = [
+      final List<Note> original = <Note>[
         note('a', 'Groceries', 'Milk, sourdough\nCheck the bike light'),
         note('b', 'Ideas', 'Widget per monitor?'),
         note('c', 'Single line', 'Just one line'),
       ];
 
-      final restored = backup.import(backup.export(original));
+      final List<Note> restored = backup.import(backup.export(original));
 
       expect(restored, hasLength(3));
       // Export writes newest first, so all three notes share a timestamp and
       // the order is decided by the id tie-break. Comparing as a set keeps this
       // about the round trip rather than about tie-breaking.
-      expect(restored.map((n) => n.title).toSet(),
-          {'Groceries', 'Ideas', 'Single line'});
+      expect(restored.map((Note n) => n.title).toSet(),
+          <String>{'Groceries', 'Ideas', 'Single line'});
       // Looked up by title rather than by index, because the export order for
       // notes sharing a timestamp is decided by the id tie-break and is not
       // what this test is about.
-      Note named(String title) => restored.firstWhere((n) => n.title == title);
+      Note named(String title) => restored.firstWhere((Note n) => n.title == title);
       expect(named('Groceries').body, 'Milk, sourdough\nCheck the bike light');
       expect(named('Ideas').body, 'Widget per monitor?');
       expect(named('Single line').body, 'Just one line');
@@ -43,17 +43,17 @@ void main() {
 
     test('restored notes get fresh ids, because the old ones may be taken',
         () {
-      final restored = backup.import(backup.export([note('a', 'T', 'B')]));
+      final List<Note> restored = backup.import(backup.export(<Note>[note('a', 'T', 'B')]));
       expect(restored.single.id, isNot('a'));
       expect(restored.single.id, isNotEmpty);
     });
 
     test('an empty library round trips to an empty library', () {
-      expect(backup.import(backup.export(const [])), isEmpty);
+      expect(backup.import(backup.export(const <Note>[])), isEmpty);
     });
 
     test('the exported text is readable without this app', () {
-      final text = backup.export([note('a', 'Groceries', 'Milk')]);
+      final String text = backup.export(<Note>[note('a', 'Groceries', 'Milk')]);
       expect(text, contains('WinNotes backup'));
       expect(text, contains('Groceries'));
       expect(text, contains('Milk'));
@@ -66,9 +66,9 @@ void main() {
       // blank line the exporter writes after the title - so it trims to empty
       // rather than inventing content. Pinned so the normalisation is a decision
       // someone can rely on, not a surprise found in a backup years later.
-      for (final body in ['', ' ', '   ', '\n', '  \n  ']) {
-        final restored =
-            backup.import(backup.export([note('a', 'T', body)])).single;
+      for (final String body in <String>['', ' ', '   ', '\n', '  \n  ']) {
+        final Note restored =
+            backup.import(backup.export(<Note>[note('a', 'T', body)])).single;
         expect(restored.body, '',
             reason: 'body ${body.replaceAll('\n', r'\n')} should normalise '
                 'to empty');
@@ -76,7 +76,7 @@ void main() {
       // And a body with real text in it keeps its own whitespace, so this is a
       // whitespace rule and not a "short bodies are dropped" rule.
       expect(
-        backup.import(backup.export([note('a', 'T', '  a  ')])).single.body,
+        backup.import(backup.export(<Note>[note('a', 'T', '  a  ')])).single.body,
         '  a  ',
       );
     });
@@ -89,16 +89,16 @@ void main() {
       // be written straight to the destination from the UI layer, where an
       // interruption left something that read like a backup and was missing half
       // your notes, with nothing to say so.
-      final dir = Directory.systemTemp.createTempSync('wn_export');
+      final Directory dir = Directory.systemTemp.createTempSync('wn_export');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+      final String target = '${dir.path}${Platform.pathSeparator}backup.txt';
 
-      await backup.exportTo(target, [
+      await backup.exportTo(target, <Note>[
         note('a', 'Groceries', 'Milk, sourdough\nCheck the bike light'),
         note('b', 'Ideas', 'Widget per monitor?'),
       ]);
 
-      final text = File(target).readAsStringSync();
+      final String text = File(target).readAsStringSync();
       expect(text, contains('Groceries'));
       expect(text, contains('Widget per monitor?'));
       expect(backup.import(text), hasLength(2),
@@ -106,25 +106,25 @@ void main() {
     });
 
     test('nothing is left half-written beside the target', () async {
-      final dir = Directory.systemTemp.createTempSync('wn_export');
+      final Directory dir = Directory.systemTemp.createTempSync('wn_export');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+      final String target = '${dir.path}${Platform.pathSeparator}backup.txt';
 
-      await backup.exportTo(target, [note('a', 'T', 'B')]);
+      await backup.exportTo(target, <Note>[note('a', 'T', 'B')]);
 
       expect(File('$target.tmp').existsSync(), isFalse,
           reason: 'the temp file is renamed into place, not left as debris');
     });
 
     test('an existing backup is replaced, not appended to', () async {
-      final dir = Directory.systemTemp.createTempSync('wn_export');
+      final Directory dir = Directory.systemTemp.createTempSync('wn_export');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+      final String target = '${dir.path}${Platform.pathSeparator}backup.txt';
 
-      await backup.exportTo(target, [note('a', 'First', 'one')]);
-      await backup.exportTo(target, [note('b', 'Second', 'two')]);
+      await backup.exportTo(target, <Note>[note('a', 'First', 'one')]);
+      await backup.exportTo(target, <Note>[note('b', 'Second', 'two')]);
 
-      final text = File(target).readAsStringSync();
+      final String text = File(target).readAsStringSync();
       expect(text, isNot(contains('First')));
       expect(backup.import(text).single.title, 'Second');
     });
@@ -135,12 +135,12 @@ void main() {
       // person chose, so a rolling previous version beside it is noise they
       // never asked for. The notes file is rewritten constantly, which is why it
       // does get one.
-      final dir = Directory.systemTemp.createTempSync('wn_export');
+      final Directory dir = Directory.systemTemp.createTempSync('wn_export');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final target = '${dir.path}${Platform.pathSeparator}backup.txt';
+      final String target = '${dir.path}${Platform.pathSeparator}backup.txt';
 
-      await backup.exportTo(target, [note('a', 'T', 'B')]);
-      await backup.exportTo(target, [note('b', 'U', 'C')]);
+      await backup.exportTo(target, <Note>[note('a', 'T', 'B')]);
+      await backup.exportTo(target, <Note>[note('b', 'U', 'C')]);
 
       expect(File('$target.bak').existsSync(), isFalse);
     });
@@ -151,9 +151,9 @@ void main() {
     });
 
     test('reading a file with no notes in it returns null', () async {
-      final dir = Directory.systemTemp.createTempSync('wn_import');
+      final Directory dir = Directory.systemTemp.createTempSync('wn_import');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final target = '${dir.path}${Platform.pathSeparator}empty.txt';
+      final String target = '${dir.path}${Platform.pathSeparator}empty.txt';
       File(target).writeAsStringSync('WinNotes backup\nNotes: 0\n');
 
       expect(await backup.readFrom(target), isNull);
@@ -165,27 +165,27 @@ void main() {
     // and a markdown rule inside a body is entirely ordinary. Splitting on one
     // exact string would truncate the note at that line.
     test('a row of dashes inside a body survives the round trip', () {
-      const rule = '----------------------------------------';
-      final original = note('a', 'Rules', 'before\n$rule\nafter');
+      const String rule = '----------------------------------------';
+      final Note original = note('a', 'Rules', 'before\n$rule\nafter');
 
-      final restored = backup.import(backup.export([original]));
+      final List<Note> restored = backup.import(backup.export(<Note>[original]));
       expect(restored, hasLength(1), reason: 'the body did not split the note in two');
       expect(restored.single.body, 'before\n$rule\nafter');
     });
 
     test('a body containing the exact separator survives too', () {
-      const line = BackupService.separator;
-      final original = note('a', 'Rules', 'before\n$line\nafter');
+      const String line = BackupService.separator;
+      final Note original = note('a', 'Rules', 'before\n$line\nafter');
 
-      final restored = backup.import(backup.export([original]));
+      final List<Note> restored = backup.import(backup.export(<Note>[original]));
       expect(restored, hasLength(1));
       expect(restored.single.body, 'before\n$line\nafter');
     });
 
     test('a short run of dashes is a hyphen, not a divider', () {
-      final original = note('a', 'Range', 'from 10--20\nto 30--40');
+      final Note original = note('a', 'Range', 'from 10--20\nto 30--40');
 
-      final restored = backup.import(backup.export([original]));
+      final List<Note> restored = backup.import(backup.export(<Note>[original]));
       expect(restored, hasLength(1));
       expect(restored.single.body, 'from 10--20\nto 30--40');
     });
@@ -196,7 +196,7 @@ void main() {
       // The indent is what makes the exporter's own format unambiguous. A person
       // writing a backup by hand does not know about it, so unindented bodies
       // are still accepted, with no blank line between title and body.
-      final restored = backup.import(
+      final List<Note> restored = backup.import(
         '${BackupService.separator}\nTitle only\nBody here',
       );
       expect(restored.single.title, 'Title only');
@@ -204,46 +204,46 @@ void main() {
     });
 
     test('an unindented multi-line body is kept whole', () {
-      final restored = backup.import(
+      final List<Note> restored = backup.import(
         '${BackupService.separator}\nT\nline one\nline two',
       );
       expect(restored.single.body, 'line one\nline two');
     });
 
     test('a note with no body is still a note', () {
-      final restored = backup.import('${BackupService.separator}\nJust a title');
+      final List<Note> restored = backup.import('${BackupService.separator}\nJust a title');
       expect(restored, hasLength(1));
       expect(restored.single.title, 'Just a title');
       expect(restored.single.body, '');
     });
 
     test('an empty title with an indented body is still a note', () {
-      const text = '${BackupService.separator}\n\n'
+      const String text = '${BackupService.separator}\n\n'
           '    No title but has a body';
-      final restored = backup.import(text);
+      final List<Note> restored = backup.import(text);
       expect(restored.single.title, '');
       expect(restored.single.body, 'No title but has a body');
     });
 
     test('CRLF line endings are handled', () {
-      const text = '${BackupService.separator}\r\nTitle\r\n\r\n'
+      const String text = '${BackupService.separator}\r\nTitle\r\n\r\n'
           '    Body line one\r\n    Body line two';
-      final restored = backup.import(text);
+      final List<Note> restored = backup.import(text);
       expect(restored.single.title, 'Title');
       expect(restored.single.body, 'Body line one\nBody line two');
     });
 
     test('trailing blank lines never become a phantom note', () {
-      const text = '${BackupService.separator}\nT\n\n    line\n\n\n\n\n';
-      final restored = backup.import(text);
+      const String text = '${BackupService.separator}\nT\n\n    line\n\n\n\n\n';
+      final List<Note> restored = backup.import(text);
       expect(restored, hasLength(1),
           reason: 'the file\'s trailing spacing is not a note');
       expect(restored.single.body, 'line');
     });
 
     test('blank lines inside a body survive', () {
-      final original = note('a', 'Poem', 'line one\n\nline three');
-      final restored = backup.import(backup.export([original]));
+      final Note original = note('a', 'Poem', 'line one\n\nline three');
+      final List<Note> restored = backup.import(backup.export(<Note>[original]));
       expect(restored.single.body, 'line one\n\nline three');
     });
 
@@ -257,12 +257,12 @@ void main() {
     test('are unique across a large import', () {
       // Built through export() rather than by hand, so the input is guaranteed to
       // be in the format the exporter actually produces.
-      final original = [
-        for (var i = 0; i < 300; i++) note('id$i', 'Note $i', 'body $i'),
+      final List<Note> original = <Note>[
+        for (int i = 0; i < 300; i++) note('id$i', 'Note $i', 'body $i'),
       ];
-      final restored = backup.import(backup.export(original));
+      final List<Note> restored = backup.import(backup.export(original));
       expect(restored, hasLength(300));
-      expect(restored.map((n) => n.id).toSet(), hasLength(300));
+      expect(restored.map((Note n) => n.id).toSet(), hasLength(300));
     });
   });
 }

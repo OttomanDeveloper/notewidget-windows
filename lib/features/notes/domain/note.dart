@@ -39,12 +39,12 @@ class Note {
   /// has room for exactly one of the two, and which one matters changes with
   /// how much has been written.
   String get displayTitle {
-    final trimmed = title.trim();
+    final String trimmed = title.trim();
     return trimmed.isEmpty ? 'Untitled note' : trimmed;
   }
 
   bool contains(String query) {
-    final needle = query.trim().toLowerCase();
+    final String needle = query.trim().toLowerCase();
     // A query of only spaces is a query for nothing in particular, not a
     // request to find notes containing three spaces. Trimmed here as well as in
     // the caller so the rule holds wherever this is used.
@@ -99,7 +99,7 @@ class Note {
 
   Note copy() => copyWith();
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'title': title,
         'body': body,
@@ -139,7 +139,7 @@ class Note {
 
   static DateTime _parseTime(Object? value) {
     if (value is String) {
-      final parsed = DateTime.tryParse(value);
+      final DateTime? parsed = DateTime.tryParse(value);
       if (parsed != null) return parsed.toLocal();
     }
     return DateTime.fromMillisecondsSinceEpoch(0);
@@ -163,17 +163,17 @@ class NoteIdFactory {
 
   String next() {
     _counter++;
-    final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    final seq = _counter.toRadixString(36);
-    final entropy = _randomBits();
+    final String stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    final String seq = _counter.toRadixString(36);
+    final String entropy = _randomBits();
     return '$stamp-$seq-$entropy';
   }
 
   String _randomBits() {
     // Random.secure() rather than Random(): ids are written to a file that a
     // user may sync, and a predictable id invites collisions after a restore.
-    final random = Random.secure();
-    final value = random.nextInt(1 << 32);
+    final Random random = Random.secure();
+    final int value = random.nextInt(1 << 32);
     return value.toRadixString(36).padLeft(7, '0');
   }
 }

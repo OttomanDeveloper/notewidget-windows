@@ -18,7 +18,7 @@ class WidgetStateRepository implements IWidgetStateRepository {
   @override
   Future<WidgetWindowState> load() async {
     try {
-      final json = await _file.read();
+      final Map<String, dynamic> json = await _file.read();
       if (json.isEmpty) return WidgetWindowState.empty;
       return WidgetWindowState.fromJson(json);
     } on CorruptDataFile {

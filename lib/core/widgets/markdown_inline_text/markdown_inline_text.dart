@@ -22,7 +22,7 @@ class MarkdownInlineText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spans = MarkdownSpans.of(node, style);
+    final List<InlineSpan> spans = MarkdownSpans.of(node, style);
     if (spans.isEmpty) return const SizedBox.shrink();
     return MarkdownRichText(
       span: TextSpan(style: style.base, children: spans),

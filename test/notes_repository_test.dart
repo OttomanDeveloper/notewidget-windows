@@ -58,7 +58,7 @@ void main() {
   /// of the suite competing for the same temp directory. A long deadline costs
   /// nothing: a passing run returns the moment the file appears.
   Future<bool> landed() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    final DateTime deadline = DateTime.now().add(const Duration(seconds: 20));
     while (DateTime.now().isBefore(deadline)) {
       if (File(notesPath()).existsSync()) return true;
       await Future<void>.delayed(const Duration(milliseconds: 40));
@@ -68,29 +68,29 @@ void main() {
 
   group('loading', () {
     test('a missing file is a first run, not an error', () async {
-      final result = await repo().load();
+      final NotesLoadResult result = await repo().load();
       expect(result, isA<NotesLoaded>());
       expect((result as NotesLoaded).notes, isEmpty);
     });
 
     test('a file with only whitespace is treated as empty', () async {
       writeFile('   \n  ');
-      final result = await repo().load();
+      final NotesLoadResult result = await repo().load();
       expect((result as NotesLoaded).notes, isEmpty);
     });
 
     test('round trips notes through the file', () async {
-      final repository = repo();
-      repository.save([note('a', title: 'Groceries'), note('b', title: 'Ideas')]);
-      await repository.saveNow([note('a', title: 'Groceries'), note('b', title: 'Ideas')]);
+      final NotesRepository repository = repo();
+      repository.save(<Note>[note('a', title: 'Groceries'), note('b', title: 'Ideas')]);
+      await repository.saveNow(<Note>[note('a', title: 'Groceries'), note('b', title: 'Ideas')]);
 
-      final result = await repo().load();
-      expect((result as NotesLoaded).notes.map((n) => n.title), ['Groceries', 'Ideas']);
+      final NotesLoadResult result = await repo().load();
+      expect((result as NotesLoaded).notes.map((Note n) => n.title), <String>['Groceries', 'Ideas']);
     });
 
     test('the written file is valid JSON with the format tag', () async {
-      final repository = repo();
-      await repository.saveNow([note('a')]);
+      final NotesRepository repository = repo();
+      await repository.saveNow(<Note>[note('a')]);
       final decoded = jsonDecode(File(notesPath()).readAsStringSync());
       expect(decoded['format'], 'winnotes');
       expect(decoded['version'], 1);
@@ -105,13 +105,13 @@ void main() {
     test('invalid JSON is reported as corrupt, not as an empty library',
         () async {
       writeFile('{ this is not json');
-      final result = await repo().load();
+      final NotesLoadResult result = await repo().load();
       expect(result, isA<NotesCorrupt>());
     });
 
     test('valid JSON that is not a WinNotes document is also refused', () async {
       writeFile('{"hello": "world"}');
-      final result = await repo().load();
+      final NotesLoadResult result = await repo().load();
       expect(result, isA<NotesCorrupt>());
       // Left exactly as it was: a file the app did not write is not one the
       // app is willing to guess about.
@@ -137,11 +137,11 @@ void main() {
     test('while blocked, every write is a no-op and the file is untouched',
         () async {
       writeFile('{ broken');
-      final repository = repo();
+      final NotesRepository repository = repo();
       await repository.load();
 
-      repository.save([note('new')]);
-      await repository.saveNow([note('new')]);
+      repository.save(<Note>[note('new')]);
+      await repository.saveNow(<Note>[note('new')]);
       await repository.flush();
 
       expect(File(notesPath()).readAsStringSync(), '{ broken');
@@ -149,13 +149,13 @@ void main() {
 
     test('a restore can lift the block and write for real', () async {
       writeFile('{ broken');
-      final repository = repo();
+      final NotesRepository repository = repo();
       await repository.load();
 
       repository.unblock();
-      await repository.saveNow([note('restored')]);
+      await repository.saveNow(<Note>[note('restored')]);
 
-      final reloaded = await repo().load();
+      final NotesLoadResult reloaded = await repo().load();
       expect((reloaded as NotesLoaded).notes.single.id, 'restored');
     });
 
@@ -175,12 +175,12 @@ void main() {
         ']}',
       );
 
-      final result = await repo().loadFrom(File(notesPath()));
+      final NotesLoadResult result = await repo().loadFrom(File(notesPath()));
 
       expect(result, isA<NotesLoaded>());
       expect(
-        (result as NotesLoaded).notes.map((n) => n.id).toSet(),
-        {'good1', 'good2'},
+        (result as NotesLoaded).notes.map((Note n) => n.id).toSet(),
+        <String>{'good1', 'good2'},
         reason: 'one malformed note must not condemn the rest of a backup',
       );
     });
@@ -191,31 +191,31 @@ void main() {
       // deciding whether to offer a file as a recovery source, and "this is not
       // one of ours" is simply "no", not an error to report.
       writeFile('{"hello":"world"}');
-      final result = await repo().loadFrom(File(notesPath()));
+      final NotesLoadResult result = await repo().loadFrom(File(notesPath()));
       expect((result as NotesLoaded).notes, isEmpty);
     });
   });
 
   group('ordering', () {
     test('most recently edited comes first', () {
-      final sorted = NotesRepository.sorted([
+      final List<Note> sorted = NotesRepository.sorted(<Note>[
         note('old', minute: 1),
         note('newest', minute: 9),
         note('mid', minute: 5),
       ]);
-      expect(sorted.map((n) => n.id), ['newest', 'mid', 'old']);
+      expect(sorted.map((Note n) => n.id), <String>['newest', 'mid', 'old']);
     });
 
     test('equal timestamps still produce a stable order', () {
-      final sorted = NotesRepository.sorted([
+      final List<Note> sorted = NotesRepository.sorted(<Note>[
         note('a', minute: 3),
         note('b', minute: 3),
         note('c', minute: 3),
       ]);
-      expect(sorted.map((n) => n.id), ['c', 'b', 'a']);
+      expect(sorted.map((Note n) => n.id), <String>['c', 'b', 'a']);
       // Deterministic, so two writes of the same set never shuffle the list.
-      final again = NotesRepository.sorted(sorted.reversed);
-      expect(again.map((n) => n.id), ['c', 'b', 'a']);
+      final List<Note> again = NotesRepository.sorted(sorted.reversed);
+      expect(again.map((Note n) => n.id), <String>['c', 'b', 'a']);
     });
   });
 
@@ -224,11 +224,11 @@ void main() {
         () async {
       // A directory sitting where the file belongs makes every rename fail,
       // which is the closest a test can get to antivirus holding the notes open.
-      final path = notesPath();
+      final String path = notesPath();
       Directory(path).createSync();
-      final file = AtomicJsonFile(path, debounce: const Duration(milliseconds: 20));
+      final AtomicJsonFile file = AtomicJsonFile(path, debounce: const Duration(milliseconds: 20));
 
-      file.write({'a': 1});
+      file.write(<String, dynamic>{'a': 1});
       await file.flushPending();
 
       expect(file.blocked, isNull,
@@ -239,14 +239,14 @@ void main() {
       // there, otherwise the notes on screen have silently stopped saving.
       Directory(path).deleteSync();
       await file.flushPending();
-      expect(jsonDecode(File(path).readAsStringSync()), {'a': 1});
+      expect(jsonDecode(File(path).readAsStringSync()), <String, int>{'a': 1});
       await file.dispose();
     });
 
     test('a burst of writes coalesces into one file change', () async {
-      final file = AtomicJsonFile(notesPath(), debounce: const Duration(milliseconds: 80));
-      for (var i = 0; i < 50; i++) {
-        file.write({'n': i});
+      final AtomicJsonFile file = AtomicJsonFile(notesPath(), debounce: const Duration(milliseconds: 80));
+      for (int i = 0; i < 50; i++) {
+        file.write(<String, dynamic>{'n': i});
       }
       await file.flushPending();
 
@@ -260,15 +260,15 @@ void main() {
       // The ceiling is what stops someone typing a long sentence from never
       // writing anything at all. Each write arrives well inside the 250ms
       // debounce, so the trailing edge never fires and only the ceiling can.
-      final file = AtomicJsonFile(notesPath());
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
       // Registered before the assertions so the retry timer is always cleared,
       // even when one of them throws and skips the dispose below.
       addTearDown(file.dispose);
 
-      const ceiling = Duration(milliseconds: 1500);
+      const Duration ceiling = Duration(milliseconds: 1500);
 
-      for (var i = 0; i < 40; i++) {
-        file.write({'i': i});
+      for (int i = 0; i < 40; i++) {
+        file.write(<String, dynamic>{'i': i});
         await Future<void>.delayed(const Duration(milliseconds: 60));
         // Past the ceiling, the queued write has to have landed without anyone
         // calling flushPending.
@@ -280,10 +280,10 @@ void main() {
     });
 
     test('the ceiling fires even while writes keep arriving', () async {
-      final file = AtomicJsonFile(notesPath());
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
       addTearDown(file.dispose);
-      for (var i = 0; i < 30; i++) {
-        file.write({'i': i});
+      for (int i = 0; i < 30; i++) {
+        file.write(<String, dynamic>{'i': i});
         await Future<void>.delayed(const Duration(milliseconds: 60));
       }
       // 30 * 60ms is 1800ms, comfortably past the 1500ms ceiling, so the file
@@ -292,16 +292,16 @@ void main() {
     });
 
     test('writes replace the file rather than appending to it', () async {
-      final file = AtomicJsonFile(notesPath());
-      await file.writeNow({'a': 1});
-      await file.writeNow({'b': 2});
-      expect(jsonDecode(File(notesPath()).readAsStringSync()), {'b': 2});
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
+      await file.writeNow(<String, dynamic>{'a': 1});
+      await file.writeNow(<String, dynamic>{'b': 2});
+      expect(jsonDecode(File(notesPath()).readAsStringSync()), <String, int>{'b': 2});
       await file.dispose();
     });
 
     test('no temp file is left behind after a successful write', () async {
-      final file = AtomicJsonFile(notesPath());
-      await file.writeNow({'a': 1});
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
+      await file.writeNow(<String, dynamic>{'a': 1});
       expect(File('$notesPath.tmp').existsSync(), isFalse);
       await file.dispose();
     });
@@ -312,20 +312,20 @@ void main() {
       // taking the backup afterwards would leave the backup a duplicate of the
       // current file, and the previous version gone for good. So the ordering is
       // pinned rather than trusted.
-      final file = AtomicJsonFile(notesPath());
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
       addTearDown(file.dispose);
 
-      await file.writeNow({'generation': 1});
-      await file.writeNow({'generation': 2});
+      await file.writeNow(<String, dynamic>{'generation': 1});
+      await file.writeNow(<String, dynamic>{'generation': 2});
 
       expect(
         jsonDecode(File('${notesPath()}.bak').readAsStringSync()),
-        {'generation': 1},
+        <String, int>{'generation': 1},
         reason: 'the backup is taken before the replace, so it is one write '
             'behind - which is the whole point of it',
       );
       expect(jsonDecode(File(notesPath()).readAsStringSync()),
-          {'generation': 2});
+          <String, int>{'generation': 2});
     });
 
     test('a concurrent reader never observes a partially written file', () async {
@@ -338,13 +338,13 @@ void main() {
       //  * Partially written content: the write is not atomic. That would mean a
       //    kill could leave a broken file, which is exactly what the temp-file
       //    dance exists to prevent.
-      final file = AtomicJsonFile(notesPath());
-      await file.writeNow({'pad': 'x' * 4000, 'i': -1});
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
+      await file.writeNow(<String, dynamic>{'pad': 'x' * 4000, 'i': -1});
 
-      var reads = 0;
-      var busy = 0;
+      int reads = 0;
+      int busy = 0;
       String? partial;
-      final reader = Timer.periodic(const Duration(milliseconds: 1), (_) {
+      final Timer reader = Timer.periodic(const Duration(milliseconds: 1), (_) {
         try {
           final decoded = jsonDecode(File(notesPath()).readAsStringSync());
           reads++;
@@ -358,8 +358,8 @@ void main() {
         }
       });
 
-      for (var i = 0; i < 25; i++) {
-        await file.writeNow({'pad': 'y' * 4000, 'i': i});
+      for (int i = 0; i < 25; i++) {
+        await file.writeNow(<String, dynamic>{'pad': 'y' * 4000, 'i': i});
       }
       reader.cancel();
       await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -374,11 +374,11 @@ void main() {
         () async {
       // The other surface reads this file on every change event, so it has to
       // settle rather than staying transiently locked.
-      final file = AtomicJsonFile(notesPath());
-      for (var i = 0; i < 10; i++) {
-        await file.writeNow({'i': i});
+      final AtomicJsonFile file = AtomicJsonFile(notesPath());
+      for (int i = 0; i < 10; i++) {
+        await file.writeNow(<String, dynamic>{'i': i});
       }
-      expect(jsonDecode(File(notesPath()).readAsStringSync()), {'i': 9});
+      expect(jsonDecode(File(notesPath()).readAsStringSync()), <String, int>{'i': 9});
       await file.dispose();
     });
   });

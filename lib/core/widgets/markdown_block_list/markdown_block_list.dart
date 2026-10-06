@@ -24,11 +24,11 @@ class MarkdownBlockList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blocks = <Widget>[];
-    var previousWasLoose = false;
+    final List<Widget> blocks = <Widget>[];
+    bool previousWasLoose = false;
 
-    for (final node in nodes) {
-      final block = MarkdownBlock(
+    for (final md.Node node in nodes) {
+      final MarkdownBlock block = MarkdownBlock(
         node: node,
         style: style,
         depth: depth,
@@ -37,7 +37,7 @@ class MarkdownBlockList extends StatelessWidget {
       );
       // Consecutive loose blocks sit tighter than separated ones, which is what
       // makes a list or a quote read as one thing rather than a stack.
-      final gap = previousWasLoose ? 0.0 : style.metrics.blockGap;
+      final double gap = previousWasLoose ? 0.0 : style.metrics.blockGap;
       if (gap > 0 && blocks.isNotEmpty) blocks.add(SizedBox(height: gap));
       blocks.add(block);
       previousWasLoose = MarkdownNodes.isLoose(node);

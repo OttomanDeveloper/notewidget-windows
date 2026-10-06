@@ -21,10 +21,10 @@ class PaletteSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     // A tick rather than a ring: a ring in the same colour as the swatch reads
     // as a slightly bigger swatch, which is not obviously "this one".
-    final onAccent = readableOn(palette.accent);
+    final Color onAccent = readableOn(palette.accent);
 
     return Semantics(
       button: true,

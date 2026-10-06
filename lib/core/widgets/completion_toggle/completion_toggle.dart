@@ -36,11 +36,11 @@ class CompletionToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.colorScheme.brightness == Brightness.dark;
-    final outline = color ?? theme.colorScheme.outline;
-    final mark = completed ? (color ?? theme.colorScheme.primary) : outline;
-    final target = hitTarget ?? diameter;
+    final ThemeData theme = Theme.of(context);
+    final bool dark = theme.colorScheme.brightness == Brightness.dark;
+    final Color outline = color ?? theme.colorScheme.outline;
+    final Color mark = completed ? (color ?? theme.colorScheme.primary) : outline;
+    final double target = hitTarget ?? diameter;
 
     return Semantics(
       button: true,

@@ -17,7 +17,7 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380),
@@ -25,7 +25,7 @@ class EmptyState extends StatelessWidget {
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: <Widget>[
               Icon(icon, size: 40, color: theme.colorScheme.outline),
               const SizedBox(height: 16),
               Text(
@@ -41,7 +41,7 @@ class EmptyState extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              if (action != null) ...[const SizedBox(height: 20), action!],
+              if (action != null) ...<Widget>[const SizedBox(height: 20), action!],
             ],
           ),
         ),

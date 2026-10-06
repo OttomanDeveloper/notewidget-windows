@@ -26,7 +26,7 @@ void main() {
     if (!root.existsSync()) return;
     // The same bounded retry `TestHarness.dispose` uses. A file still held open by a
     // reader would otherwise fail the cleanup and look like a product bug.
-    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    final DateTime deadline = DateTime.now().add(const Duration(seconds: 5));
     while (root.existsSync()) {
       try {
         root.deleteSync(recursive: true);
@@ -51,12 +51,12 @@ void main() {
     file(directory, name).writeAsStringSync(jsonEncode(value));
   }
 
-  String notesDocument({int count = 1}) => jsonEncode({
+  String notesDocument({int count = 1}) => jsonEncode(<String, Object>{
         'format': 'winnotes',
         'version': 1,
         'notes': List.generate(
           count,
-          (i) => {
+          (int i) => <String, String>{
             'id': 'note-$i',
             'title': 'Note $i',
             'body': 'Body $i',
@@ -68,7 +68,7 @@ void main() {
 
   group('AppPaths: which directory is the real one', () {
     test('with nothing chosen, files go where the runner said', () {
-      final p = AppPaths.resolve(
+      final AppPaths p = AppPaths.resolve(
         reported: r'C:\Users\someone\AppData\Roaming\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
       );
@@ -76,7 +76,7 @@ void main() {
     });
 
     test('with a folder chosen, files go there', () {
-      final p = AppPaths.resolve(
+      final AppPaths p = AppPaths.resolve(
         reported: r'C:\Users\someone\AppData\Roaming\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
         configured: r'D:\Notes',
@@ -91,8 +91,8 @@ void main() {
     });
 
     test('a chosen folder that is not a usable path is ignored, not obeyed', () {
-      for (final bad in [r'relative\path', r'D:\..\elsewhere', 'C:', '', '   ', r'//server/share']) {
-        final p = AppPaths.resolve(
+      for (final String bad in <String>[r'relative\path', r'D:\..\elsewhere', 'C:', '', '   ', r'//server/share']) {
+        final AppPaths p = AppPaths.resolve(
           reported: r'C:\Users\someone\AppData\Roaming\WinNotes',
           executablePath: r'C:\app\win_notes.exe',
           configured: bad.isEmpty ? null : bad,
@@ -109,17 +109,17 @@ void main() {
       // It is the person running the program saying where to work for this run, which
       // beats a preference saved months ago - and it is what makes a verification run
       // independent of whatever the real profile says.
-      final p = AppPaths.resolve(
+      final AppPaths p = AppPaths.resolve(
         reported: r'C:\real\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
         configured: r'D:\ChosenByPreference',
-        environment: {AppPaths.overrideVariable: r'C:\temp\verify'},
+        environment: <String, String>{AppPaths.overrideVariable: r'C:\temp\verify'},
       );
       expect(p.dataDirectory, r'C:\temp\verify');
     });
 
     test('the pointer file is always in the reported directory', () {
-      final p = AppPaths.resolve(
+      final AppPaths p = AppPaths.resolve(
         reported: r'C:\real\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
         configured: r'D:\Notes',
@@ -135,23 +135,23 @@ void main() {
 
   group('the pointer: how a chosen folder is found at startup', () {
     test('no pointer means no chosen folder', () {
-      final reported = dir('default');
+      final String reported = dir('default');
       Directory(reported).createSync(recursive: true);
       expect(StorageLocation.readPointer(paths(reported)), isNull);
       expect(StorageLocation.resolveDataDirectory(paths(reported)), reported);
     });
 
     test('a pointer names the folder, and files go there', () {
-      final reported = dir('default');
-      final chosen = dir('chosen');
+      final String reported = dir('default');
+      final String chosen = dir('chosen');
       Directory(chosen).createSync(recursive: true);
-      writeJson(reported, 'settings.json', {
+      writeJson(reported, 'settings.json', <String, dynamic>{
         'format': 'winnotes',
         'version': 1,
         'storageDirectory': chosen,
       });
 
-      final p = paths(reported);
+      final AppPaths p = paths(reported);
       expect(StorageLocation.readPointer(p), chosen);
       expect(
         StorageLocation.resolveDataDirectory(p),
@@ -166,8 +166,8 @@ void main() {
       // Falling back to the default folder is the only safe answer - it is where the
       // notes still are. Silently using the named-but-absent folder would create an
       // empty library that looks exactly like total loss.
-      final reported = dir('default');
-      writeJson(reported, 'settings.json', {
+      final String reported = dir('default');
+      writeJson(reported, 'settings.json', <String, dynamic>{
         'format': 'winnotes',
         'version': 1,
         'storageDirectory': dir('unplugged'),
@@ -181,7 +181,7 @@ void main() {
     });
 
     test('a corrupt settings file is treated as no choice at all', () {
-      final reported = dir('default');
+      final String reported = dir('default');
       Directory(reported).createSync(recursive: true);
       file(reported, 'settings.json').writeAsStringSync('{ this is not json');
 
@@ -197,18 +197,18 @@ void main() {
     test('the chosen folder\'s own settings.json wins when the two disagree', () {
       // Two copies exist by design. A chosen folder is self-contained, so if it is
       // moved or handed over it keeps working - which means its copy is the live one.
-      final reported = dir('default');
-      final chosen = dir('chosen');
-      final moved = dir('moved');
+      final String reported = dir('default');
+      final String chosen = dir('chosen');
+      final String moved = dir('moved');
       Directory(moved).createSync(recursive: true);
 
-      writeJson(reported, 'settings.json', {
+      writeJson(reported, 'settings.json', <String, dynamic>{
         'format': 'winnotes',
         'version': 1,
         'storageDirectory': chosen,
       });
       // The chosen folder was itself moved, and says so.
-      writeJson(chosen, 'settings.json', {
+      writeJson(chosen, 'settings.json', <String, dynamic>{
         'format': 'winnotes',
         'version': 1,
         'storageDirectory': moved,
@@ -222,15 +222,15 @@ void main() {
     });
 
     test('a settings.json with no storageDirectory key is not a pointer', () {
-      final reported = dir('default');
-      writeJson(reported, 'settings.json', {'format': 'winnotes', 'version': 1});
+      final String reported = dir('default');
+      writeJson(reported, 'settings.json', <String, dynamic>{'format': 'winnotes', 'version': 1});
       expect(StorageLocation.readPointer(paths(reported)), isNull);
     });
 
     test('a settings.json holding the wrong shape is not a pointer', () {
-      final reported = dir('default');
-      for (final value in <Object>[42, true, <String>[], {'a': 'b'}]) {
-        writeJson(reported, 'settings.json', {
+      final String reported = dir('default');
+      for (final Object value in <Object>[42, true, <String>[], <String, String>{'a': 'b'}]) {
+        writeJson(reported, 'settings.json', <String, dynamic>{
           'format': 'winnotes',
           'version': 1,
           StorageLocation.storageDirectoryKey: value,
@@ -246,15 +246,15 @@ void main() {
 
   group('copying a library to a chosen folder', () {
     test('every file arrives, and the original is left alone', () async {
-      final from = dir('from');
-      final to = dir('to');
+      final String from = dir('from');
+      final String to = dir('to');
       Directory(from).createSync(recursive: true);
       file(from, 'notes.json').writeAsStringSync(notesDocument(count: 3));
-      writeJson(from, 'widget_state.json', {'left': 10, 'width': 360});
-      writeJson(from, 'selection.json', {'noteId': 'note-1'});
-      writeJson(from, 'settings.json', {'format': 'winnotes', 'version': 1});
+      writeJson(from, 'widget_state.json', <String, dynamic>{'left': 10, 'width': 360});
+      writeJson(from, 'selection.json', <String, dynamic>{'noteId': 'note-1'});
+      writeJson(from, 'settings.json', <String, dynamic>{'format': 'winnotes', 'version': 1});
 
-      final outcome = await StorageTransfer.copyLibrary(
+      final StorageTransferOutcome outcome = await StorageTransfer.copyLibrary(
         from: paths(from),
         to: paths(to),
         settings: WinNotesSettings(storageDirectory: to),
@@ -282,8 +282,8 @@ void main() {
     });
 
     test('the destination settings.json names the destination', () async {
-      final from = dir('from');
-      final to = dir('to');
+      final String from = dir('from');
+      final String to = dir('to');
       Directory(from).createSync(recursive: true);
       file(from, 'notes.json').writeAsStringSync(notesDocument());
 
@@ -293,7 +293,7 @@ void main() {
         settings: WinNotesSettings(storageDirectory: to),
       );
 
-      final written = WinNotesSettings.fromJson(
+      final WinNotesSettings written = WinNotesSettings.fromJson(
         jsonDecode(file(to, 'settings.json').readAsStringSync()),
       );
       expect(
@@ -305,15 +305,15 @@ void main() {
 
     test('a destination that already has notes is refused, and nothing is touched',
         () async {
-      final from = dir('from');
-      final to = dir('to');
+      final String from = dir('from');
+      final String to = dir('to');
       Directory(from).createSync(recursive: true);
       Directory(to).createSync(recursive: true);
       file(from, 'notes.json').writeAsStringSync(notesDocument(count: 5));
-      const theirs = '{"format":"winnotes","version":1,"notes":[{"id":"theirs"}]}';
+      const String theirs = '{"format":"winnotes","version":1,"notes":[{"id":"theirs"}]}';
       file(to, 'notes.json').writeAsStringSync(theirs);
 
-      final outcome = await StorageTransfer.copyLibrary(
+      final StorageTransferOutcome outcome = await StorageTransfer.copyLibrary(
         from: paths(from),
         to: paths(to),
         settings: WinNotesSettings(storageDirectory: to),
@@ -333,14 +333,14 @@ void main() {
     test('a destination holding an empty notes.json is not a library', () async {
       // Somebody opened the app in that folder once and closed it again. Refusing
       // would make the folder permanently unusable for no reason at all.
-      final from = dir('from');
-      final to = dir('to');
+      final String from = dir('from');
+      final String to = dir('to');
       Directory(from).createSync(recursive: true);
       Directory(to).createSync(recursive: true);
       file(from, 'notes.json').writeAsStringSync(notesDocument());
       file(to, 'notes.json').writeAsStringSync('{"format":"winnotes","notes":[]}');
 
-      final outcome = await StorageTransfer.copyLibrary(
+      final StorageTransferOutcome outcome = await StorageTransfer.copyLibrary(
         from: paths(from),
         to: paths(to),
         settings: WinNotesSettings(storageDirectory: to),
@@ -349,11 +349,11 @@ void main() {
     });
 
     test('the same folder is reported rather than copied onto itself', () async {
-      final here = dir('here');
+      final String here = dir('here');
       Directory(here).createSync(recursive: true);
       file(here, 'notes.json').writeAsStringSync(notesDocument());
 
-      final outcome = await StorageTransfer.copyLibrary(
+      final StorageTransferOutcome outcome = await StorageTransfer.copyLibrary(
         from: paths(here),
         // A trailing slash and different case: the same folder, spelled two ways.
         to: paths('$here\\'),
@@ -363,9 +363,9 @@ void main() {
     });
 
     test('a path that is not usable is refused', () async {
-      final from = dir('from');
+      final String from = dir('from');
       Directory(from).createSync(recursive: true);
-      final outcome = await StorageTransfer.copyLibrary(
+      final StorageTransferOutcome outcome = await StorageTransfer.copyLibrary(
         from: paths(from),
         to: paths(r'relative\folder'),
         settings: WinNotesSettings(),
@@ -374,8 +374,8 @@ void main() {
     });
 
     test('no half-written file is left behind', () async {
-      final from = dir('from');
-      final to = dir('to');
+      final String from = dir('from');
+      final String to = dir('to');
       Directory(from).createSync(recursive: true);
       file(from, 'notes.json').writeAsStringSync(notesDocument());
 
@@ -385,10 +385,10 @@ void main() {
         settings: WinNotesSettings(storageDirectory: to),
       );
 
-      final leftovers = Directory(to)
+      final List<File> leftovers = Directory(to)
           .listSync()
           .whereType<File>()
-          .where((f) => f.path.endsWith('.copying'))
+          .where((File f) => f.path.endsWith('.copying'))
           .toList();
       expect(leftovers, isEmpty, reason: 'copies go via a temporary name and rename');
     });
@@ -413,7 +413,7 @@ void main() {
       // directory, so a reachability check that also created it would answer 'yes'
       // to a drive that is not plugged in - and the app would then recreate the
       // folder locally and write an empty library into it.
-      final gone = dir('not-plugged-in');
+      final String gone = dir('not-plugged-in');
       expect(Directory(gone).existsSync(), isFalse, reason: 'precondition');
 
       expect(StorageLocation.isReachable(gone), isFalse);

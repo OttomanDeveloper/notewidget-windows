@@ -30,15 +30,15 @@ class MarkdownListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     // Checked before the marker, so a task list shows a box rather than a
     // bullet with a box in it.
-    final task = MarkdownNodes.taskOf(item);
+    final String? task = MarkdownNodes.taskOf(item);
 
-    final children = (item.children ?? const <md.Node>[])
-        .where((child) => !(child is md.Element && child.tag == 'input'))
+    final List<md.Node> children = (item.children ?? const <md.Node>[])
+        .where((md.Node child) => !(child is md.Element && child.tag == 'input'))
         .toList();
 
-    final leading = <md.Node>[];
-    final blocks = <md.Element>[];
-    for (final child in children) {
+    final List<md.Node> leading = <md.Node>[];
+    final List<md.Element> blocks = <md.Element>[];
+    for (final md.Node child in children) {
       if (child is md.Element) {
         blocks.add(child);
       } else if (blocks.isEmpty) {
@@ -46,7 +46,7 @@ class MarkdownListItem extends StatelessWidget {
       }
     }
 
-    final parts = <Widget>[];
+    final List<Widget> parts = <Widget>[];
     if (leading.isNotEmpty) {
       parts.add(MarkdownInlineLine(
         nodes: leading,
@@ -55,7 +55,7 @@ class MarkdownListItem extends StatelessWidget {
         selectable: selectable,
       ));
     }
-    for (final block in blocks) {
+    for (final md.Element block in blocks) {
       parts.add(MarkdownBlock(
         node: block,
         style: style,
@@ -82,7 +82,7 @@ class MarkdownListItem extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 2, top: 1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           SizedBox(
             width: style.metrics.markerWidth,
             child: Text(

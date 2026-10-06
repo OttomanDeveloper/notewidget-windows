@@ -32,14 +32,14 @@ ThemeData buildWinNotesTheme({
   required bool highContrast,
   WinNotesPalette? palette,
 }) {
-  final chosen = palette ?? winNotesPalettes.first;
-  final isDark = brightness == Brightness.dark;
-  final surfaces = chosen.surfaces(brightness);
-  final accent = chosen.accentFor(brightness);
+  final WinNotesPalette chosen = palette ?? winNotesPalettes.first;
+  final bool isDark = brightness == Brightness.dark;
+  final WidgetSurfaces surfaces = chosen.surfaces(brightness);
+  final Color accent = chosen.accentFor(brightness);
 
   // Built from the accent, then neutrals replaced wholesale. Overriding the
   // roles actually used beats copyWith on a forty-field scheme.
-  final scheme = ColorScheme.fromSeed(
+  final ColorScheme scheme = ColorScheme.fromSeed(
     seedColor: accent,
     brightness: brightness,
   ).copyWith(
@@ -55,14 +55,14 @@ ThemeData buildWinNotesTheme({
     surfaceTint: Colors.transparent,
   );
 
-  final base = ThemeData(
+  final ThemeData base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
     brightness: brightness,
     scaffoldBackgroundColor: surfaces.scaffold,
   );
 
-  final textTheme = base.textTheme.apply(
+  final TextTheme textTheme = base.textTheme.apply(
     bodyColor: surfaces.onSurface,
     displayColor: surfaces.onSurface,
   );
@@ -119,10 +119,10 @@ ThemeData buildWinNotesTheme({
 /// computed and the higher wins: a threshold gets mid-luminance accents wrong.
 /// Drawn in: the tick, the checkbox mark, the selection ring.
 Color readableOn(Color background) {
-  const dark = Color(0xFF17151C);
-  final luminance = background.computeLuminance();
-  final againstWhite = 1.05 / (luminance + 0.05);
-  final againstDark = (luminance + 0.05) / 0.05;
+  const Color dark = Color(0xFF17151C);
+  final double luminance = background.computeLuminance();
+  final double againstWhite = 1.05 / (luminance + 0.05);
+  final double againstDark = (luminance + 0.05) / 0.05;
   return againstWhite >= againstDark ? Colors.white : dark;
 }
 
@@ -133,13 +133,13 @@ Color widgetSurfaceColor({
   required int opacityPercent,
   WinNotesPalette? palette,
 }) {
-  final chosen = palette ?? winNotesPalettes.first;
-  final base = chosen
+  final WinNotesPalette chosen = palette ?? winNotesPalettes.first;
+  final Color base = chosen
       .surfaces(brightness)
       .surfaceColor(acrylicAvailable: acrylicAvailable);
   // The window already carries a per-window alpha for this setting; the colour
   // alpha here is only a floor so text never sits on a fully clear surface.
-  final floor = (opacityPercent / 100).clamp(0.35, 1.0);
+  final double floor = (opacityPercent / 100).clamp(0.35, 1.0);
   return base.withValues(alpha: base.a * floor);
 }
 

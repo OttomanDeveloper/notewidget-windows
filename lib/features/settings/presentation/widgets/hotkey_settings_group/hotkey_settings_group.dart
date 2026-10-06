@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../../domain/hotkey_binding.dart';
 import '../../../data/settings_repository.dart';
@@ -15,43 +16,43 @@ class HotkeySettingsGroup extends ConsumerWidget {
     /// Opens the capture dialog and stores the pressed combination. Reads through
     /// `ref`: this runs outside `build`, where a settings field cannot reach.
   Future<void> _capture(BuildContext context, WidgetRef ref) async {
-    final settings =
+    final WinNotesSettings settings =
         ref.read(settingsProvider).value?.settings ?? SettingsRepository.defaults;
-    final binding = settings.editorHotkey;
-    final captured = await showDialog<HotkeyBinding>(
+    final HotkeyBinding binding = settings.editorHotkey;
+    final HotkeyBinding? captured = await showDialog<HotkeyBinding>(
       context: context,
-      builder: (context) => HotkeyCaptureDialog(initial: binding),
+      builder: (BuildContext context) => HotkeyCaptureDialog(initial: binding),
     );
     if (captured == null) return;
     await ref
         .read(settingsProvider.notifier)
-        .apply((s) => s.copyWith(editorHotkey: captured));
+        .apply((WinNotesSettings s) => s.copyWith(editorHotkey: captured));
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Only the binding and the problem this group draws.
-    final binding = ref.watch(
+    final HotkeyBinding binding = ref.watch(
           settingsProvider.select(
-            (v) => v.value?.settings.editorHotkey ?? HotkeyBinding.defaultBinding,
+            (AsyncValue<SettingsState> v) => v.value?.settings.editorHotkey ?? HotkeyBinding.defaultBinding,
           ),
         );
-    final controller = ref.read(settingsProvider.notifier);
-    final theme = Theme.of(context);
-    final problem = ref.watch(
-      settingsProvider.select((v) => v.value?.hotkeyProblem),
+    final SettingsNotifier controller = ref.read(settingsProvider.notifier);
+    final ThemeData theme = Theme.of(context);
+    final String? problem = ref.watch(
+      settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.hotkeyProblem),
     );
 
     return SettingsGroup(
       title: 'Hotkey',
-      children: [
+      children: <Widget>[
         SettingsRow(
           label: 'Open the editor from anywhere',
           description: 'Works from any application, including full-screen ones.',
           onTap: () => _capture(context, ref),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: <Widget>[
               if (!binding.enabled)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -72,7 +73,7 @@ class HotkeySettingsGroup extends ConsumerWidget {
                   icon: const Icon(Icons.restart_alt, size: 18),
                   tooltip: 'Back to ${HotkeyBinding.defaultBinding.display}',
                   onPressed: () => controller.apply(
-                    (s) => s.copyWith(editorHotkey: HotkeyBinding.defaultBinding),
+                    (WinNotesSettings s) => s.copyWith(editorHotkey: HotkeyBinding.defaultBinding),
                   ),
                 ),
             ],
@@ -84,7 +85,7 @@ class HotkeySettingsGroup extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Row(
-              children: [
+              children: <Widget>[
                 Icon(Icons.warning_amber_rounded,
                     size: 16, color: theme.colorScheme.error),
                 const SizedBox(width: 8),
@@ -105,8 +106,8 @@ class HotkeySettingsGroup extends ConsumerWidget {
           description: 'The tray menu still opens the editor.',
           trailing: Switch(
             value: binding.enabled,
-            onChanged: (value) => controller.apply(
-              (s) => s.copyWith(
+            onChanged: (bool value) => controller.apply(
+              (WinNotesSettings s) => s.copyWith(
                 editorHotkey: s.editorHotkey.copyWith(enabled: value),
               ),
             ),

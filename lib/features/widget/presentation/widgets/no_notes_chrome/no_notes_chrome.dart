@@ -8,7 +8,7 @@ class NoNotesChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
+    final Color muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16),

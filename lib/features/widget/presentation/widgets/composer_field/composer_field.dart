@@ -26,8 +26,8 @@ class ComposerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
+    final ThemeData theme = Theme.of(context);
+    final Color muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: DecoratedBox(
@@ -40,7 +40,7 @@ class ComposerField extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 0, 4, 0),
           child: Row(
-            children: [
+            children: <Widget>[
               Expanded(
                 child: TextField(
                   key: addNoteFieldKey,

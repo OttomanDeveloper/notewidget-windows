@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../../data/settings_repository.dart';
 import '../../../../../core/theme/palette.dart';
@@ -15,29 +16,29 @@ class AppearanceSettingsGroup extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(
-          settingsProvider.select((v) => v.value?.settings),
+    final WinNotesSettings settings = ref.watch(
+          settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings),
         ) ??
         SettingsRepository.defaults;
-    final controller = ref.read(settingsProvider.notifier);
-    final acrylicSupported = ref.watch(acrylicSupportedProvider);
+    final SettingsNotifier controller = ref.read(settingsProvider.notifier);
+    final bool acrylicSupported = ref.watch(acrylicSupportedProvider);
     return SettingsGroup(
       title: 'Appearance',
-      children: [
+      children: <Widget>[
         SettingsRow(
           label: 'Theme',
           description: 'Follows Windows unless you say otherwise.',
           trailing: SegmentedButton<ThemeMode>(
             showSelectedIcon: false,
             style: const ButtonStyle(visualDensity: VisualDensity.compact),
-            segments: const [
+            segments: const <ButtonSegment<ThemeMode>>[
               ButtonSegment(value: ThemeMode.light, label: Text('Light')),
               ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
               ButtonSegment(value: ThemeMode.system, label: Text('System')),
             ],
-            selected: {settings.themeMode},
-            onSelectionChanged: (value) =>
-                controller.apply((s) => s.copyWith(themeMode: value.first)),
+            selected: <ThemeMode>{settings.themeMode},
+            onSelectionChanged: (Set<ThemeMode> value) =>
+                controller.apply((WinNotesSettings s) => s.copyWith(themeMode: value.first)),
           ),
         ),
         const SettingsSeparator(),
@@ -46,8 +47,8 @@ class AppearanceSettingsGroup extends ConsumerWidget {
           description: 'The accent, and the surfaces built around it.',
           trailing: PalettePicker(
             selected: paletteById(settings.accentPalette),
-            onSelected: (palette) => controller.apply(
-              (s) => s.copyWith(accentPalette: palette.id),
+            onSelected: (WinNotesPalette palette) => controller.apply(
+              (WinNotesSettings s) => s.copyWith(accentPalette: palette.id),
             ),
           ),
         ),
@@ -59,7 +60,7 @@ class AppearanceSettingsGroup extends ConsumerWidget {
           trailing: SizedBox(
             width: 190,
             child: Row(
-              children: [
+              children: <Widget>[
                 Expanded(
                   child: Slider(
                     value: settings.widgetOpacity.toDouble(),
@@ -67,8 +68,8 @@ class AppearanceSettingsGroup extends ConsumerWidget {
                     max: 100,
                     divisions: 14,
                     label: '${settings.widgetOpacity}%',
-                    onChanged: (value) => controller.apply(
-                      (s) => s.copyWith(widgetOpacity: value.round()),
+                    onChanged: (double value) => controller.apply(
+                      (WinNotesSettings s) => s.copyWith(widgetOpacity: value.round()),
                     ),
                   ),
                 ),
@@ -87,8 +88,8 @@ class AppearanceSettingsGroup extends ConsumerWidget {
             value: settings.acrylicEnabled && acrylicSupported,
             onChanged: !acrylicSupported
                 ? null
-                : (value) => controller.apply(
-                      (s) => s.copyWith(acrylicEnabled: value),
+                : (bool value) => controller.apply(
+                      (WinNotesSettings s) => s.copyWith(acrylicEnabled: value),
                     ),
           ),
         ),

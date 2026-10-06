@@ -28,11 +28,11 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return AppBar(
       titleSpacing: narrow ? 12 : 20,
       title: Row(
-        children: [
+        children: <Widget>[
           const BrandGlyph(size: 22),
           const SizedBox(width: 10),
           Text(
@@ -42,7 +42,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
               letterSpacing: -0.2,
             ),
           ),
-          if (!narrow) ...[
+          if (!narrow) ...<Widget>[
             const SizedBox(width: 12),
             Text(
               'Everything lives on this PC',
@@ -53,7 +53,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
           ],
         ],
       ),
-      actions: [
+      actions: <Widget>[
         if (narrow && !showList)
           IconButton(
             icon: const Icon(Icons.list),
@@ -63,7 +63,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
         PopupMenuButton<String>(
           tooltip: 'More',
           icon: const Icon(Icons.more_vert),
-          onSelected: (value) async {
+          onSelected: (String value) async {
             switch (value) {
               case 'settings':
                 onOpenSettings();
@@ -73,7 +73,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
                 await importNotes();
             }
           },
-          itemBuilder: (context) => const [
+          itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
             PopupMenuItem(
               value: 'settings',
               child: ListTile(

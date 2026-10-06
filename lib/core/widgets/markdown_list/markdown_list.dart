@@ -26,22 +26,22 @@ class MarkdownList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = (node.children ?? const <md.Node>[])
+    final List<md.Element> items = (node.children ?? const <md.Node>[])
         .whereType<md.Element>()
-        .where((child) => child.tag == 'li')
+        .where((md.Element child) => child.tag == 'li')
         .toList();
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    var index = 1;
+    int index = 1;
 
     return Padding(
       padding: EdgeInsets.only(bottom: style.metrics.paragraphGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final item in items)
+        children: <Widget>[
+          for (final md.Element item in items)
             MarkdownListItem(
               item: item,
               marker: ordered

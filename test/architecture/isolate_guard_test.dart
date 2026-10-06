@@ -21,17 +21,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'guards.dart';
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('one graph, built once', () {
     test('no widget constructs a repository or a controller', () {
-      final live = uiConstructionCounts(tree);
+      final Map<String, int> live = uiConstructionCounts(tree);
 
       expect(
         live,
         isEmpty,
         reason: 'AGENTS.md §0.10.\n\n'
-            '${live.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
+            '${live.entries.map((MapEntry<String, int> e) => '  ${e.key}: ${e.value}').join('\n')}\n'
             '    Construction belongs in lib/core/utils/app_providers.dart, so both '
             'surfaces get the same graph. A repository that changes its constructor '
             'is then one edit instead of two.',
@@ -39,20 +39,20 @@ void main() {
     });
 
     test('the scanner still finds the six types it claims to', () {
-      final live = uiConstructionCounts(tree);
+      final Map<String, int> live = uiConstructionCounts(tree);
 
       expect(live, isEmpty, reason: 'precondition: nothing to count');
 
       // Checked against the pattern rather than against the tree, because a scanner
       // that finds nothing and a clean codebase look identical from here.
-      final pattern = RegExp(
+      final RegExp pattern = RegExp(
         // `WidgetStateRepository` first: `Widget` followed by `Repository` does not
         // match it, because `State` is in between. The original pattern had that
         // hole and this test is what found it - a guard whose own test is the only
         // thing checking the scanner is a guard nobody has checked.
         r'\b(?:Notes|Settings|WidgetState|Selection)Repository\s*\(|\b(?:Notes|Settings|Widget)Controller\s*\(',
       );
-      for (final declaration in [
+      for (final String declaration in <String>[
         'NotesRepository(AtomicJsonFile(p))',
         'SettingsRepository(file, shell)',
         'WidgetStateRepository(file)',
@@ -74,7 +74,7 @@ void main() {
       // isolate, so building the scope here gives each isolate its own container -
       // `docs/isolate_pattern.md` §2 - and means neither root widget takes a shell, a
       // launch info or a path.
-      final main_ = tree.read('lib/main.dart');
+      final String main_ = tree.read('lib/main.dart');
 
       expect(
         main_.contains('ProviderScope'),
@@ -96,12 +96,12 @@ void main() {
       // And the roots themselves take nothing. Scoped to the root class rather
       // than the file, because `EditorEventRouter` in the same file legitimately
       // takes a `Widget child` - that is a value, not state.
-      for (final root in {
+      for (final MapEntry<String, String> root in <String, String>{
         'lib/features/notes/presentation/screens/editor_app/editor_app.dart': 'EditorApp',
         'lib/features/widget/presentation/screens/widget_app/widget_app.dart': 'WidgetApp',
       }.entries) {
-        final source = tree.read(root.key);
-        final declaration = RegExp(
+        final String source = tree.read(root.key);
+        final RegExpMatch? declaration = RegExp(
           'class ${root.value} extends ConsumerWidget \\{\\s*const ${root.value}\\(\\{([^}]*)\\}',
         ).firstMatch(source);
 
@@ -125,16 +125,16 @@ void main() {
       // The actual fix for §4.7: one place decides what a `ThemeData` is, and both
       // surfaces ask it. Three copies of a brightness resolver is not a style
       // problem; two of them already disagreed.
-      final editor = tree.read('lib/features/notes/presentation/screens/editor_scope/editor_scope.dart');
-      final widgetApp = tree.read('lib/features/widget/presentation/screens/widget_scope/widget_scope.dart');
-      final themeScope = tree.read('lib/features/settings/presentation/providers/settings_providers.dart');
+      final String editor = tree.read('lib/features/notes/presentation/screens/editor_scope/editor_scope.dart');
+      final String widgetApp = tree.read('lib/features/widget/presentation/screens/widget_scope/widget_scope.dart');
+      final String themeScope = tree.read('lib/features/settings/presentation/providers/settings_providers.dart');
 
       expect(
         themeScope.contains('widgetSurfaceThemeProvider'),
         isTrue,
         reason: 'precondition: there is one theme provider',
       );
-      for (final entry in {'editor': editor, 'widget': widgetApp}.entries) {
+      for (final MapEntry<String, String> entry in <String, String>{'editor': editor, 'widget': widgetApp}.entries) {
         expect(
           entry.value.contains('widgetSurfaceThemeProvider'),
           isTrue,
@@ -166,7 +166,7 @@ void main() {
       // is the bug this whole change exists to remove: an override that touches the
       // directory it exists to avoid is worse than no override, because it looks like
       // isolation and is not.
-      final main_ = tree.read('lib/main.dart');
+      final String main_ = tree.read('lib/main.dart');
 
       expect(
         main_.contains('AppPaths.resolve('),
@@ -187,7 +187,7 @@ void main() {
       // `core/utils` must not reach into theme files, so a provider that needs
       // `theme.dart` cannot live beside the repositories. Asserted because the
       // natural place to put it was the app graph, and someone will try again.
-      final providers = tree.read('lib/core/utils/app_providers.dart');
+      final String providers = tree.read('lib/core/utils/app_providers.dart');
 
       expect(
         providers.contains('theme.dart') || providers.contains('palette.dart'),
@@ -205,7 +205,7 @@ void main() {
       // data file, so it needs an answer rather than a migration.
       //
       // The test exists so the hazard cannot be forgotten by being quietly changed.
-      final editor = tree.read(
+      final String editor = tree.read(
           'lib/features/notes/presentation/screens/editor_scope/editor_scope.dart');
 
       // `EditorTeardown.run` awaits each flush internally and is itself called
@@ -227,7 +227,7 @@ void main() {
 
       // The widget surface has no teardown object, so it is checked on its own: the
       // flush is still unawaited, which is the recorded hazard.
-      final widgetApp = tree.read('lib/features/widget/presentation/screens/widget_scope/widget_scope.dart');
+      final String widgetApp = tree.read('lib/features/widget/presentation/screens/widget_scope/widget_scope.dart');
       expect(
         RegExp(r'unawaited\(_notifier\.flush\(\)\)').hasMatch(widgetApp),
         isTrue,
@@ -238,11 +238,11 @@ void main() {
       // And the two roots must not reach for `ref` in `dispose`, which Riverpod
       // forbids outright - it throws during tree finalisation, after the test that
       // closed the surface has already passed.
-      for (final root in {
+      for (final MapEntry<String, String> root in <String, String>{
         'editor': editor,
         'widget': widgetApp,
       }.entries) {
-        final dispose = _disposeBody(root.value);
+        final String? dispose = _disposeBody(root.value);
         expect(
           dispose,
           isNotNull,

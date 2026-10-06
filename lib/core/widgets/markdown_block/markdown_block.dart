@@ -34,7 +34,7 @@ class MarkdownBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textNode = node;
+    final md.Node textNode = node;
     if (textNode is md.Text) {
       if (textNode.text.trim().isEmpty) return const SizedBox.shrink();
       return MarkdownBlockParagraph(
@@ -44,7 +44,7 @@ class MarkdownBlock extends StatelessWidget {
         selectable: selectable,
       );
     }
-    final element = node;
+    final md.Node element = node;
     if (element is! md.Element) return const SizedBox.shrink();
 
     switch (element.tag) {
@@ -131,7 +131,7 @@ class MarkdownBlock extends StatelessWidget {
             selectable: selectable,
           );
         }
-        final text = element.textContent.trim();
+        final String text = element.textContent.trim();
         if (text.isEmpty) return const SizedBox.shrink();
         return MarkdownBlockParagraph(
           node: element,

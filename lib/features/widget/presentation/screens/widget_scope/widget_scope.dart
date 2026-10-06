@@ -36,7 +36,7 @@ class WidgetScopeState extends ConsumerState<WidgetScope>
   Future<void> _start() async {
     // Read before the first await; a WidgetRef held across one throws once the
     // widget is gone. See EditorBootstrap.start for the full explanation.
-    final notifier = ref.read(widgetProvider.notifier);
+    final WidgetNotifier notifier = ref.read(widgetProvider.notifier);
 
     await ref.read(widgetProvider.future);
     await notifier.applyStartupDelay();
@@ -63,9 +63,9 @@ class WidgetScopeState extends ConsumerState<WidgetScope>
 
   @override
   Widget build(BuildContext context) {
-    final theme = ref.watch(widgetSurfaceThemeProvider);
+    final ThemeData theme = ref.watch(widgetSurfaceThemeProvider);
 
-    final ready = ref.watch(widgetProvider).hasValue;
+    final bool ready = ref.watch(widgetProvider).hasValue;
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,

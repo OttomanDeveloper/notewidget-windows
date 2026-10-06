@@ -16,7 +16,7 @@ class SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
@@ -24,14 +24,14 @@ class SettingsRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
-            children: [
+            children: <Widget>[
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                  children: <Widget>[
                     Text(label, style: theme.textTheme.bodyLarge),
-                    if (description != null) ...[
+                    if (description != null) ...<Widget>[
                       const SizedBox(height: 3),
                       Text(
                         description!,

@@ -21,7 +21,7 @@ class ComposerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
+    final Color muted = widgetMutedColor(dark ? Brightness.dark : Brightness.light);
     return Align(
       alignment: Alignment.bottomRight,
       child: AnimatedOpacity(

@@ -16,12 +16,12 @@ class PreviewPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     // Rebuilt from the debounced source, not from the field: typing updates the
     // preview a few times a second instead of once per character.
     return ValueListenableBuilder<String>(
       valueListenable: previewSource,
-      builder: (context, source, _) {
+      builder: (BuildContext context, String source, _) {
         if (source.trim().isEmpty) {
           return Padding(
             padding: const EdgeInsets.only(left: 14),

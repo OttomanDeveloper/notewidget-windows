@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:riverpod/riverpod.dart';
+import 'package:win_notes/core/utils/app_paths.dart';
+import 'package:win_notes/features/settings/domain/hotkey_binding.dart';
 
 import '../../../../core/utils/atomic_json_file.dart';
 import '../../domain/settings.dart';
@@ -73,8 +75,8 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
 
     // Watched, not read: a re-resolved launch must refresh these rather than
     // stick with the first answer.
-    final launch = ref.watch(launchInfoProvider);
-    final loaded = await _repository.load();
+    final LaunchInfo launch = ref.watch(launchInfoProvider);
+    final WinNotesSettings loaded = await _repository.load();
     return SettingsState(
       settings: loaded,
       animationsEnabled: launch.animationsEnabled,
@@ -86,8 +88,8 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   SettingsState? get current => state.value;
 
   void _onExternalChange() {
-    unawaited(_repository.load().then((next) {
-      final current = state.value;
+    unawaited(_repository.load().then((WinNotesSettings next) {
+      final SettingsState? current = state.value;
       if (current == null || next == current.settings) return;
       state = AsyncData(current.copyWith(settings: next));
     }));
@@ -96,9 +98,9 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   /// Applies a change, persists it and pushes runner-owned state; named `apply` not `update`.
   /// `AsyncNotifier` already defines `update` with a different meaning.
   Future<void> apply(WinNotesSettings Function(WinNotesSettings) mutate) async {
-    final current = state.value;
+    final SettingsState? current = state.value;
     if (current == null) return;
-    final next = mutate(current.settings);
+    final WinNotesSettings next = mutate(current.settings);
     if (next == current.settings) return;
     state = AsyncData(current.copyWith(settings: next));
     _repository.save(next);
@@ -111,17 +113,17 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
 
   /// Applies hotkey and autostart to the runner, at startup and on change, so drift is corrected.
   Future<void> syncPlatform() async {
-    final current = state.value;
+    final SettingsState? current = state.value;
     if (current == null) return;
 
-    final binding = current.settings.editorHotkey;
-    final registration = await _shell.registerHotkey(
+    final HotkeyBinding binding = current.settings.editorHotkey;
+    final HotkeyRegistration registration = await _shell.registerHotkey(
       modifiers: binding.modifiers,
       key: binding.key,
       enabled: binding.enabled,
     );
 
-    final problem = switch (registration.failure) {
+    final String? problem = switch (registration.failure) {
       HotkeyFailure.none => null,
       HotkeyFailure.alreadyRegistered =>
         'Another app is already using ${binding.display}.',
@@ -131,7 +133,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
 
     // Keep the registry and the setting in step. If the entry was removed by hand,
     // the toggle re-adds it; if autostart is off, the entry is removed.
-    final registryState = await _repository.currentAutoStartState();
+    final bool registryState = await _repository.currentAutoStartState();
     if (registryState != current.settings.autoStart) {
       await _repository.applyAutoStart(enabled: current.settings.autoStart);
     }
@@ -145,9 +147,9 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   }
 
   Future<void> setAutoStart({required bool enabled}) async {
-    final current = state.value;
+    final SettingsState? current = state.value;
     if (current == null) return;
-    final ok = await _repository.applyAutoStart(enabled: enabled);
+    final bool ok = await _repository.applyAutoStart(enabled: enabled);
     if (!ok) {
       state = AsyncData(
         current.copyWith(
@@ -156,16 +158,16 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
       );
       return;
     }
-    await apply((s) => s.copyWith(autoStart: enabled));
+    await apply((WinNotesSettings s) => s.copyWith(autoStart: enabled));
   }
 
   /// Points the app at [target] by copying; pointer written last, never first; see `StorageTransfer`.
   /// Restart required: `appPathsProvider` is fixed for the process lifetime.
   Future<StorageTransferOutcome> moveTo(String target) async {
-    final current = state.value;
+    final SettingsState? current = state.value;
     if (current == null) return StorageTransferOutcome.failed;
 
-    final paths = ref.read(appPathsProvider);
+    final AppPaths paths = ref.read(appPathsProvider);
 
     // The library on disk may be newer than what is in memory by up to one debounce
     // window, and `copyLibrary` copies files rather than state. Flushing first is what
@@ -173,10 +175,10 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     await _repository.flush();
     await ref.read(notesProvider.notifier).flush();
 
-    final destination = paths.copyWith(dataDirectory: target.trim());
-    final next = current.settings.copyWith(storageDirectory: target.trim());
+    final AppPaths destination = paths.copyWith(dataDirectory: target.trim());
+    final WinNotesSettings next = current.settings.copyWith(storageDirectory: target.trim());
 
-    final outcome = await StorageTransfer.copyLibrary(
+    final StorageTransferOutcome outcome = await StorageTransfer.copyLibrary(
       from: paths,
       to: destination,
       settings: next,
@@ -195,16 +197,16 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
 
   /// Returns to `%APPDATA%\WinNotes` by copying, never moving, so chosen-folder notes are kept.
   Future<StorageTransferOutcome> moveToDefault() async {
-    final paths = ref.read(appPathsProvider);
+    final AppPaths paths = ref.read(appPathsProvider);
     return moveTo(paths.defaultStorageDirectory);
   }
 
   /// Writes the pointer copy; repository writes [AppPaths.settingsFile], pointer is [AppPaths.settingsPointerFile].
   /// See `storage_pattern.md` §3.0a.
   Future<void> _writePointer(WinNotesSettings settings) async {
-    final path = ref.read(appPathsProvider).settingsPointerFile;
+    final String path = ref.read(appPathsProvider).settingsPointerFile;
     try {
-      final file = AtomicJsonFile(path);
+      final AtomicJsonFile file = AtomicJsonFile(path);
       await file.writeNow(settings.toJson());
       await file.dispose();
     } catch (_) {
@@ -216,5 +218,5 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   Future<void> flush() => _repository.flush();
 }
 
-final settingsProvider =
+final AsyncNotifierProvider<SettingsNotifier, SettingsState> settingsProvider =
     AsyncNotifierProvider<SettingsNotifier, SettingsState>(SettingsNotifier.new);

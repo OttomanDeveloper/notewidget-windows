@@ -22,7 +22,7 @@ class EditorBackBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
       child: Row(
-        children: [
+        children: <Widget>[
           IconButton(
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Back to notes',

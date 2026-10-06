@@ -33,7 +33,7 @@ import 'guards.dart';
 /// `bootstrap` is the only one without a `namespace.` prefix. It was already like
 /// that and the runner matches on it, so it stays - but `docs/platform_pattern.md`
 /// §3.2 records it as the one name a newcomer will copy by accident.
-const Set<String> platformMethodRegistry = {
+const Set<String> platformMethodRegistry = <String>{
   'app.quit',
   'autostart.query',
   'autostart.set',
@@ -68,7 +68,7 @@ const Set<String> platformMethodRegistry = {
 ///
 /// Same channel, opposite direction. They are listed here so a test can assert the
 /// two namespaces stay disjoint - they travel together and are easy to confuse.
-const Set<String> inboundEvents = {
+const Set<String> inboundEvents = <String>{
   'event.createNote',
   'event.geometry',
   'event.hotkey',
@@ -78,11 +78,11 @@ const Set<String> inboundEvents = {
 };
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('the platform contract is declared, not inferred', () {
     test('registry, Dart calls and runner handlers all agree', () {
-      final faults = platformRegistryFaults(
+      final List<String> faults = platformRegistryFaults(
         registry: platformMethodRegistry,
         called: channelMethodNames(tree),
         handled: runnerMethodNames(tree),
@@ -104,7 +104,7 @@ void main() {
       // cannot quietly become three. A name on its own line is the case that bit:
       // `\s` matches a newline in a Dart RegExp, which is why the scan is over
       // joined text and not over lines.
-      final called = channelMethodNames(tree);
+      final Set<String> called = channelMethodNames(tree);
 
       expect(
         called.contains('widget.beginResize'),
@@ -123,8 +123,8 @@ void main() {
     });
 
     test('an inbound event in the outbound registry is a fault', () {
-      final faults = platformRegistryFaults(
-        registry: {...platformMethodRegistry, 'event.hotkey'},
+      final List<String> faults = platformRegistryFaults(
+        registry: <String>{...platformMethodRegistry, 'event.hotkey'},
         called: channelMethodNames(tree),
         handled: runnerMethodNames(tree),
       );
@@ -132,33 +132,33 @@ void main() {
       // Two faults, not one: an inbound name is both a method Dart never sends and
       // a method the runner never handles as an outbound call. Either is enough.
       expect(
-        faults.any((f) => f.contains('Inbound event names')),
+        faults.any((String f) => f.contains('Inbound event names')),
         isTrue,
         reason: faults.join('\n'),
       );
       expect(
-        faults.firstWhere((f) => f.contains('Inbound event names')),
+        faults.firstWhere((String f) => f.contains('Inbound event names')),
         contains('shares the channel, not the direction'),
       );
     });
 
     test('a method called but not declared is a fault', () {
-      final faults = platformRegistryFaults(
-        registry: platformMethodRegistry.where((n) => n != 'app.quit').toSet(),
+      final List<String> faults = platformRegistryFaults(
+        registry: platformMethodRegistry.where((String n) => n != 'app.quit').toSet(),
         called: channelMethodNames(tree),
         handled: runnerMethodNames(tree),
       );
 
       expect(
-        faults.any((f) => f.contains('not in the registry') && f.contains('app.quit')),
+        faults.any((String f) => f.contains('not in the registry') && f.contains('app.quit')),
         isTrue,
         reason: faults.join('\n'),
       );
     });
 
     test('a declared method the runner ignores is a fault', () {
-      final faults = platformRegistryFaults(
-        registry: {...platformMethodRegistry, 'widget.teleport'},
+      final List<String> faults = platformRegistryFaults(
+        registry: <String>{...platformMethodRegistry, 'widget.teleport'},
         called: platformMethodRegistry,
         handled: runnerMethodNames(tree),
       );
@@ -170,8 +170,8 @@ void main() {
     test('an empty registry is a fault, not a pass', () {
       // Every set-difference check above is satisfied by two empty sets. Without
       // this the guard could be satisfied by deleting the contract.
-      final faults = platformRegistryFaults(
-        registry: const {},
+      final List<String> faults = platformRegistryFaults(
+        registry: const <String>{},
         called: channelMethodNames(tree),
         handled: runnerMethodNames(tree),
       );
@@ -208,24 +208,24 @@ void main() {
       // runner actually uses. Scanning all backticked text picks up
       // `methodChannel.invokeMethod` and `namespace.verb` from prose, which is
       // how a doc-parity check becomes a check that nothing has ever been wrong.
-      final doc = tree.read('docs/platform_pattern.md');
-      final namespaces = RegExp(
+      final String doc = tree.read('docs/platform_pattern.md');
+      final RegExp namespaces = RegExp(
         r'^(?:app|autostart|dialog|editor|event|hotkey|note|path|shell|tray|widget|window)\.'
         r'[a-zA-Z]+$',
       );
-      final listed = <String>{};
-      for (final line in doc.split('\n')) {
+      final Set<String> listed = <String>{};
+      for (final String line in doc.split('\n')) {
         if (!line.trimLeft().startsWith('|')) continue;
-        for (final m in RegExp(r'`([a-zA-Z]+\.[a-zA-Z]+|bootstrap)`')
+        for (final RegExpMatch m in RegExp(r'`([a-zA-Z]+\.[a-zA-Z]+|bootstrap)`')
             .allMatches(line)) {
-          final name = m.group(1)!;
+          final String name = m.group(1)!;
           if (namespaces.hasMatch(name) || name == 'bootstrap') listed.add(name);
         }
       }
 
-      final missingFromDoc =
+      final List<String> missingFromDoc =
           platformMethodRegistry.difference(listed).toList()..sort();
-      final listedButUndeclared =
+      final List<String> listedButUndeclared =
           listed.difference(platformMethodRegistry).toList()..sort();
 
       expect(
@@ -252,7 +252,7 @@ void main() {
             'They share one MethodChannel, which is why this is checked.',
       );
       expect(
-        inboundEvents.every((e) => e.startsWith('event.')),
+        inboundEvents.every((String e) => e.startsWith('event.')),
         isTrue,
         reason: 'Inbound names are all under event., and that prefix is what '
             'keeps them out of the outbound registry.',
@@ -263,7 +263,7 @@ void main() {
       // Not a fault - a recorded fact. `docs/platform_pattern.md` §4 says why it
       // is acceptable and what would have to change. A test that asserted it was
       // fixed would be claiming a fix that has not happened.
-      final channel = tree.read('lib/core/platform/shell_channel.dart');
+      final String channel = tree.read('lib/core/platform/shell_channel.dart');
       expect(
         channel.contains('static final ShellEvents instance'),
         isTrue,
@@ -282,22 +282,22 @@ void main() {
       // method - the drag arithmetic in `widget_pattern.md` §3.3 reads `anchorX` and
       // `anchorY`, and a typo in either would leave the widget unmovable with no
       // error anywhere.
-      final channel = tree.read('lib/core/platform/shell_channel.dart');
-      final host = tree.read('windows/runner/win_notes_host.cpp');
+      final String channel = tree.read('lib/core/platform/shell_channel.dart');
+      final String host = tree.read('windows/runner/win_notes_host.cpp');
 
-      final orphans = <String>[];
-      var checked = 0;
+      final List<String> orphans = <String>[];
+      int checked = 0;
 
-      for (final method in platformMethodRegistry) {
-        final sent = _dartArgumentKeys(channel, method);
-        final read = _cppArgumentKeys(host, method);
+      for (final String method in platformMethodRegistry) {
+        final Set<String> sent = _dartArgumentKeys(channel, method);
+        final Set<String> read = _cppArgumentKeys(host, method);
         if (sent.isEmpty) continue;
         checked += sent.length;
 
         // A Dart key the runner never reads is the fault. The reverse is not: the
         // runner is allowed to read keys Dart does not send, because every Get* has
         // a fallback and reading an absent key is how that fallback is reached.
-        for (final key in sent.difference(read)) {
+        for (final String key in sent.difference(read)) {
           orphans.add('$method: Dart sends "$key", the runner never reads it');
         }
       }
@@ -324,12 +324,12 @@ void main() {
       // helpers, and anything else reaching `invokeMethod`/`invokeMapMethod`
       // directly re-decides its own failure policy, which is what §3.3 says not to
       // do.
-      final channel = tree.read('lib/core/platform/shell_channel.dart');
+      final String channel = tree.read('lib/core/platform/shell_channel.dart');
 
       // Computed from the same idiom list the parity scanner uses, so the two
       // cannot disagree about what a "direct" call is.
-      final byIdiom = channelMethodNamesByIdiom(tree);
-      final bypassing = <String>{
+      final Map<String, Set<String>> byIdiom = channelMethodNamesByIdiom(tree);
+      final Set<String> bypassing = <String>{
         ...byIdiom['direct']!,
         ...byIdiom['directMap']!,
       };
@@ -369,43 +369,48 @@ Set<String> _dartArgumentKeys(String source, String method) {
   // `app.quit`, `bootstrap` - scans forward into the next call's braces and reports
   // its keys, which is how the first version of this produced the nonsense
   // `app.quit: Dart sends "path"` and had to be thrown away.
-  final opener = RegExp("'$method'\\s*,\\s*\\{").firstMatch(source);
-  if (opener == null) return const {};
+  // An explicit type argument on the literal is allowed and required to match:
+  // `always_specify_types` rewrites `{'id': id}` as `<String, dynamic>{'id': id}`,
+  // and a pattern that stopped at `\{` then found no opener at all. That made
+  // every method report zero keys, which the vacuity precondition below caught.
+  final RegExpMatch? opener =
+      RegExp("'$method'\\s*,\\s*(?:<[^<>]*>)?\\s*\\{").firstMatch(source);
+  if (opener == null) return const <String>{};
 
-  final open = source.indexOf('{', opener.start);
-  final close = source.indexOf('}', open);
-  if (close < 0) return const {};
+  final int open = source.indexOf('{', opener.start);
+  final int close = source.indexOf('}', open);
+  if (close < 0) return const <String>{};
 
   // Flat is not an assumption here, it is checked: every argument map in
   // `shell_channel.dart` is a single level of string keys, which is why scanning to
   // the first `}` is correct rather than merely convenient.
   return RegExp(r"'([A-Za-z_][A-Za-z0-9_]*)'\s*:")
       .allMatches(source.substring(open, close))
-      .map((m) => m.group(1)!)
+      .map((RegExpMatch m) => m.group(1)!)
       .toSet();
 }
 
 /// Argument keys the runner reads for [method], from its handler block.
 Set<String> _cppArgumentKeys(String source, String method) {
-  final start = source.indexOf('if (method == "$method")');
-  if (start < 0) return const {};
+  final int start = source.indexOf('if (method == "$method")');
+  if (start < 0) return const <String>{};
 
   // A handler block runs until the next `if (method ==` or the end of the chain.
   // Every handler in this file is formatted the same way, so that boundary is
   // reliable here in a way it would not be in arbitrary C++.
-  final next = source.indexOf('if (method == "', start + 1);
-  final span = source.substring(start, next < 0 ? source.length : next);
+  final int next = source.indexOf('if (method == "', start + 1);
+  final String span = source.substring(start, next < 0 ? source.length : next);
 
   // Anchored to `args` or `map` - the only two names a handler uses for the
   // argument map. Without that anchor the pattern also matches calls like
   // `GetProcAddress(user32, "...")` elsewhere in the file and invents keys that
   // were never sent.
-  final read = RegExp(
+  final RegExp read = RegExp(
     r'\b(\w+)\(\s*(?:args|map)\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"',
   );
 
-  final keys = <String>{};
-  for (final m in read.allMatches(span)) {
+  final Set<String> keys = <String>{};
+  for (final RegExpMatch m in read.allMatches(span)) {
     keys.add(m.group(2)!);
   }
 
@@ -417,8 +422,8 @@ Set<String> _cppArgumentKeys(String source, String method) {
   // "Dart sends a key the runner never reads", which is false and would have made
   // this guard wrong in the direction that matters most: it would have pushed
   // someone to *delete* a working call to make a red test go green.
-  for (final call in RegExp(r'\b(\w+)\(\s*(?:args|map)\s*\)').allMatches(span)) {
-    final helper = call.group(1)!;
+  for (final RegExpMatch call in RegExp(r'\b(\w+)\(\s*(?:args|map)\s*\)').allMatches(span)) {
+    final String helper = call.group(1)!;
     if (keys.contains(helper)) continue; // a scalar read, already counted
     keys.addAll(_keysReadByHelper(source, helper));
   }
@@ -432,17 +437,17 @@ Set<String> _cppArgumentKeys(String source, String method) {
 /// another helper would need following twice, and there are none. `RectFrom` and
 /// `RoleFrom` are the two that exist, and both read inline.
 Set<String> _keysReadByHelper(String source, String helper) {
-  final def = RegExp('\\b${RegExp.escape(helper)}\\(const flutter::EncodableMap').firstMatch(source);
-  if (def == null) return const {};
+  final RegExpMatch? def = RegExp('\\b${RegExp.escape(helper)}\\(const flutter::EncodableMap').firstMatch(source);
+  if (def == null) return const <String>{};
 
   // From the definition to its closing brace at two-space indent, which is where a
   // free function's body ends in this file.
-  final close = source.indexOf('\n  }', def.start);
-  if (close < 0) return const {};
-  final body = source.substring(def.start, close);
+  final int close = source.indexOf('\n  }', def.start);
+  if (close < 0) return const <String>{};
+  final String body = source.substring(def.start, close);
 
   return RegExp(r'\b\w+\(\s*map\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"')
       .allMatches(body)
-      .map((m) => m.group(1)!)
+      .map((RegExpMatch m) => m.group(1)!)
       .toSet();
 }

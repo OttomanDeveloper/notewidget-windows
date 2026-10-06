@@ -18,7 +18,7 @@ class SourceField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return TextField(
       controller: field,
       focusNode: focusNode,
@@ -33,7 +33,7 @@ class SourceField extends StatelessWidget {
         // Source and preview are side by side, and a proportional font makes the
         // asterisks and hashes hard to line up by eye.
         fontFamily: note.markdown ? 'Consolas' : null,
-        fontFamilyFallback: note.markdown ? const ['monospace'] : null,
+        fontFamilyFallback: note.markdown ? const <String>['monospace'] : null,
         fontSize: note.markdown ? 13.5 : null,
         decoration: note.isCompleted ? TextDecoration.lineThrough : null,
       ),

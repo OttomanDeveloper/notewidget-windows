@@ -18,7 +18,7 @@ class HotkeyBinding {
   final bool enabled;
 
   static const HotkeyBinding defaultBinding =
-      HotkeyBinding(modifiers: ['ctrl', 'alt'], key: 'N');
+      HotkeyBinding(modifiers: <String>['ctrl', 'alt'], key: 'N');
 
   /// Whether this combination can actually be registered. Windows rejects a
   /// hotkey with no modifier, and one with only Win, which the shell keeps for
@@ -35,11 +35,11 @@ class HotkeyBinding {
   String get display {
     if (!enabled) return 'Off';
     if (key.isEmpty) return 'Not set';
-    const order = {'ctrl': 0, 'alt': 1, 'shift': 2, 'win': 3};
-    final sorted = modifiers.toList()
-      ..sort((a, b) => (order[a] ?? 9).compareTo(order[b] ?? 9));
-    final parts = [
-      for (final m in sorted)
+    const Map<String, int> order = <String, int>{'ctrl': 0, 'alt': 1, 'shift': 2, 'win': 3};
+    final List<String> sorted = modifiers.toList()
+      ..sort((String a, String b) => (order[a] ?? 9).compareTo(order[b] ?? 9));
+    final List<String> parts = <String>[
+      for (final String m in sorted)
         switch (m) {
           'ctrl' => 'Ctrl',
           'alt' => 'Alt',
@@ -53,7 +53,7 @@ class HotkeyBinding {
 
   static String _prettyKey(String raw) {
     if (raw.length == 1) return raw.toUpperCase();
-    const named = {
+    const Map<String, String> named = <String, String>{
       'Space': 'Space',
       'Enter': 'Enter',
       'Escape': 'Esc',
@@ -84,7 +84,7 @@ class HotkeyBinding {
         enabled: enabled ?? this.enabled,
       );
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() => <String, dynamic>{
         'modifiers': modifiers,
         'key': key,
         'enabled': enabled,
@@ -94,10 +94,10 @@ class HotkeyBinding {
     Map<String, dynamic> json, {
     HotkeyBinding? fallback,
   }) {
-    final base = fallback ?? defaultBinding;
+    final HotkeyBinding base = fallback ?? defaultBinding;
     final mods = json['modifiers'];
     final key = json['key'];
-    final parsed = HotkeyBinding(
+    final HotkeyBinding parsed = HotkeyBinding(
       modifiers:
           mods is List ? mods.whereType<String>().toList() : base.modifiers,
       key: key is String && key.isNotEmpty ? key : base.key,
@@ -124,7 +124,7 @@ class HotkeyBinding {
 
   bool _sameModifiers(List<String> other) {
     if (other.length != modifiers.length) return false;
-    for (var i = 0; i < modifiers.length; i++) {
+    for (int i = 0; i < modifiers.length; i++) {
       if (other[i] != modifiers[i]) return false;
     }
     return true;

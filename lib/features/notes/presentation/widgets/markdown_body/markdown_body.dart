@@ -36,10 +36,10 @@ class MarkdownBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= previewThreshold;
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool wide = constraints.maxWidth >= previewThreshold;
 
         if (!wide) {
             // One builder over the whole narrow column: an earlier version left the
@@ -47,9 +47,9 @@ class MarkdownBody extends StatelessWidget {
             // the pane and left the label stale (`markdown_test` caught it).
           return ValueListenableBuilder<bool>(
             valueListenable: showsPreview,
-            builder: (context, shows, _) => Column(
+            builder: (BuildContext context, bool shows, _) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+              children: <Widget>[
                 // One or the other, not both: at this width two panes of prose
                 // side by side are two unreadable columns.
                 Expanded(
@@ -64,7 +64,7 @@ class MarkdownBody extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Row(
-                  children: [
+                  children: <Widget>[
                     const SizedBox(width: 2),
                     NarrowPreviewButton(
                       showsPreview: shows,
@@ -79,7 +79,7 @@ class MarkdownBody extends StatelessWidget {
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+          children: <Widget>[
             Expanded(
               child: SourceField(
                 field: field,

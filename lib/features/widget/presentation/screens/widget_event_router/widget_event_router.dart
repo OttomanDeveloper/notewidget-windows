@@ -38,8 +38,8 @@ class WidgetEventRouterState extends ConsumerState<WidgetEventRouter> {
     // See `EditorEventRouter._onEvent`: a `ref` used after unmount throws
     // than being ignored, and an event can arrive during teardown.
     if (!mounted) return;
-    final notifier = ref.read(widgetProvider.notifier);
-    final shell = ref.read(shellProvider);
+    final WidgetNotifier notifier = ref.read(widgetProvider.notifier);
+    final ShellChannel shell = ref.read(shellProvider);
 
     switch (event.kind) {
       case ShellEventKind.hotkey:
@@ -47,7 +47,7 @@ class WidgetEventRouterState extends ConsumerState<WidgetEventRouter> {
         // runner to raise it rather than assuming it exists.
         unawaited(shell.showEditor());
       case ShellEventKind.geometry:
-        final bounds = event.bounds;
+        final NativeBounds? bounds = event.bounds;
         if (bounds != null) notifier.onGeometryChanged(bounds);
       case ShellEventKind.visibility:
         notifier.setWidgetVisibleFromPlatform(visible: event.isVisible);

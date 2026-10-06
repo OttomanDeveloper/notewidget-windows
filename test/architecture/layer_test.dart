@@ -13,11 +13,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'guards.dart';
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('dart:io is confined to utils/ and data/', () {
     test('no file operation appears in presentation, theme or platform/', () {
-      final violations = findFileOperationsOutsideDataLayer(tree);
+      final List<String> violations = findFileOperationsOutsideDataLayer(tree);
 
       expect(
         violations,
@@ -35,7 +35,7 @@ void main() {
       // Without this, the guard above would also pass on an empty tree, or if
       // the regex silently stopped matching. A guard that cannot fail is worse
       // than no guard, because it reads as enforcement.
-      final inDataLayer = RegExp(r'\bFile\s*\(').hasMatch(
+      final bool inDataLayer = RegExp(r'\bFile\s*\(').hasMatch(
         tree.dartFilesUnder('lib/core/utils').values.join('\n') +
             tree.dartFilesUnder('lib/features/notes/data').values.join('\n') +
             tree.dartFilesUnder('lib/features/settings/data').values.join('\n') +
@@ -55,7 +55,7 @@ void main() {
       // go through data/, the fix is to edit this scanner, which shows up in the
       // diff; a list checked-in elsewhere would be a quiet hole. Asserted so
       // that adding one is a deliberate, visible act.
-      final source = File('${tree.root}/test/architecture/guards.dart')
+      final String source = File('${tree.root}/test/architecture/guards.dart')
           .readAsStringSync();
 
       expect(
@@ -70,7 +70,7 @@ void main() {
 
   group('the method channel is reached one way', () {
     test('only platform/ constructs a MethodChannel', () {
-      final violations = findChannelsOutsidePlatform(tree);
+      final List<String> violations = findChannelsOutsidePlatform(tree);
 
       expect(
         violations,
@@ -82,9 +82,9 @@ void main() {
     });
 
     test('every method called from Dart is handled by the runner', () {
-      final called = dartMethodNames(tree);
-      final handled = runnerMethodNames(tree);
-      final missing = called.difference(handled).toList()..sort();
+      final Set<String> called = dartMethodNames(tree);
+      final Set<String> handled = runnerMethodNames(tree);
+      final List<String> missing = called.difference(handled).toList()..sort();
 
       expect(
         called,
@@ -104,8 +104,8 @@ void main() {
       // The first version of this check matched only `_fire`, which made eleven
       // real methods look dead. Both entry points have to be matched, and this
       // is what stops that mistake coming back.
-      final called = dartMethodNames(tree);
-      final handled = runnerMethodNames(tree);
+      final Set<String> called = dartMethodNames(tree);
+      final Set<String> handled = runnerMethodNames(tree);
 
       expect(called.length, greaterThan(15),
           reason: 'Expected well over the 17 _fire methods alone.');

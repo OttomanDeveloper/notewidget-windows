@@ -17,6 +17,8 @@
 - Comments run at most 3 lines; `flutter_rules_guard_test` fails anything longer.
 - `tool/check_architecture.ps1` runs the §9 size and privacy checks outside `flutter test`, and in CI.
 - `widget_surface.dart`, `editor_screen.dart` and `note_editor_pane.dart` are compositions; composer, cards chrome, corrupt screen, app bar and editor sections live in their own folders.
+- `always_specify_types` on, with `omit_local_variable_types` off: 2210 annotations across 112 files.
+- The rest of the rulebook's lints, unchanged.
 - `changelog_guard_test`: fails on an entry longer than one bullet.
 - `docs/provider_pattern.md`, `docs/isolate_pattern.md`, `docs/platform_pattern.md`.
 - `AGENTS.md` section 0.7 to 0.11: no `setState`, no injected dependencies, a `WidgetRef` lifetime rule, a declared channel contract, construction in providers.
@@ -51,6 +53,8 @@
 
 ### Fixed
 
+- `platform_guard_test` read zero argument keys once the maps became `<String, dynamic>{...}`; the scanner now tolerates an explicit type argument.
+- Four `package:riverpod/src/` imports went, by dropping the `ProviderFamily` and `Override` annotations that needed them.
 - The "an empty library shows no widget" check counted one window per process, so it could not fail; it now enumerates by window class and reports a real bug.
 - `docs_test` checked a doc citation only when it had no `/` in it, so the five paths added to the docs index were never verified.
 - A test's wait must outlast the retry ladders it is waiting on; `notes_repository_test.dart` waited 6s where the code can legitimately retry for 5.75s.

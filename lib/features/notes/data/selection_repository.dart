@@ -24,12 +24,12 @@ class SelectionRepository implements ISelectionRepository {
   }
 
   static String? _readFromDisk(String path) {
-    final contents = _syncRead(path);
+    final String? contents = _syncRead(path);
     if (contents == null) return null;
     try {
       final decoded = jsonDecode(contents);
       if (decoded is Map && decoded['noteId'] is String) {
-        final id = decoded['noteId'] as String;
+        final String id = decoded['noteId'] as String;
         return id.isEmpty ? null : id;
       }
     } on FormatException {
@@ -42,7 +42,7 @@ class SelectionRepository implements ISelectionRepository {
   @override
   void setSelection(String? noteId) {
     _cached = noteId;
-    _file.write({'noteId': noteId ?? ''});
+    _file.write(<String, dynamic>{'noteId': noteId ?? ''});
   }
 
   @override
@@ -57,9 +57,9 @@ class SelectionRepository implements ISelectionRepository {
 /// Synchronous read, for the handful of values needed before the first frame.
 String? _syncRead(String path) {
   try {
-    final file = File(path);
+    final File file = File(path);
     if (!file.existsSync()) return null;
-    final text = file.readAsStringSync();
+    final String text = file.readAsStringSync();
     return text.trim().isEmpty ? null : text;
   } on FileSystemException {
     return null;

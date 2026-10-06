@@ -5,11 +5,11 @@ import '../../notes/domain/note.dart';
 /// and the display provider, so the two cannot disagree.
 Note? focusedNoteIn(List<Note> notes, String? selectedId) {
   if (selectedId != null) {
-    for (final note in notes) {
+    for (final Note note in notes) {
       if (note.id == selectedId) return note;
     }
   }
-  for (final note in notes) {
+  for (final Note note in notes) {
     if (!note.isCompleted) return note;
   }
   return notes.isEmpty ? null : notes.first;
@@ -17,10 +17,10 @@ Note? focusedNoteIn(List<Note> notes, String? selectedId) {
 
 /// Notes in display order: most recent first, focused pulled to the top.
 List<Note> displayNotesIn(List<Note> notes, String? selectedId) {
-  final focused = focusedNoteIn(notes, selectedId);
-  if (focused == null) return const [];
-  final rest = notes.where((n) => n.id != focused.id).toList();
-  return [focused, ...rest];
+  final Note? focused = focusedNoteIn(notes, selectedId);
+  if (focused == null) return const <Note>[];
+  final List<Note> rest = notes.where((Note n) => n.id != focused.id).toList();
+  return <Note>[focused, ...rest];
 }
 
 /// Widget position, size, monitor and scroll offset. [dockEdge] records a parked
@@ -69,7 +69,7 @@ class WidgetWindowState {  const WidgetWindowState({
         scrollOffset: scrollOffset ?? this.scrollOffset,
       );
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() => <String, dynamic>{
         'left': left,
         'top': top,
         'width': width,

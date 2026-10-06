@@ -10,8 +10,8 @@ class DetailCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final details = ref.watch(fileDescriptionProvider(error.path));
+    final ThemeData theme = Theme.of(context);
+    final FileDescription? details = ref.watch(fileDescriptionProvider(error.path));
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -22,7 +22,7 @@ class DetailCard extends ConsumerWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Text('File', style: theme.textTheme.labelSmall),
           const SizedBox(height: 2),
           SelectableText(
@@ -33,7 +33,7 @@ class DetailCard extends ConsumerWidget {
           Text('Problem', style: theme.textTheme.labelSmall),
           const SizedBox(height: 2),
           Text(error.reason, style: theme.textTheme.bodySmall),
-          if (details != null) ...[
+          if (details != null) ...<Widget>[
             const SizedBox(height: 12),
             Text(
               '${details.bytes} bytes, last changed '

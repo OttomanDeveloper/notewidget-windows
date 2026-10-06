@@ -24,17 +24,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'guards.dart';
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('state arrives through ref, not through a parameter', () {
     test('no widget holds shared state by constructor parameter', () {
-      final live = injectedStateParamCounts(tree);
+      final Map<String, int> live = injectedStateParamCounts(tree);
 
       expect(
         live,
         isEmpty,
         reason: 'AGENTS.md §0.8. Zero is the only accepted number.\n\n'
-            '${live.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
+            '${live.entries.map((MapEntry<String, int> e) => '  ${e.key}: ${e.value}').join('\n')}\n'
             '    Read it with ref.watch to draw, ref.read to act. A callback may '
             'cross as a parameter; anything that holds state may not.',
       );
@@ -45,7 +45,7 @@ void main() {
       // against text it must match. Every name in the alternation, so a future
       // tightening that drops one is caught here rather than silently narrowing the
       // rule.
-      for (final name in [
+      for (final String name in <String>[
         'controller',
         'shell',
         'settings',
@@ -70,7 +70,7 @@ void main() {
       // The distinction the rule turns on. `this.path` and `this.onTap` are fine:
       // they are data or behaviour, and passing those is what parameters are for.
       // `this.controller` holds state, which is what §0.8 is about.
-      for (final valueParam in [
+      for (final String valueParam in <String>[
         'required this.path',
         'required this.index',
         'required this.onTap',
@@ -105,7 +105,7 @@ void main() {
       // The rule has to leave room for something, or it reads as "no parameters".
       // What it leaves room for is behaviour: `EditorView` takes three callbacks and
       // no state, and that is the shape every widget below the roots should have.
-      final editorView = tree.read('lib/features/notes/presentation/screens/editor_view/editor_view.dart');
+      final String editorView = tree.read('lib/features/notes/presentation/screens/editor_view/editor_view.dart');
 
       expect(
         editorView.contains('final VoidCallback onOpenSettings;'),
@@ -127,14 +127,14 @@ void main() {
     // lands separately; until then the breach is bounded in one direction: a
     // second file over the cap is a red build.
     test('no more provider files are over the cap than are already recorded', () {
-      const cap = 300;
+      const int cap = 300;
 
       // Empty since the notes split: no provider file is over the cap. Kept as
       // a set rather than deleted so the next breach has a named place to go,
       // and the removal half below keeps checking the record is current.
-      const known = <String>{};
+      const Set<String> known = <String>{};
 
-      final over = _filesOverCodeOnlyCap(
+      final Map<String, int> over = _filesOverCodeOnlyCap(
         _providerFiles(tree),
         cap,
       );
@@ -143,7 +143,7 @@ void main() {
         over.keys.toSet().difference(known),
         isEmpty,
         reason: 'A new file is over the $cap-line code-only cap in a providers/ dir.\n'
-            '  over the cap: ${over.entries.map((e) => '${e.key} (${e.value})').join(', ')}\n'
+            '  over the cap: ${over.entries.map((MapEntry<String, int> e) => '${e.key} (${e.value})').join(', ')}\n'
             '  already recorded in AGENTS.md §4: ${(known.toList()..sort()).join(', ')}\n\n'
             'Split it before adding to it. One file over the cap is recorded debt; '
             'two is drift, and the only difference between the two is whether '
@@ -169,7 +169,7 @@ void main() {
       // silently measures nothing is by keying on paths that never match. So this
       // asks for the split files directly rather than trusting the absence in
       // the test above to mean anything.
-      final over = _filesOverCodeOnlyCap(
+      final Map<String, int> over = _filesOverCodeOnlyCap(
         _providerFiles(tree),
         300,
       );
@@ -179,7 +179,7 @@ void main() {
         isEmpty,
         reason: 'precondition: no provider file is over the cap after the split.',
       );
-      for (final split in [
+      for (final String split in <String>[
         'lib/features/notes/presentation/providers/notes_controller.dart',
         'lib/features/notes/presentation/providers/notes_state.dart',
       ]) {
@@ -202,9 +202,9 @@ void main() {
 
 /// Code-only line count per §2: imports, blank lines and comments do not count.
 int _codeOnlyLines(List<String> lines) {
-  var n = 0;
-  for (final line in lines) {
-    final trimmed = line.trimLeft();
+  int n = 0;
+  for (final String line in lines) {
+    final String trimmed = line.trimLeft();
     if (trimmed.isEmpty) continue;
     if (trimmed.startsWith('//')) continue;
     if (trimmed.startsWith('import ') ||
@@ -222,9 +222,9 @@ Map<String, int> _filesOverCodeOnlyCap(
   Map<String, List<String>> files,
   int cap,
 ) {
-  final out = <String, int>{};
-  for (final entry in files.entries) {
-    final lines = _codeOnlyLines(entry.value);
+  final Map<String, int> out = <String, int>{};
+  for (final MapEntry<String, List<String>> entry in files.entries) {
+    final int lines = _codeOnlyLines(entry.value);
     if (lines > cap) out[entry.key] = lines;
   }
   return out;
@@ -233,7 +233,7 @@ Map<String, int> _filesOverCodeOnlyCap(
 /// Every file that may hold a provider: the three feature providers dirs plus
 /// the shared graph in `core/utils`. Narrow on purpose: a screen or widget file
 /// over the cap is a §2 matter, not a provider matter.
-Map<String, List<String>> _providerFiles(SourceTree tree) => {
+Map<String, List<String>> _providerFiles(SourceTree tree) => <String, List<String>>{
       ...tree.dartFilesUnderRelative(
         'lib/features/notes/presentation/providers',
       ),

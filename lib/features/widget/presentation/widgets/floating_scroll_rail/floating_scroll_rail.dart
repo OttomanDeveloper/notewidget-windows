@@ -15,10 +15,10 @@ class FloatingScrollRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return ValueListenableBuilder<double>(
       valueListenable: opacity,
-      builder: (context, value, _) {
+      builder: (BuildContext context, double value, _) {
         if (value <= 0.01) return const SizedBox.shrink();
         return AnimatedOpacity(
           opacity: value,
@@ -31,12 +31,12 @@ class FloatingScrollRail extends StatelessWidget {
                 width: 4,
                 child: ListenableBuilder(
                   listenable: scroll,
-                  builder: (context, _) {
+                  builder: (BuildContext context, _) {
                     if (!scroll.hasClients) return const SizedBox.shrink();
-                    final position = scroll.position;
-                    final total = position.maxScrollExtent + position.viewportDimension;
+                    final ScrollPosition position = scroll.position;
+                    final double total = position.maxScrollExtent + position.viewportDimension;
                     if (total <= 0) return const SizedBox.shrink();
-                    final fraction = position.viewportDimension / total;
+                    final double fraction = position.viewportDimension / total;
                     return Align(
                       alignment: Alignment.topCenter,
                       child: FractionallySizedBox(

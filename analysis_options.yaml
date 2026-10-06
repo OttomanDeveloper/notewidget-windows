@@ -5,6 +5,13 @@
 
 include: package:flutter_lints/flutter.yaml
 
+# riverpod_lint 3.x is a native analysis_server_plugin (not custom_lint).
+# It is enabled via the top-level `plugins:` map below, and pulls in no
+# runtime code. Dev-only: `dependency_guard_test` deliberately does not read
+# `dev_dependencies`, so this cannot widen the approved runtime set.
+plugins:
+  riverpod_lint: ^3.1.3
+
 analyzer:
   exclude:
     - build/**
@@ -25,15 +32,16 @@ linter:
     # the public API of each controller.
     prefer_initializing_formals: false
 
-    # Conflicts with always_specify_types, which is off. See below.
-    omit_local_variable_types: true
+    # Conflicts with always_specify_types, which is on. That is the pair the
+    # rulebook source specifies: one forces a type on every declaration, the
+    # other permits them to be inferred away.
+    omit_local_variable_types: false
 
     # Forces `String x = 'a'` rather than `final x = 'a'` on every local and
-    # field. Off: the codebase leans on `final`/`var` for inference, and
-    # annotating every local makes the widget builders markedly harder to read
-    # for no gain, since the types are already checked. Turn on
-    # always_specify_types first if this is ever reversed.
-    always_specify_types: false
+    # field. On, per the rulebook. It is the widest-reaching rule in the set:
+    # it annotates every declaration in `lib/` and `test/`, so the fix was a
+    # single `dart fix --apply` rather than 600 hand edits.
+    always_specify_types: true
 
     # --- Async and resource correctness ---
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+
 import 'core/utils/app_paths.dart';
 import './features/settings/data/storage_location.dart';
 import './core/platform/shell_channel.dart';
@@ -16,8 +17,8 @@ import './features/widget/presentation/screens/widget_app/widget_app.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final shell = ShellChannel();
-  final launch = await shell.bootstrap();
+  final ShellChannel shell = ShellChannel();
+  final LaunchInfo? launch = await shell.bootstrap();
 
   // No runner means `flutter test`, or a stale build. Either way there is no
   // desktop to put a window on, so a neutral editor keeps the failure visible
@@ -30,7 +31,7 @@ Future<void> main(List<String> args) async {
   // Two steps: reported paths first (settings.json lives there and names the
   // real folder), then real paths. Without the second step the Storage picker
   // saved a path while every file still went to `%APPDATA%\WinNotes`.
-  final reported = AppPaths.resolve(
+  final AppPaths reported = AppPaths.resolve(
     reported: launch.dataDirectory,
     executablePath: launch.executablePath,
     // Read once, from the real environment rather than injected, because this is
@@ -39,7 +40,7 @@ Future<void> main(List<String> args) async {
     environment: Platform.environment,
   );
 
-  final paths = reported.copyWith(
+  final AppPaths paths = reported.copyWith(
     dataDirectory: StorageLocation.resolveDataDirectory(reported),
   );
 

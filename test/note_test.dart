@@ -12,7 +12,7 @@ void main() {
 
   group('Note', () {
     test('a note with nothing in it still exists', () {
-      final note = make(title: '', body: '');
+      final Note note = make(title: '', body: '');
       expect(note.isEmpty, isTrue);
       // isEmpty is informational only. Nothing in the app deletes a note
       // because of it, because clearing the last character of a body is not the
@@ -26,7 +26,7 @@ void main() {
     });
 
     test('search matches title and body, case-insensitively', () {
-      final note = make(title: 'Groceries', body: 'Milk and bread');
+      final Note note = make(title: 'Groceries', body: 'Milk and bread');
       expect(note.contains('groc'), isTrue);
       expect(note.contains('MILK'), isTrue);
       expect(note.contains('and br'), isTrue);
@@ -39,8 +39,8 @@ void main() {
     });
 
     test('survives a JSON round trip', () {
-      final original = make(title: 'Line\nbreak', body: 'tab\there');
-      final restored = Note.fromJson(original.toJson());
+      final Note original = make(title: 'Line\nbreak', body: 'tab\there');
+      final Note restored = Note.fromJson(original.toJson());
       expect(restored.id, original.id);
       expect(restored.title, original.title);
       expect(restored.body, original.body);
@@ -49,28 +49,28 @@ void main() {
     });
 
     test('timestamps are stored in UTC and read back as local', () {
-      final note = make();
-      final json = note.toJson();
+      final Note note = make();
+      final Map<String, dynamic> json = note.toJson();
       expect(json['updatedAt'], endsWith('Z'));
       expect(Note.fromJson(json).updatedAt.isUtc, isFalse);
     });
 
     test('a note missing its id is rejected rather than half-read', () {
       expect(
-        () => Note.fromJson({'title': 'x', 'body': 'y'}),
+        () => Note.fromJson(<String, dynamic>{'title': 'x', 'body': 'y'}),
         throwsA(isA<FormatException>()),
       );
     });
 
     test('missing or malformed fields fall back to empty, not a crash', () {
-      final note = Note.fromJson({'id': 'n9'});
+      final Note note = Note.fromJson(<String, dynamic>{'id': 'n9'});
       expect(note.title, '');
       expect(note.body, '');
     });
 
     test('copy is a deep enough copy to restore an undo', () {
-      final original = make();
-      final changed = original.copyWith(title: 'changed', body: 'changed');
+      final Note original = make();
+      final Note changed = original.copyWith(title: 'changed', body: 'changed');
       expect(original.title, 't');
       expect(original.body, 'b');
       expect(changed.title, 'changed');
@@ -85,9 +85,9 @@ void main() {
     });
 
     test('survives a JSON round trip with the time it was finished', () {
-      final original =
+      final Note original =
           make().copyWith(completedAt: DateTime(2026, 3, 4, 5, 6, 7));
-      final restored = Note.fromJson(original.toJson());
+      final Note restored = Note.fromJson(original.toJson());
 
       expect(restored.isCompleted, isTrue);
       // Compared in UTC against the original's own UTC value rather than a
@@ -105,7 +105,7 @@ void main() {
 
     test('a file written before this field existed reads as unfinished', () {
       // The upgrade path, in full: no key, no crash, nothing finished.
-      final restored = Note.fromJson({
+      final Note restored = Note.fromJson(<String, dynamic>{
         'id': 'old',
         'title': 'Written last year',
         'body': 'x',
@@ -118,7 +118,7 @@ void main() {
     test('an unparseable completion time reads as unfinished', () {
       // The same rule as every other field here: a bad value must not be able to
       // make a note un-openable.
-      final restored = Note.fromJson({
+      final Note restored = Note.fromJson(<String, dynamic>{
         'id': 'n',
         'title': 't',
         'body': 'b',
@@ -131,7 +131,7 @@ void main() {
 
     test('copy carries the finished state, because undo restores a whole note',
         () {
-      final original =
+      final Note original =
           make().copyWith(completedAt: DateTime(2026, 3, 4));
       expect(original.copy().isCompleted, isTrue);
     });
@@ -139,9 +139,9 @@ void main() {
 
   group('NoteIdFactory', () {
     test('ids are unique', () {
-      final factory = NoteIdFactory();
-      final ids = <String>{};
-      for (var i = 0; i < 5000; i++) {
+      final NoteIdFactory factory = NoteIdFactory();
+      final Set<String> ids = <String>{};
+      for (int i = 0; i < 5000; i++) {
         ids.add(factory.next());
       }
       expect(ids.length, 5000);
@@ -149,8 +149,8 @@ void main() {
 
     test('ids do not contain characters that break a path or a JSON string',
         () {
-      final factory = NoteIdFactory();
-      for (var i = 0; i < 200; i++) {
+      final NoteIdFactory factory = NoteIdFactory();
+      for (int i = 0; i < 200; i++) {
         expect(factory.next(), matches(RegExp(r'^[a-z0-9-]+$')));
       }
     });

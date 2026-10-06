@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/core/platform/shell_channel.dart';
+import 'package:win_notes/core/utils/app_paths.dart';
 
 import '../../../../../core/utils/app_providers.dart';
 import '../../../domain/note.dart';
@@ -26,10 +28,10 @@ class EditorHome extends ConsumerWidget {
 /// Opens the settings dialog with the context below the `MaterialApp`, where
 /// `showDialog` has somewhere to go (no `GlobalKey` needed).
 Future<void> openSettings(BuildContext context, WidgetRef ref) async {
-  final paths = ref.read(appPathsProvider);
+  final AppPaths paths = ref.read(appPathsProvider);
   await showDialog<void>(
     context: context,
-    builder: (context) => SettingsDialog(
+    builder: (BuildContext context) => SettingsDialog(
       defaultDataDirectory: paths.defaultStorageDirectory,
     ),
   );
@@ -39,14 +41,14 @@ Future<void> openSettings(BuildContext context, WidgetRef ref) async {
 Future<void> exportNotes(BuildContext context, WidgetRef ref) async {
     // Captured before the first await: no ScaffoldMessenger exists above this
     // MaterialApp (so `of(context)` throws), and a post-await context may be gone.
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  final shell = ref.read(shellProvider);
-  final notes = ref.read(notesProvider).value;
+  final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
+  final ShellChannel shell = ref.read(shellProvider);
+  final NotesState? notes = ref.read(notesProvider).value;
 
-  final stamp = DateTime.now().toIso8601String().substring(0, 19).replaceAll(':', '-');
-  final path = await shell.saveFile(suggestedName: 'winnotes-backup-$stamp.txt');
+  final String stamp = DateTime.now().toIso8601String().substring(0, 19).replaceAll(':', '-');
+  final String? path = await shell.saveFile(suggestedName: 'winnotes-backup-$stamp.txt');
   if (path == null || !context.mounted) return;
-  await const BackupService().exportTo(path, notes?.notes ?? const []);
+  await const BackupService().exportTo(path, notes?.notes ?? const <Note>[]);
   messenger?.showSnackBar(
     SnackBar(content: Text('Exported ${notes?.notes.length ?? 0} notes.')),
   );
@@ -54,13 +56,13 @@ Future<void> exportNotes(BuildContext context, WidgetRef ref) async {
 
 /// Reads a plain-text backup back in, with a confirmation before it merges.
 Future<List<Note>?> importNotes(BuildContext context, WidgetRef ref) async {
-  final shell = ref.read(shellProvider);
-  final notes = ref.read(notesProvider.notifier);
+  final ShellChannel shell = ref.read(shellProvider);
+  final NotesNotifier notes = ref.read(notesProvider.notifier);
 
-  final path = await shell.pickFile();
+  final String? path = await shell.pickFile();
   if (path == null) return null;
 
-  final incoming = await const BackupService().readFrom(path);
+  final List<Note>? incoming = await const BackupService().readFrom(path);
   if (incoming == null) return null;
 
   if (notes.hasReadOnlyFile) {
@@ -72,7 +74,7 @@ Future<List<Note>?> importNotes(BuildContext context, WidgetRef ref) async {
     // Guarded on `context.mounted` rather than left bare: the dialog is an await,
     // and this widget can be torn down inside it.
     if (!context.mounted) return incoming;
-    final merge = await _confirmMerge(context, incoming.length);
+    final bool merge = await _confirmMerge(context, incoming.length);
     if (merge) {
       notes.merge(incoming);
     }
@@ -81,15 +83,15 @@ Future<List<Note>?> importNotes(BuildContext context, WidgetRef ref) async {
 }
 
 Future<bool> _confirmMerge(BuildContext context, int count) async {
-  final result = await showDialog<bool>(
+  final bool? result = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (BuildContext context) => AlertDialog(
       title: Text('Add $count notes?'),
       content: const Text(
         'The imported notes are added alongside the ones you already have. '
         'Nothing existing is replaced.',
       ),
-      actions: [
+      actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Cancel'),

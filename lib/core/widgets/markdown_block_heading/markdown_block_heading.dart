@@ -22,9 +22,9 @@ class MarkdownBlockHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final level = int.tryParse(node.tag.substring(1)) ?? 1;
-    final step = 1 - ((level - 1) * 0.11).clamp(0.0, 1.0);
-    final size = (style.metrics.body * style.metrics.headingScale * step)
+    final int level = int.tryParse(node.tag.substring(1)) ?? 1;
+    final double step = 1 - ((level - 1) * 0.11).clamp(0.0, 1.0);
+    final double size = (style.metrics.body * style.metrics.headingScale * step)
         .clamp(style.metrics.body * style.metrics.minHeadingScale, 40.0)
         .toDouble();
 

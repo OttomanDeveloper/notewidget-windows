@@ -16,7 +16,7 @@ class MarkdownRichText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Text.rich(
+    final Text text = Text.rich(
       span,
       maxLines: maxLines,
       overflow: maxLines == null ? TextOverflow.clip : TextOverflow.ellipsis,

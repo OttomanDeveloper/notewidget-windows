@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/core/platform/shell_channel.dart';
+import 'package:win_notes/features/notes/domain/repositories.dart';
 
 import '../../../../../core/utils/app_providers.dart';
 import '../../../domain/note.dart';
@@ -48,13 +50,13 @@ class _EditorViewState extends ConsumerState<EditorView> {
     // Narrowed to the two fields this screen branches on. Every keystroke used
     // to rebuild the Scaffold, both panes and the AppBar; now only a load or a
     // corrupt file does.
-    final notes = ref.watch(
-      notesProvider.select((v) => (v.hasValue, v.value?.corrupt)),
+    final (bool, CorruptDataFileError?) notes = ref.watch(
+      notesProvider.select((AsyncValue<NotesState> v) => (v.hasValue, v.value?.corrupt)),
     );
-    final shell = ref.read(shellProvider);
-    final notifier = ref.read(notesProvider.notifier);
+    final ShellChannel shell = ref.read(shellProvider);
+    final NotesNotifier notifier = ref.read(notesProvider.notifier);
 
-    final corrupt = notes.$2;
+    final CorruptDataFileError? corrupt = notes.$2;
     if (corrupt != null) {
       return CorruptNotesScreen(
         error: corrupt,
@@ -75,13 +77,13 @@ class _EditorViewState extends ConsumerState<EditorView> {
     }
 
     return LayoutBuilder(
-      builder: (context, constraints) {
-        final narrow = constraints.maxWidth < EditorView._narrowBreakpoint;
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool narrow = constraints.maxWidth < EditorView._narrowBreakpoint;
 
         return ValueListenableBuilder<bool>(
           valueListenable: _showListOnNarrow,
-          builder: (context, showListOnNarrow, _) {
-            final showList = !narrow || showListOnNarrow;
+          builder: (BuildContext context, bool showListOnNarrow, _) {
+            final bool showList = !narrow || showListOnNarrow;
             return Scaffold(
               appBar: EditorAppBar(
                 narrow: narrow,
@@ -103,7 +105,7 @@ class _EditorViewState extends ConsumerState<EditorView> {
                       onBack: () => _showListOnNarrow.value = true,
                     )
                   : Row(
-                      children: [
+                      children: <Widget>[
                         SizedBox(
                           width: 300,
                           child: NoteListPane(

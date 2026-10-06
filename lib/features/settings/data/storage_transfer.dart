@@ -69,7 +69,7 @@ class StorageTransfer {
     // Refuse *before* writing anything, and only if there is real content in the way.
     // An empty or absent file is not a library and is not worth a refusal - somebody
     // choosing a folder that once held a stray notes.json should not be blocked by it.
-    final destinationNotes = File(to.notesFile);
+    final File destinationNotes = File(to.notesFile);
     if (destinationNotes.existsSync() &&
         destinationNotes.lengthSync() > 0 &&
         !await _isEmptyDocument(destinationNotes)) {
@@ -78,8 +78,8 @@ class StorageTransfer {
 
     // Flush every source file first. A write still sitting in the debounce window is
     // a keystroke that would be copied as it was before the last few characters.
-    for (final name in fileNames) {
-      final source = File(_join(from.dataDirectory, name));
+    for (final String name in fileNames) {
+      final File source = File(_join(from.dataDirectory, name));
       if (!source.existsSync()) continue;
       await _copyReplacing(source, File(_join(to.dataDirectory, name)));
     }
@@ -100,9 +100,9 @@ class StorageTransfer {
 
   static Future<bool> _isEmptyDocument(File file) async {
     try {
-      final text = file.readAsStringSync().trim();
+      final String text = file.readAsStringSync().trim();
       if (text.isEmpty) return true;
-      final notes = notesArray.firstMatch(text);
+      final RegExpMatch? notes = notesArray.firstMatch(text);
       if (notes == null) return false;
       return notes.group(1)!.trim().isEmpty;
     } catch (_) {
@@ -115,7 +115,7 @@ class StorageTransfer {
   /// half-finished copy never presents itself as a complete file, and so a failure
   /// part way through leaves the old file rather than nothing.
   static Future<void> _copyReplacing(File from, File to) async {
-    final temporary = File('${to.path}.copying');
+    final File temporary = File('${to.path}.copying');
     if (temporary.existsSync()) temporary.deleteSync();
     await from.copy(temporary.path);
     if (to.existsSync()) to.deleteSync();

@@ -25,7 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'guards.dart';
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('the icon file itself', () {
     test('app_icon.ico is where the runner expects it', () {
@@ -63,15 +63,15 @@ void main() {
       // and draws as a blank square in a Start Menu list. 16, 32, 48 and 256 are what
       // Inno's own documentation asks a setup icon to include; 64 is what the shell
       // reaches for in between.
-      final bytes = tree.readBytes('windows/runner/resources/app_icon.ico');
+      final List<int> bytes = tree.readBytes('windows/runner/resources/app_icon.ico');
       expect(bytes.length, greaterThan(6), reason: 'precondition: a real .ico');
 
-      final count = bytes[4] | (bytes[5] << 8);
+      final int count = bytes[4] | (bytes[5] << 8);
       expect(count, greaterThan(0), reason: 'precondition: it declares frames');
 
-      final sizes = <int>{};
-      for (var i = 0; i < count; i++) {
-        final o = 6 + i * 16;
+      final Set<int> sizes = <int>{};
+      for (int i = 0; i < count; i++) {
+        final int o = 6 + i * 16;
         if (o + 16 > bytes.length) break;
         // 0 means 256 in an .ico directory entry - the field is one byte wide, so the
         // encoding is "0 or it did not fit", which is worth spelling out rather than
@@ -79,11 +79,11 @@ void main() {
         sizes.add(bytes[o] == 0 ? 256 : bytes[o]);
       }
 
-      const wanted = <int>[16, 32, 48, 64, 256];
+      const List<int> wanted = <int>[16, 32, 48, 64, 256];
       expect(
         sizes,
         containsAll(wanted),
-        reason: 'missing ${wanted.where((s) => !sizes.contains(s)).toList()}'
+        reason: 'missing ${wanted.where((int s) => !sizes.contains(s)).toList()}'
             ' - a valid .ico without these draws blank where it matters most',
       );
     });
@@ -95,7 +95,7 @@ void main() {
       // writes `resources\\app_icon.ico`; a single-backslash regex finds nothing and
       // reports an icon that is there as missing. That is this repo's most repeated
       // trap, and it has now caught the verifier as well as the verifier's author.
-      final rc = tree.read('windows/runner/Runner.rc');
+      final String rc = tree.read('windows/runner/Runner.rc');
       expect(
         rc,
         matches(RegExp(r'ICON\s+"resources\\\\app_icon\.ico"')),
@@ -168,9 +168,9 @@ void main() {
       // Two shortcuts: the Start Menu entry and the optional desktop one. Naming the
       // installed file means they keep the logo even if the exe's embedded resource is
       // ever lost, instead of degrading to a blank square at the same moment.
-      final named =
+      final int named =
           RegExp(r'^Name:.*IconFilename:', multiLine: true).allMatches(iss).length;
-      final shortcuts =
+      final int shortcuts =
           RegExp(r'^Name:\s*"\{', multiLine: true).allMatches(iss).length;
       expect(
         shortcuts,

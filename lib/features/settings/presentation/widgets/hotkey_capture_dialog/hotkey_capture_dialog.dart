@@ -27,7 +27,7 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
   // Modifier keys, as a plain final Set rather than a const one:
   // LogicalKeyboardKey overrides == and hashCode, which Dart forbids in a
   // constant set.
-  final Set<LogicalKeyboardKey> _allowed = {
+  final Set<LogicalKeyboardKey> _allowed = <LogicalKeyboardKey>{
     LogicalKeyboardKey.control,
     LogicalKeyboardKey.controlLeft,
     LogicalKeyboardKey.controlRight,
@@ -43,7 +43,7 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
   };
 
   KeyEventResult _handle(KeyEvent event) {
-    final key = event.logicalKey;
+    final LogicalKeyboardKey key = event.logicalKey;
 
     if (event is KeyDownEvent) {
       if (key == LogicalKeyboardKey.escape) {
@@ -51,7 +51,7 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
         return KeyEventResult.handled;
       }
       if (_allowed.contains(key)) {
-        final name = switch (key) {
+        final String name = switch (key) {
           LogicalKeyboardKey.control ||
           LogicalKeyboardKey.controlLeft ||
           LogicalKeyboardKey.controlRight =>
@@ -67,7 +67,7 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
           _ => 'win',
         };
         // Which physical modifier is held does not matter; only which ones.
-        final next = {..._pending.value.modifiers};
+        final Set<String> next = <String>{..._pending.value.modifiers};
         if (next.contains(name)) {
           next.remove(name);
         } else {
@@ -77,12 +77,12 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
         return KeyEventResult.handled;
       }
 
-      final character = event.character;
+      final String? character = event.character;
       if (character != null && character.isNotEmpty) {
         _pending.value = _pending.value.copyWith(key: character);
         return KeyEventResult.handled;
       }
-      final named = _nameFor(key);
+      final String? named = _nameFor(key);
       if (named != null) {
         _pending.value = _pending.value.copyWith(key: named);
         return KeyEventResult.handled;
@@ -92,7 +92,7 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
   }
 
   static String? _nameFor(LogicalKeyboardKey key) {
-    final label = key.keyLabel;
+    final String label = key.keyLabel;
     if (label.isEmpty) return null;
     // Single printable characters arrive with no character but do have a label.
     if (label.length == 1) return label;
@@ -122,25 +122,25 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
       // The draft, read through a listener: the first version read it bare, so the
       // dialog kept showing the combination it opened with (`no_set_state_test` caught
       // it; key events are not tappable by tests).
     return ListenableBuilder(
       listenable: _pending,
-      builder: (context, _) {
-        final registrable = _pending.value.isRegistrable;
+      builder: (BuildContext context, _) {
+        final bool registrable = _pending.value.isRegistrable;
 
         return AlertDialog(
 
       title: const Text('Set the shortcut'),
       content: Focus(
         autofocus: true,
-        onKeyEvent: (node, event) => _handle(event),
+        onKeyEvent: (FocusNode node, KeyEvent event) => _handle(event),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          children: <Widget>[
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 22),
@@ -177,7 +177,7 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
           ],
         ),
       ),
-      actions: [
+      actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),

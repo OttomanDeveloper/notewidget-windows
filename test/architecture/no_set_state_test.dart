@@ -25,17 +25,17 @@ import 'guards.dart';
 
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('no setState, no excuse', () {
     test('lib/ has no setState calls at all', () {
-      final live = setStateCounts(tree);
+      final Map<String, int> live = setStateCounts(tree);
 
       expect(
         live,
         isEmpty,
         reason: 'AGENTS.md §0.7. Zero is the only accepted number.\n\n'
-            '${live.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
+            '${live.entries.map((MapEntry<String, int> e) => '  ${e.key}: ${e.value}').join('\n')}\n'
             '    State that outlives the widget belongs in a provider; state that '
             'is true for one frame belongs in a ValueNotifier read by a '
             'ValueListenableBuilder. There is no third option.',
@@ -69,8 +69,8 @@ void main() {
       // Naming them is what stops the ban being satisfied by inventing a third
       // mechanism: a hand-rolled InheritedWidget, a global variable, a
       // StreamBuilder. Every rebuild in lib/ is now one of these two.
-      final notifiers = countPerFile(tree, 'lib', r'ValueNotifier<');
-      final providers = countPerFile(tree, 'lib', r'ref\.watch\(|ref\.listen\(');
+      final Map<String, int> notifiers = countPerFile(tree, 'lib', r'ValueNotifier<');
+      final Map<String, int> providers = countPerFile(tree, 'lib', r'ref\.watch\(|ref\.listen\(');
 
       expect(notifiers, isNotEmpty, reason: 'the ValueNotifier half is in use');
       expect(providers, isNotEmpty, reason: 'the provider half is in use');
@@ -99,18 +99,18 @@ void main() {
       // contain something that listens to one. It cannot prove *which* notifier is
       // wired, and it is not claiming to - it is claiming that the replacement for
       // `setState` was used as a replacement, rather than as a field.
-      final declares = <String, int>{};
-      for (final layer in ['lib/features', 'lib/core/widgets']) {
-        for (final entry in countPerFile(tree, layer, r'\bValueNotifier<').entries) {
+      final Map<String, int> declares = <String, int>{};
+      for (final String layer in <String>['lib/features', 'lib/core/widgets']) {
+        for (final MapEntry<String, int> entry in countPerFile(tree, layer, r'\bValueNotifier<').entries) {
           declares[entry.key] = (declares[entry.key] ?? 0) + entry.value;
         }
       }
       expect(declares, isNotEmpty, reason: 'precondition: the pattern is in use');
 
-      final silent = <String, String>{};
-      for (final path in declares.keys) {
-        final source = tree.read(path);
-        final listens =
+      final Map<String, String> silent = <String, String>{};
+      for (final String path in declares.keys) {
+        final String source = tree.read(path);
+        final bool listens =
             RegExp(r'ValueListenableBuilder|ListenableBuilder|Listenable\.merge|\.addListener\(')
                 .hasMatch(source);
         if (!listens) silent[path] = '${declares[path]} notifier(s), no listener';
@@ -121,7 +121,7 @@ void main() {
         isEmpty,
         reason: 'These declare a `ValueNotifier` and never listen to one, so nothing '
             'they write can ever reach the screen:\n\n'
-            '${silent.entries.map((e) => '  ${e.key}: ${e.value}').join('\n')}\n'
+            '${silent.entries.map((MapEntry<String, String> e) => '  ${e.key}: ${e.value}').join('\n')}\n'
             '    A `setState` rebuilds as a side effect of holding. A `ValueNotifier` '
             'does not - it needs a `ValueListenableBuilder`, a `ListenableBuilder`, '
             'or an `addListener`, and the symptom of forgetting is silence.',

@@ -8,7 +8,7 @@ class MarkdownNodes {
   /// Whether [node] groups with the one before it.
   static bool isLoose(md.Node node) {
     if (node is! md.Element) return false;
-    const grouping = {'li', 'p', 'pre', 'blockquote'};
+    const Set<String> grouping = <String>{'li', 'p', 'pre', 'blockquote'};
     return grouping.contains(node.tag);
   }
 
@@ -20,10 +20,10 @@ class MarkdownNodes {
   /// A quote's children. A quote holding one paragraph is that paragraph rather
   /// than a nested column with a gap in it.
   static List<md.Node> childBlocks(md.Element node) {
-    final children = node.children ?? const <md.Node>[];
-    final elements = children.whereType<md.Element>().toList();
+    final List<md.Node> children = node.children ?? const <md.Node>[];
+    final List<md.Element> elements = children.whereType<md.Element>().toList();
     if (elements.length == 1 && elements.first.tag == 'p') {
-      return [elements.first];
+      return <md.Node>[elements.first];
     }
     return children;
   }
@@ -31,14 +31,14 @@ class MarkdownNodes {
   /// Nested levels get a different glyph. The same bullet three levels deep
   /// reads as three siblings, which is the whole thing indentation is for.
   static String bulletAt(int depth) {
-    const glyphs = ['•', '◦', '‣'];
+    const List<String> glyphs = <String>['•', '◦', '‣'];
     return glyphs[depth % glyphs.length];
   }
 
   /// `[ ]` / `[x]` as a leading `<input type="checkbox">`, or null.
   /// Read the element, not the literal `[`: the parser consumes the brackets.
   static String? taskOf(md.Element item) {
-    for (final child in item.children ?? const <md.Node>[]) {
+    for (final md.Node child in item.children ?? const <md.Node>[]) {
       if (child is md.Element && child.tag == 'input') {
         return child.attributes['checked'] == 'true' ? '☑' : '☐';
       }
@@ -47,9 +47,9 @@ class MarkdownNodes {
   }
 
   static String languageOf(md.Element node) {
-    for (final child in node.children ?? const <md.Node>[]) {
+    for (final md.Node child in node.children ?? const <md.Node>[]) {
       if (child is md.Element) {
-        final cls = child.attributes['class'];
+        final String? cls = child.attributes['class'];
         if (cls != null && cls.startsWith('language-')) {
           return cls.substring('language-'.length);
         }

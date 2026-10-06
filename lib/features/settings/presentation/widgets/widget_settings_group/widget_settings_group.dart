@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../providers/settings_controller.dart';
 import '../settings_group/settings_group.dart';
@@ -15,27 +16,27 @@ class WidgetSettingsGroup extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Only the two switches this group draws.
-    final settings = ref.watch(
+    final (bool, bool) settings = ref.watch(
       settingsProvider.select(
-        (v) => (
+        (AsyncValue<SettingsState> v) => (
           v.value?.settings.alwaysOnTop ?? true,
           v.value?.settings.widgetPositionLocked ?? false,
         ),
       ),
     );
-    final alwaysOnTop = settings.$1;
-    final positionLocked = settings.$2;
-    final controller = ref.read(settingsProvider.notifier);
+    final bool alwaysOnTop = settings.$1;
+    final bool positionLocked = settings.$2;
+    final SettingsNotifier controller = ref.read(settingsProvider.notifier);
     return SettingsGroup(
       title: 'Widget',
-      children: [
+      children: <Widget>[
         SettingsRow(
           label: 'Keep the widget above other windows',
           description: 'A note that cannot be seen is not a note.',
           trailing: Switch(
             value: alwaysOnTop,
-            onChanged: (value) =>
-                controller.apply((s) => s.copyWith(alwaysOnTop: value)),
+            onChanged: (bool value) =>
+                controller.apply((WinNotesSettings s) => s.copyWith(alwaysOnTop: value)),
           ),
         ),
         const SettingsSeparator(),
@@ -50,8 +51,8 @@ class WidgetSettingsGroup extends ConsumerWidget {
                   'it. Turn this on to stop an accidental drag moving it.',
           trailing: Switch(
             value: positionLocked,
-            onChanged: (value) => controller.apply(
-              (s) => s.copyWith(widgetPositionLocked: value),
+            onChanged: (bool value) => controller.apply(
+              (WinNotesSettings s) => s.copyWith(widgetPositionLocked: value),
             ),
           ),
         ),

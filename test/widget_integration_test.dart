@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:win_notes/core/utils/atomic_json_file.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
 import 'package:win_notes/core/widgets/completion_toggle/completion_toggle.dart';
 import 'package:win_notes/core/theme/theme.dart';
@@ -47,7 +48,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel('dev.winnotes/shell'),
-      (call) async => null,
+      (MethodCall call) async => null,
     );
     harness = TestHarness.build(isWidgetSurface: true);
   });
@@ -74,7 +75,7 @@ void main() {
   ///
   /// One place to say it instead.
   Future<T> real<T>(WidgetTester tester, Future<T> Function() body) async {
-    final result = await tester.runAsync(body);
+    final Object? result = await tester.runAsync<T>(body);
     // Tested rather than asserted with `!`, which the analyzer rejects on a `T` that
     // could be instantiated as `void` - and `T` is `void` for any callback whose
     // result nobody reads.
@@ -98,12 +99,12 @@ void main() {
     List<Note> notes, {
     Future<void> Function(SettingsNotifier)? tweakSettings,
   }) async {
-    final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
+    final NotesRepository repo = NotesRepository(AtomicJsonFile(harness.notesFile));
     await repo.saveNow(notes);
 
     // Settings first: `widgetPositionLocked` reaches the surface as state, and the
     // window configuration the notifier sends on build has to already reflect it.
-    final settings = await harness.settings();
+    final SettingsNotifier settings = await harness.settings();
     await tweakSettings?.call(settings);
 
     await harness.widgetState();
@@ -141,9 +142,9 @@ void main() {
   }
 
   testWidgets('renders a scrolling list of every note without throwing',
-      (tester) async {
+      (WidgetTester tester) async {
     await real(tester,
-      () => makeController(tester, [
+      () => makeController(tester, <Note>[
         note('a', 'Groceries', 'Milk, sourdough\nCheck the bike light'),
         note('b', 'Reading list', 'The Design of Everyday Things', minute: -5),
         note('c', 'Ideas', 'Widget per monitor?', minute: -12),
@@ -162,9 +163,9 @@ void main() {
   });
 
   testWidgets('the most recent note is the focused, large card',
-      (tester) async {
-    final controller = await real(tester, 
-      () => makeController(tester, [
+      (WidgetTester tester) async {
+    final WidgetNotes controller = await real(tester, 
+      () => makeController(tester, <Note>[
         note('old', 'Older note', 'written earlier', minute: -30),
         note('new', 'Newest note', 'written last', minute: 0),
       ]),
@@ -173,18 +174,18 @@ void main() {
     await pumpSurface(tester, width: 360, height: 420);
 
     expect(controller.focusedNote!.id, 'new');
-    final cards =
+    final Iterable<WidgetNoteCard> cards =
         tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
     expect(cards.first.focused, isTrue);
     expect(cards.first.roomy, isTrue);
     expect(cards.first.noteId, 'new');
-    expect(cards.skip(1).every((c) => !c.roomy || !c.focused), isTrue);
+    expect(cards.skip(1).every((WidgetNoteCard c) => !c.roomy || !c.focused), isTrue);
   });
 
   testWidgets('selecting an older note from the widget makes it focused',
-      (tester) async {
-    final controller = await real(tester, 
-      () => makeController(tester, [
+      (WidgetTester tester) async {
+    final WidgetNotes controller = await real(tester, 
+      () => makeController(tester, <Note>[
         note('old', 'Older note', 'written earlier', minute: -30),
         note('new', 'Newest note', 'written last', minute: 0),
       ]),
@@ -205,16 +206,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(controller.focusedNote!.id, 'old');
-    final cards =
+    final Iterable<WidgetNoteCard> cards =
         tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
     expect(cards.first.noteId, 'old');
     expect(cards.first.focused, isTrue);
   });
 
   testWidgets('falls back to compact cards when the widget is small',
-      (tester) async {
+      (WidgetTester tester) async {
     await real(tester,
-      () => makeController(tester, [
+      () => makeController(tester, <Note>[
         note('a', 'Groceries', 'a body long enough to need several lines'),
       ]),
     );
@@ -223,15 +224,15 @@ void main() {
     await pumpSurface(tester, width: 150, height: 140);
 
     expect(tester.takeException(), isNull);
-    final cards =
+    final Iterable<WidgetNoteCard> cards =
         tester.widgetList<WidgetNoteCard>(find.byType(WidgetNoteCard));
     expect(cards.single.roomy, isFalse);
   });
 
   testWidgets('shows a quiet line rather than crashing when notes vanish',
-      (tester) async {
-    final controller = await real(tester, 
-      () => makeController(tester, [note('a', 'Only note', 'text')]),
+      (WidgetTester tester) async {
+    final WidgetNotes controller = await real(tester, 
+      () => makeController(tester, <Note>[note('a', 'Only note', 'text')]),
     );
 
     await pumpSurface(tester, width: 360, height: 420);
@@ -248,10 +249,10 @@ void main() {
     expect(find.text('No notes'), findsOneWidget);
   });
 
-  testWidgets('a list too long for the widget scrolls', (tester) async {
-    final controller = await real(tester, 
-      () => makeController(tester, [
-        for (var i = 0; i < 30; i++)
+  testWidgets('a list too long for the widget scrolls', (WidgetTester tester) async {
+    final WidgetNotes controller = await real(tester, 
+      () => makeController(tester, <Note>[
+        for (int i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
@@ -270,7 +271,7 @@ void main() {
     // cannot run under this test's fake clock. Everything from here to the end
     // of the test happens inside one real-async block so those writes can
     // actually complete; pumping inside it would use the fake clock again.
-    final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+    final ScrollableState scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
     await tester.runAsync(() async {
       scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
       // Past both the 250ms trailing debounce and the 1500ms write ceiling.
@@ -286,22 +287,22 @@ void main() {
     expect(find.text('Note 0'), findsNothing);
   });
 
-  testWidgets('the position lock reaches the runner', (tester) async {
+  testWidgets('the position lock reaches the runner', (WidgetTester tester) async {
     // The switch is only worth having if it changes what the native window
     // does, so this checks the payload the runner actually receives rather than
     // the Dart field that produced it.
-    final calls = <MethodCall>[];
+    final List<MethodCall> calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel('dev.winnotes/shell'),
-      (call) async {
+      (MethodCall call) async {
         if (call.method == 'widget.configure') calls.add(call);
         return null;
       },
     );
 
     await real(tester,
-      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
     );
 
     expect(calls, isNotEmpty, reason: 'the widget never configured itself');
@@ -316,13 +317,13 @@ void main() {
     await real(tester,
       () => makeController(
         tester,
-        [note('a', 'Groceries', 'milk')],
-        tweakSettings: (s) =>
-            s.apply((v) => v.copyWith(widgetPositionLocked: false)),
+        <Note>[note('a', 'Groceries', 'milk')],
+        tweakSettings: (SettingsNotifier s) =>
+            s.apply((WinNotesSettings v) => v.copyWith(widgetPositionLocked: false)),
       ),
     );
 
-    final configures = calls.where((c) => c.method == 'widget.configure').toList();
+    final List<MethodCall> configures = calls.where((MethodCall c) => c.method == 'widget.configure').toList();
     expect(
       (configures.last.arguments as Map)['positionLocked'],
       isFalse,
@@ -331,16 +332,16 @@ void main() {
   });
 
   testWidgets('a refused drag explains itself instead of doing nothing',
-      (tester) async {
+      (WidgetTester tester) async {
     // The bug this guards: locked, the native window reports HTCLIENT, the drag
     // never starts, and nothing at all happens. Someone dragging a locked
     // widget has no way to tell the lock is why.
     await real(tester,
       () => makeController(
         tester,
-        [note('a', 'Groceries', 'milk')],
-        tweakSettings: (s) =>
-            s.apply((v) => v.copyWith(widgetPositionLocked: true)),
+        <Note>[note('a', 'Groceries', 'milk')],
+        tweakSettings: (SettingsNotifier s) =>
+            s.apply((WinNotesSettings v) => v.copyWith(widgetPositionLocked: true)),
       ),
     );
 
@@ -348,7 +349,7 @@ void main() {
     expect(find.textContaining('Locked in place'), findsNothing,
         reason: 'the hint must not appear before anyone has tried to drag');
 
-    final gesture = await tester.startGesture(const Offset(180, 120));
+    final TestGesture gesture = await tester.startGesture(const Offset(180, 120));
     await gesture.moveBy(const Offset(0, 40));
     await tester.pump();
     await gesture.up();
@@ -367,13 +368,13 @@ void main() {
     expect(find.textContaining('Locked in place'), findsNothing);
   });
 
-  testWidgets('an unlocked widget does not nag about dragging', (tester) async {
+  testWidgets('an unlocked widget does not nag about dragging', (WidgetTester tester) async {
     await real(tester,
-      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
     );
 
     await pumpSurface(tester, width: 360, height: 420);
-    final gesture = await tester.startGesture(const Offset(180, 120));
+    final TestGesture gesture = await tester.startGesture(const Offset(180, 120));
     await gesture.moveBy(const Offset(0, 40));
     await tester.pump();
     await gesture.up();
@@ -390,11 +391,11 @@ void main() {
   /// hand-off happen, and with what anchor" is exactly the observable that
   /// matters, and it is observable without a live window.
   List<MethodCall> recordHandOffs() {
-    final calls = <MethodCall>[];
+    final List<MethodCall> calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel('dev.winnotes/shell'),
-      (call) async {
+      (MethodCall call) async {
         if (call.method == 'widget.beginMove' || call.method == 'widget.beginResize') {
           calls.add(call);
         }
@@ -405,9 +406,9 @@ void main() {
   }
 
   Future<void> dragBody(WidgetTester tester, {double dy = 12}) async {
-    final gesture = await tester.startGesture(const Offset(180, 120));
+    final TestGesture gesture = await tester.startGesture(const Offset(180, 120));
     // Four steps past the 8px threshold, the way a real drag arrives.
-    for (var i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
       await gesture.moveBy(Offset(0, dy));
       await tester.pump();
     }
@@ -415,56 +416,56 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('a drag is handed to the runner with its anchor', (tester) async {
+  testWidgets('a drag is handed to the runner with its anchor', (WidgetTester tester) async {
     // The bug this guards: the widget reported HTCAPTION for its body and
     // waited for Windows to run a move loop. There was no loop - the window is a
     // borderless WS_POPUP with neither WS_CAPTION nor WS_THICKFRAME - and the
     // Flutter view covered the client area, so the hit test was never consulted
     // either. The widget could not be moved or resized at all.
-    final calls = recordHandOffs();
+    final List<MethodCall> calls = recordHandOffs();
     await real(tester,
-      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
     );
 
     // One note, so the list has nothing to scroll and the drag is unambiguous.
     await pumpSurface(tester, width: 360, height: 420);
     await dragBody(tester);
 
-    final moves = calls.where((c) => c.method == 'widget.beginMove').toList();
+    final List<MethodCall> moves = calls.where((MethodCall c) => c.method == 'widget.beginMove').toList();
     expect(moves, hasLength(1),
         reason: 'an unlocked widget with nothing to scroll must hand the drag '
             'to the runner exactly once');
     // The anchor travels with it: the runner is told about a drag only after the
     // pointer has already travelled, so anchoring on the cursor at that moment
     // would throw away the whole first hop.
-    final anchor = moves.single.arguments as Map;
+    final Map<dynamic, dynamic> anchor = moves.single.arguments as Map;
     expect(anchor['anchorX'], 180.0);
     expect(anchor['anchorY'], 120.0);
   });
 
   testWidgets('a scroll wins over a drag while there is more list to read',
-      (tester) async {
+      (WidgetTester tester) async {
     // Drags and scrolls are the same gesture shape. Deciding by the scroll
     // extent rather than by whichever notification arrives first is what makes
     // this reliable; getting the direction backwards hands every upward drag to
     // the window, which is the direction people most often use to scroll.
-    final calls = recordHandOffs();
+    final List<MethodCall> calls = recordHandOffs();
     await real(tester,
-      () => makeController(tester, [
-        for (var i = 0; i < 30; i++)
+      () => makeController(tester, <Note>[
+        for (int i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
 
     await pumpSurface(tester, width: 360, height: 420);
 
-    final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+    final ScrollableState scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
     expect(scrollable.position.maxScrollExtent, greaterThan(0),
         reason: 'the test is meaningless unless the list really does overflow');
 
     // At the top of the list, dragging up has to scroll.
     await dragBody(tester, dy: -12);
-    expect(calls.where((c) => c.method == 'widget.beginMove'), isEmpty,
+    expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), isEmpty,
         reason: 'stealing the scroll would make a long list unreadable');
 
     // Once there is nothing left below, the same gesture brings the window.
@@ -479,18 +480,18 @@ void main() {
     await tester.pump();
 
     await dragBody(tester, dy: -12);
-    expect(calls.where((c) => c.method == 'widget.beginMove'), hasLength(1),
+    expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), hasLength(1),
         reason: 'at the end of the list, the widget should come with the drag');
   });
 
   testWidgets('at the top of the list, dragging down moves the widget',
-      (tester) async {
+      (WidgetTester tester) async {
     // The other half of the same rule: dragging down at the top has nothing to
     // scroll, so it belongs to the window rather than being swallowed.
-    final calls = recordHandOffs();
+    final List<MethodCall> calls = recordHandOffs();
     await real(tester,
-      () => makeController(tester, [
-        for (var i = 0; i < 30; i++)
+      () => makeController(tester, <Note>[
+        for (int i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
@@ -498,17 +499,17 @@ void main() {
     await pumpSurface(tester, width: 360, height: 420);
     await dragBody(tester, dy: 12);
 
-    expect(calls.where((c) => c.method == 'widget.beginMove'), hasLength(1));
+    expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), hasLength(1));
   });
 
-  testWidgets('a locked widget is not handed to the runner', (tester) async {
-    final calls = recordHandOffs();
+  testWidgets('a locked widget is not handed to the runner', (WidgetTester tester) async {
+    final List<MethodCall> calls = recordHandOffs();
     await real(tester,
       () => makeController(
         tester,
-        [note('a', 'Groceries', 'milk')],
-        tweakSettings: (s) =>
-            s.apply((v) => v.copyWith(widgetPositionLocked: true)),
+        <Note>[note('a', 'Groceries', 'milk')],
+        tweakSettings: (SettingsNotifier s) =>
+            s.apply((WinNotesSettings v) => v.copyWith(widgetPositionLocked: true)),
       ),
     );
 
@@ -520,11 +521,11 @@ void main() {
   });
 
   testWidgets('grabbing an edge hands a resize to the runner, with the edge',
-      (tester) async {
-    final calls = recordHandOffs();
+      (WidgetTester tester) async {
+    final List<MethodCall> calls = recordHandOffs();
     await real(tester,
-      () => makeController(tester, [
-        for (var i = 0; i < 30; i++)
+      () => makeController(tester, <Note>[
+        for (int i = 0; i < 30; i++)
           note('n$i', 'Note $i', 'body $i', minute: -i),
       ]),
     );
@@ -534,32 +535,32 @@ void main() {
     // Bottom edge, well clear of the corners. The band has to be wider than the
     // window's rounded corner, because the native region clips those pixels away
     // and a grab aimed at the literal corner arrives at nothing.
-    final gesture = await tester.startGesture(const Offset(180, 415));
-    for (var i = 0; i < 4; i++) {
+    final TestGesture gesture = await tester.startGesture(const Offset(180, 415));
+    for (int i = 0; i < 4; i++) {
       await gesture.moveBy(const Offset(0, 12));
       await tester.pump();
     }
     await gesture.up();
     await tester.pump();
 
-    final resizes = calls.where((c) => c.method == 'widget.beginResize').toList();
+    final List<MethodCall> resizes = calls.where((MethodCall c) => c.method == 'widget.beginResize').toList();
     expect(resizes, hasLength(1), reason: 'an edge grab is a resize');
     expect((resizes.single.arguments as Map)['edge'], 4,
         reason: "4 is the runner's code for the bottom edge");
-    expect(calls.where((c) => c.method == 'widget.beginMove'), isEmpty);
+    expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), isEmpty);
   });
 
-  testWidgets('a press that does not move is not a drag', (tester) async {
+  testWidgets('a press that does not move is not a drag', (WidgetTester tester) async {
     // Cards have to stay tappable, so a press and a release with no travel must
     // never turn into a drag.
-    final calls = recordHandOffs();
+    final List<MethodCall> calls = recordHandOffs();
     await real(tester,
-      () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
     );
 
     await pumpSurface(tester, width: 360, height: 420);
 
-    final gesture = await tester.startGesture(const Offset(180, 120));
+    final TestGesture gesture = await tester.startGesture(const Offset(180, 120));
     await gesture.moveBy(const Offset(2, 3));
     await tester.pump();
     await gesture.up();
@@ -571,11 +572,11 @@ void main() {
   group('marking a task finished from the widget', () {
     /// Answers `editor.running`, and records who was asked to do the writing.
     List<MethodCall> recordWriter({required bool editorRunning}) {
-      final calls = <MethodCall>[];
+      final List<MethodCall> calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('dev.winnotes/shell'),
-        (call) async {
+        (MethodCall call) async {
           if (call.method == 'editor.running') return editorRunning;
           if (call.method == 'note.toggleCompleted') calls.add(call);
           return null;
@@ -585,14 +586,14 @@ void main() {
     }
 
     testWidgets('with an editor open, the widget asks rather than writes',
-        (tester) async {
+        (WidgetTester tester) async {
       // The invariant this whole feature has to respect: notes.json has one
       // writer, and while the editor is open that is the editor. Writing from
       // here would overwrite whatever was typed in the last quarter of a second
       // and before that, silently.
-      final requests = recordWriter(editorRunning: true);
-      final controller = await real(tester, 
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      final List<MethodCall> requests = recordWriter(editorRunning: true);
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await tester.runAsync(() => controller.toggleCompleted('a'));
@@ -604,14 +605,14 @@ void main() {
     });
 
     testWidgets('with no editor, the widget writes the file itself',
-        (tester) async {
+        (WidgetTester tester) async {
       // An autostart launch has no editor at all, and refusing to work there
       // would mean the feature only exists for people who opened the app first.
       // With no editor there is no other writer and no buffered edits, so this
       // surface is the only one that can safely do it.
-      final requests = recordWriter(editorRunning: false);
-      final controller = await real(tester, 
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      final List<MethodCall> requests = recordWriter(editorRunning: false);
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await tester.runAsync(() async {
@@ -625,22 +626,22 @@ void main() {
       expect(requests, isEmpty,
           reason: 'nobody to route to, so it must not try');
 
-      final raw = File(harness.notesFile).readAsStringSync();
+      final String raw = File(harness.notesFile).readAsStringSync();
       expect(raw, contains('completedAt'),
           reason: 'the change has to reach disk, not just the screen');
       expect(controller.notes.single.isCompleted, isTrue);
     });
 
     testWidgets('a queued toggle survives quitting inside the debounce window',
-        (tester) async {
+        (WidgetTester tester) async {
       // The write this surface makes goes through the debounced queue like every
       // other write. If the surface's flush did not drain notes.json, quitting
       // within a quarter of a second of ticking a task would silently undo it -
       // and only that, and only sometimes, which is the worst way for it to
       // break.
       recordWriter(editorRunning: false);
-      final controller = (await real(tester, 
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      final WidgetNotes controller = (await real(tester, 
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       ));
 
       await tester.runAsync(() async {
@@ -654,24 +655,24 @@ void main() {
     });
 
     testWidgets('the card offers a tick that does not also focus the note',
-        (tester) async {
+        (WidgetTester tester) async {
       // Tapping a card means "I am working on this"; ticking it means "this is
       // done". Conflating them would move the editor's selection every time
       // someone worked through a list, which is the one thing this must not do.
-      final requests = recordWriter(editorRunning: true);
-      final controller = await real(tester, 
-        () => makeController(tester, [
+      final List<MethodCall> requests = recordWriter(editorRunning: true);
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[
           note('a', 'Task one', 'first'),
           note('b', 'Task two', 'second', minute: -5),
         ]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
-      final before = controller.focusedNote!.id;
+      final String before = controller.focusedNote!.id;
 
       // The tick sits to the left of the text, clear of the resize band that
       // owns the outer edge of the widget.
-      final toggle = find.byType(CompletionToggle).first;
+      final Finder toggle = find.byType(CompletionToggle).first;
       await tester.tap(toggle);
       await tester.pumpAndSettle();
 
@@ -680,9 +681,9 @@ void main() {
           reason: 'ticking a task off must not drag the selection with it');
     });
 
-    testWidgets('a finished card draws a line through its text', (tester) async {
-      final controller = await real(tester, 
-        () => makeController(tester, [note('a', 'Task one', 'first')]),
+    testWidgets('a finished card draws a line through its text', (WidgetTester tester) async {
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[note('a', 'Task one', 'first')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -701,9 +702,9 @@ void main() {
     // the editor is one hotkey away. This also means there is no way to add the
     // first note from the widget - a deliberate trade, recorded as a known
     // consequence in AGENTS.md §4.
-    testWidgets('no note with text means the widget is not shown', (tester) async {
-      final controller = await real(tester, 
-        () => makeController(tester, [note('a', '', '')]),
+    testWidgets('no note with text means the widget is not shown', (WidgetTester tester) async {
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[note('a', '', '')]),
       );
         await tester.runAsync(controller.load);
 
@@ -711,9 +712,9 @@ void main() {
       expect(controller.widgetVisible, isFalse);
     });
 
-    testWidgets('one note with text is enough to show it', (tester) async {
-      final controller = await real(tester, 
-        () => makeController(tester, [
+    testWidgets('one note with text is enough to show it', (WidgetTester tester) async {
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[
           note('a', '', ''),
           note('b', 'Groceries', 'milk'),
         ]),
@@ -733,11 +734,11 @@ void main() {
   group('the add-a-note composer', () {
     /// Records compose-mode and note-creation calls.
     List<MethodCall> recordComposer({bool editorRunning = true}) {
-      final calls = <MethodCall>[];
+      final List<MethodCall> calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('dev.winnotes/shell'),
-        (call) async {
+        (MethodCall call) async {
           if (call.method == 'editor.running') return editorRunning;
           if (call.method == 'widget.setComposeMode' ||
               call.method == 'note.create') {
@@ -749,12 +750,12 @@ void main() {
       return calls;
     }
 
-    testWidgets('the field is not there until you ask for it', (tester) async {
+    testWidgets('the field is not there until you ask for it', (WidgetTester tester) async {
       // "Otherwise not" is the point. A text field sitting permanently at the
       // bottom of every widget would cost 36 pixels of a 420px window and read as
       // an input the widget wants something from.
       await real(tester,
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -765,15 +766,15 @@ void main() {
     });
 
     testWidgets('opening it asks the runner for the keyboard, closing gives it back',
-        (tester) async {
+        (WidgetTester tester) async {
       // The whole feature rests on this. The widget is WS_EX_NOACTIVATE so that
       // clicking it never steals the caret, which is also why it cannot hold a
       // text field at all - so it borrows the keyboard for exactly as long as the
       // composer is open. An always-on-top widget that kept the caret would be
       // the most irritating thing on the desktop.
-      final calls = recordComposer();
+      final List<MethodCall> calls = recordComposer();
       await real(tester,
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -783,7 +784,7 @@ void main() {
 
       expect(find.byKey(addNoteFieldKey), findsOneWidget);
       expect(
-        calls.where((c) => c.method == 'widget.setComposeMode'
+        calls.where((MethodCall c) => c.method == 'widget.setComposeMode'
             && (c.arguments as Map)['active'] == true),
         hasLength(1),
       );
@@ -793,17 +794,17 @@ void main() {
 
       expect(find.byKey(addNoteFieldKey), findsNothing);
       expect(
-        calls.where((c) => c.method == 'widget.setComposeMode'
+        calls.where((MethodCall c) => c.method == 'widget.setComposeMode'
             && (c.arguments as Map)['active'] == false),
         hasLength(1),
       );
     });
 
     testWidgets('a jotted line becomes a note, routed to the editor',
-        (tester) async {
-      final calls = recordComposer();
+        (WidgetTester tester) async {
+      final List<MethodCall> calls = recordComposer();
       await real(tester,
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -814,10 +815,10 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      final created =
-          calls.where((c) => c.method == 'note.create').toList();
+      final List<MethodCall> created =
+          calls.where((MethodCall c) => c.method == 'note.create').toList();
       expect(created, hasLength(1));
-      final args = created.single.arguments as Map;
+      final Map<dynamic, dynamic> args = created.single.arguments as Map;
       expect(args['title'], 'Call the dentist');
       expect(args['body'], '');
       // Closed before the write, so the keyboard is on its way back to the user's
@@ -826,10 +827,10 @@ void main() {
     });
 
     testWidgets('with no editor, the widget writes the note itself',
-        (tester) async {
-      final calls = recordComposer(editorRunning: false);
-      final controller = await real(tester, 
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+        (WidgetTester tester) async {
+      final List<MethodCall> calls = recordComposer(editorRunning: false);
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -839,9 +840,9 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(calls.where((c) => c.method == 'note.create'), isEmpty,
+      expect(calls.where((MethodCall c) => c.method == 'note.create'), isEmpty,
           reason: 'nobody to route to');
-      expect(controller.notes.map((n) => n.title), contains('Water the plants'));
+      expect(controller.notes.map((Note n) => n.title), contains('Water the plants'));
 
       // Writing here goes through the debounced queue like every other write, and
       // a widget test's fake clock never advances the real event loop - so the
@@ -857,12 +858,12 @@ void main() {
           reason: 'and it has to reach disk, not just the widget');
     });
 
-    testWidgets('saving nothing just closes it', (tester) async {
+    testWidgets('saving nothing just closes it', (WidgetTester tester) async {
       // Enter on an empty field must not make an empty note. Deleting the last
       // character of a note is not the same as making one.
-      final calls = recordComposer();
-      final controller = await real(tester, 
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+      final List<MethodCall> calls = recordComposer();
+      final WidgetNotes controller = await real(tester, 
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -872,18 +873,18 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(calls.where((c) => c.method == 'note.create'), isEmpty);
+      expect(calls.where((MethodCall c) => c.method == 'note.create'), isEmpty);
       expect(find.byKey(addNoteFieldKey), findsNothing);
       expect(controller.notes, hasLength(1));
     });
 
-    testWidgets('the widget cannot be dragged while composing', (tester) async {
+    testWidgets('the widget cannot be dragged while composing', (WidgetTester tester) async {
       // The grab band runs along the bottom of the widget, which is exactly where
       // the field sits. Without this, clicking near the field's edge would resize
       // the window instead of placing the caret.
-      final calls = recordComposer();
+      final List<MethodCall> calls = recordComposer();
       await real(tester,
-        () => makeController(tester, [note('a', 'Groceries', 'milk')]),
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'milk')]),
       );
   
       await pumpSurface(tester, width: 360, height: 420);
@@ -891,16 +892,16 @@ void main() {
       await tester.pumpAndSettle();
 
       // Bottom edge, mid-width: squarely inside the resize band.
-      final gesture = await tester.startGesture(const Offset(180, 416));
-      for (var i = 0; i < 4; i++) {
+      final TestGesture gesture = await tester.startGesture(const Offset(180, 416));
+      for (int i = 0; i < 4; i++) {
         await gesture.moveBy(const Offset(0, -12));
         await tester.pump();
       }
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(calls.where((c) => c.method == 'widget.beginResize'), isEmpty);
-      expect(calls.where((c) => c.method == 'widget.beginMove'), isEmpty);
+      expect(calls.where((MethodCall c) => c.method == 'widget.beginResize'), isEmpty);
+      expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), isEmpty);
       expect(find.byKey(addNoteFieldKey), findsOneWidget,
           reason: 'the composer should still be open, not disturbed');
     });
@@ -913,8 +914,8 @@ void main() {
 /// particular string, because a card has a title and a preview and the test
 /// should pass if either of them carries the line.
 int _strikethroughCount(WidgetTester tester) {
-  var count = 0;
-  for (final text in tester.widgetList<Text>(find.byType(Text))) {
+  int count = 0;
+  for (final Text text in tester.widgetList<Text>(find.byType(Text))) {
     if (text.style?.decoration == TextDecoration.lineThrough) count++;
   }
   return count;

@@ -39,7 +39,7 @@ void main() {
   });
 
   test('a first launch puts the ready-to-type note on disk', () async {
-    final file = File(harness.notesFile);
+    final File file = File(harness.notesFile);
 
     // Exactly what the app does: read the provider. No `ensureAtLeastOneNote()`.
     await harness.notes();
@@ -58,8 +58,8 @@ void main() {
     // Waited for, not slept on: the claim is that the debounce lands the note,
     // and a guessed margin over it is a flake on a busy machine. This one ran
     // 700 ms and failed roughly one full-suite run in five.
-    final id = harness.notesState().notes.single.id;
-    final written = await waitForContent(file, id);
+    final String id = harness.notesState().notes.single.id;
+    final String written = await waitForContent(file, id);
 
     expect(
       file.existsSync(),
@@ -84,9 +84,9 @@ void main() {
     // directory would pass whether or not the note was written, because a second
     // launch would find nothing and create a note - which is exactly the wrong answer
     // presented as the right one.
-    final dir = harness.path;
+    final String dir = harness.path;
     await harness.notes();
-    final firstId = harness.notesState().notes.first.id;
+    final String firstId = harness.notesState().notes.first.id;
     await waitForContent(File(harness.notesFile), firstId);
 
     // `disposeKeepingProfile`, not `dispose`: dispose deletes the directory, and a

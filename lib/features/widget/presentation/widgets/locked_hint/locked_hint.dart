@@ -14,7 +14,7 @@ class LockedHint extends StatelessWidget {
       // screen reader would announce it on a draggable widget.
     if (!visible) return const SizedBox.shrink();
 
-    final foreground = dark ? const Color(0xFFEDEBF5) : const Color(0xFF23202E);
+    final Color foreground = dark ? const Color(0xFFEDEBF5) : const Color(0xFF23202E);
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
 
 import '../../providers/notes_controller.dart';
 import '../../providers/notes_providers.dart';
@@ -57,32 +58,32 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     // Narrowed to the three fields this pane draws. Typing in a note's body
     // used to rebuild the whole list; now only a visible-list, query or
     // selection change does.
-    final notes = ref.watch(visibleNotesProvider);
-    final query = ref.watch(notesProvider.select((v) => v.value?.query ?? ''));
-    final selectedId =
-        ref.watch(notesProvider.select((v) => v.value?.selectedId));
-    final total =
-        ref.watch(notesProvider.select((v) => v.value?.notes.length ?? 0));
-    final notifier = ref.read(notesProvider.notifier);
+    final List<Note> notes = ref.watch(visibleNotesProvider);
+    final String query = ref.watch(notesProvider.select((AsyncValue<NotesState> v) => v.value?.query ?? ''));
+    final String? selectedId =
+        ref.watch(notesProvider.select((AsyncValue<NotesState> v) => v.value?.selectedId));
+    final int total =
+        ref.watch(notesProvider.select((AsyncValue<NotesState> v) => v.value?.notes.length ?? 0));
+    final NotesNotifier notifier = ref.read(notesProvider.notifier);
 
     return Column(
-      children: [
+      children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
               child: Row(
-                children: [
+                children: <Widget>[
                   Expanded(
                     child: Shortcuts(
-                      shortcuts: const {
+                      shortcuts: const <ShortcutActivator, Intent>{
                         SingleActivator(LogicalKeyboardKey.keyF): _SearchIntent(),
                       },
                       child: Actions(
-                        actions: {
+                        actions: <Type, Action<Intent>>{
                           _SearchIntent: CallbackAction<_SearchIntent>(
                             onInvoke: (_) {
                               _requestFocusSearch();
@@ -135,7 +136,7 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
                         padding: const EdgeInsets.all(24),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
-                          children: [
+                          children: <Widget>[
                             Icon(
                               query.trim().isNotEmpty
                                   ? Icons.search_off
@@ -168,8 +169,8 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: notes.length,
-                      itemBuilder: (context, index) {
-                        final note = notes[index];
+                      itemBuilder: (BuildContext context, int index) {
+                        final Note note = notes[index];
                         return NoteListItem(
                           key: ValueKey(note.id),
                           note: note,
@@ -188,7 +189,7 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
             Padding(
               padding: const EdgeInsets.all(8),
               child: Row(
-                children: [
+                children: <Widget>[
                   Expanded(
                     child: Text(
                       _statusText(

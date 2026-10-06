@@ -15,8 +15,8 @@ class PendingUndo {
 /// Editing state for the notes.
 class NotesState {
   const NotesState({
-    this.notes = const [],
-    this.visible = const [],
+    this.notes = const <Note>[],
+    this.visible = const <Note>[],
     this.query = '',
     this.selectedId,
     this.corrupt,
@@ -43,7 +43,7 @@ class NotesState {
   /// picked.
   Note? get selectedNote {
     if (selectedId != null) {
-      for (final note in notes) {
+      for (final Note note in notes) {
         if (note.id == selectedId) return note;
       }
     }
@@ -54,7 +54,7 @@ class NotesState {
     /// wins); most recent when all are finished, so the card never goes missing.
   Note? get focusedNote {
     if (selectedId != null) return selectedNote;
-    for (final note in notes) {
+    for (final Note note in notes) {
       if (!note.isCompleted) return note;
     }
     return notes.isEmpty ? null : notes.first;
@@ -93,6 +93,6 @@ class NotesState {
     if (query.trim().isEmpty) {
       return copyWith(visible: notes);
     }
-    return copyWith(visible: notes.where((n) => n.contains(query)).toList());
+    return copyWith(visible: notes.where((Note n) => n.contains(query)).toList());
   }
 }

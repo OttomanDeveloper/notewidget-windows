@@ -24,13 +24,13 @@ void main() {
 
   group('the palette list', () {
     test('ids are unique, so one setting can name one palette', () {
-      final ids = winNotesPalettes.map((p) => p.id).toSet();
+      final Set<String> ids = winNotesPalettes.map((WinNotesPalette p) => p.id).toSet();
       expect(ids, hasLength(winNotesPalettes.length),
           reason: 'a duplicate id would make one swatch unselectable');
     });
 
     test('labels are unique too, or two swatches read the same', () {
-      final labels = winNotesPalettes.map((p) => p.label).toSet();
+      final Set<String> labels = winNotesPalettes.map((WinNotesPalette p) => p.label).toSet();
       expect(labels, hasLength(winNotesPalettes.length));
     });
 
@@ -46,7 +46,7 @@ void main() {
       // Frozen. The logo, the artwork and the release screenshots are all built
       // from these two values, so a palette may add colours but the default
       // cannot quietly become something else.
-      final brand = winNotesPalettes.first;
+      final WinNotesPalette brand = winNotesPalettes.first;
       expect(brand.accent, const Color(0xFFE8551D));
       expect(brand.accentDark, const Color(0xFFFF7A45));
     });
@@ -55,7 +55,7 @@ void main() {
       // A saturated colour on a dark background loses its edge, so the dark
       // variant is always a lighter shade of the same hue. If this ever fails,
       // the swatch shows a colour the user will not actually get in dark mode.
-      for (final palette in winNotesPalettes) {
+      for (final WinNotesPalette palette in winNotesPalettes) {
         expect(
           palette.accentDark.computeLuminance(),
           greaterThan(palette.accent.computeLuminance()),
@@ -71,20 +71,20 @@ void main() {
     // The threshold is WCAG AA for non-body text (3:1). The accent is used as a
     // thin card bar, a tick stroke and a 2px focus ring, all of which are
     // graphical objects rather than paragraphs of prose.
-    const minimum = 3.0;
+    const double minimum = 3.0;
 
     double contrast(Color a, Color b) {
-      final la = a.computeLuminance();
-      final lb = b.computeLuminance();
-      final hi = la > lb ? la : lb;
-      final lo = la > lb ? lb : la;
+      final double la = a.computeLuminance();
+      final double lb = b.computeLuminance();
+      final double hi = la > lb ? la : lb;
+      final double lo = la > lb ? lb : la;
       return (hi + 0.05) / (lo + 0.05);
     }
 
-    for (final palette in winNotesPalettes) {
+    for (final WinNotesPalette palette in winNotesPalettes) {
       group(palette.label, () {
         test('the accent reads against the light widget surface', () {
-          final surface = palette.surfaces(Brightness.light).surface;
+          final Color surface = palette.surfaces(Brightness.light).surface;
           expect(
             contrast(palette.accent, surface),
             greaterThan(minimum),
@@ -93,7 +93,7 @@ void main() {
         });
 
         test('the accent reads against the dark widget surface', () {
-          final surface = palette.surfaces(Brightness.dark).surface;
+          final Color surface = palette.surfaces(Brightness.dark).surface;
           expect(
             contrast(palette.accentDark, surface),
             greaterThan(minimum),
@@ -104,7 +104,7 @@ void main() {
         test('the tick drawn inside the accent reads against it', () {
           // The completion toggle puts a tick on the accent fill, and that tick
           // has to be visible or a finished task looks unfinished.
-          final onAccent = readableOn(palette.accent);
+          final Color onAccent = readableOn(palette.accent);
           expect(contrast(onAccent, palette.accent), greaterThan(minimum),
               reason: '${palette.id}: tick on the swatch');
           expect(contrast(readableOn(palette.accentDark), palette.accentDark),
@@ -112,8 +112,8 @@ void main() {
         });
 
         test('body text reads against the editor background', () {
-          for (final brightness in Brightness.values) {
-            final surfaces = palette.surfaces(brightness);
+          for (final Brightness brightness in Brightness.values) {
+            final WidgetSurfaces surfaces = palette.surfaces(brightness);
             expect(
               contrast(surfaces.onSurface, surfaces.scaffold),
               greaterThan(4.5),
@@ -140,8 +140,8 @@ void main() {
           // side, so a difference between them is a difference nobody sees. An
           // earlier version of this test asserted one anyway and failed, which
           // was the test being wrong rather than the palettes.
-          for (final brightness in Brightness.values) {
-            final surfaces = palette.surfaces(brightness);
+          for (final Brightness brightness in Brightness.values) {
+            final WidgetSurfaces surfaces = palette.surfaces(brightness);
             expect(surfaces.dialog, isNot(surfaces.scaffold),
                 reason: '${palette.id} in $brightness: a dialog painted '
                     'exactly the editor colour has no edge at all');
@@ -194,12 +194,12 @@ void main() {
     test('omitted from the file entirely when never chosen', () async {
       // Same rule as completedAt: a profile that never touched the setting
       // stays byte-identical to one written before the setting existed.
-      final json = WinNotesSettings.defaults.toJson();
+      final Map<String, dynamic> json = WinNotesSettings.defaults.toJson();
 
       expect(json.containsKey('accentPalette'), isFalse,
           reason: 'an empty choice should not appear in the file at all');
       await repository.saveNow(WinNotesSettings.defaults);
-      final written = File('${temp.path}\\settings.json').readAsStringSync();
+      final String written = File('${temp.path}\\settings.json').readAsStringSync();
       expect(written.contains('accentPalette'), isFalse);
     });
 
@@ -207,27 +207,27 @@ void main() {
       await repository.saveNow(
         WinNotesSettings.defaults.copyWith(accentPalette: 'moss'),
       );
-      final loaded = await repository.load();
+      final WinNotesSettings loaded = await repository.load();
       expect(loaded.accentPalette, 'moss');
     });
 
     test('an unknown value in the file is kept, not silently rewritten', () {
       // Resolving it at the edge means one place decides what an unrecognised
       // name means. Rewriting it here would fight the user who typed it.
-      final loaded = WinNotesSettings.fromJson({'accentPalette': 'chartreuse'});
+      final WinNotesSettings loaded = WinNotesSettings.fromJson(<String, dynamic>{'accentPalette': 'chartreuse'});
       expect(loaded.accentPalette, 'chartreuse');
       expect(paletteById(loaded.accentPalette).id, 'coral');
     });
 
     test('a file with no palette field loads as never chosen', () {
-      final loaded = WinNotesSettings.fromJson({'themeMode': 'dark'});
+      final WinNotesSettings loaded = WinNotesSettings.fromJson(<String, dynamic>{'themeMode': 'dark'});
       expect(loaded.accentPalette, isEmpty);
       expect(paletteById(loaded.accentPalette), same(winNotesPalettes.first));
     });
 
     test('the palette participates in equality, or it would never save', () {
-      final a = WinNotesSettings.defaults.copyWith(accentPalette: 'teal');
-      final b = WinNotesSettings.defaults.copyWith(accentPalette: 'rose');
+      final WinNotesSettings a = WinNotesSettings.defaults.copyWith(accentPalette: 'teal');
+      final WinNotesSettings b = WinNotesSettings.defaults.copyWith(accentPalette: 'rose');
 
       expect(a == b, isFalse,
           reason: 'SettingsController skips the write when nothing changed');
@@ -236,8 +236,8 @@ void main() {
     });
 
     test('copyWith replaces only the palette', () {
-      final a = WinNotesSettings.defaults.copyWith(accentPalette: 'teal');
-      final b = a.copyWith(widgetOpacity: 50);
+      final WinNotesSettings a = WinNotesSettings.defaults.copyWith(accentPalette: 'teal');
+      final WinNotesSettings b = a.copyWith(widgetOpacity: 50);
       expect(b.accentPalette, 'teal');
       expect(b.widgetOpacity, 50);
     });
@@ -259,7 +259,7 @@ void main() {
       // millisecond the writer renames the file over it comes back as errno 32,
       // which says the write is happening, not that it failed. This test grew
       // its own copy of that problem before finding the helper.
-      final written = await waitForContent(
+      final String written = await waitForContent(
         File('${temp.path}\\settings.json'),
         '"accentPalette": "amber"',
       );
@@ -282,7 +282,7 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
           const MethodChannel('dev.winnotes/shell'),
-          (call) async => null,
+          (MethodCall call) async => null,
         );
         harness = TestHarness.build();
       });
@@ -319,25 +319,25 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('every palette has a swatch', (tester) async {
+    testWidgets('every palette has a swatch', (WidgetTester tester) async {
       await pumpDialog(tester);
 
-      for (final palette in winNotesPalettes) {
+      for (final WinNotesPalette palette in winNotesPalettes) {
         expect(find.byKey(swatchKey(palette.id)), findsOneWidget,
             reason: '${palette.id} has no swatch');
       }
     });
 
     testWidgets('the swatches wrap instead of running off the row',
-        (tester) async {
+        (WidgetTester tester) async {
       // Nine swatches at 30px plus gaps is wider than the settings panel. If
       // they overflowed rather than wrapping, the last ones would be clipped and
       // unreachable - and a colour you cannot see is a colour you cannot pick.
       await pumpDialog(tester);
 
-      final tops = <double>{};
-      for (final palette in winNotesPalettes) {
-        final box = tester.getRect(find.byKey(swatchKey(palette.id)));
+      final Set<double> tops = <double>{};
+      for (final WinNotesPalette palette in winNotesPalettes) {
+        final Rect box = tester.getRect(find.byKey(swatchKey(palette.id)));
         expect(box.width, 30.0);
         expect(box.height, 30.0);
         expect(
@@ -351,7 +351,7 @@ void main() {
           reason: 'all nine on one row means the row is too narrow to hold them');
     });
 
-    testWidgets('tapping a swatch chooses that palette', (tester) async {
+    testWidgets('tapping a swatch chooses that palette', (WidgetTester tester) async {
       await pumpDialog(tester);
 
       await tester.tap(find.byKey(swatchKey('teal')));
@@ -361,7 +361,7 @@ void main() {
     });
 
     testWidgets('the chosen name is written out, not left to be guessed',
-        (tester) async {
+        (WidgetTester tester) async {
       // The row shows colours, which is the point - but a colour list with no
       // name is unreadable to anyone who cannot distinguish them.
       await pumpDialog(tester);
@@ -374,11 +374,11 @@ void main() {
       expect(find.text('Coral'), findsNothing);
     });
 
-    testWidgets('exactly one swatch claims to be selected', (tester) async {
+    testWidgets('exactly one swatch claims to be selected', (WidgetTester tester) async {
       await pumpDialog(tester);
 
-      List<WinNotesPalette> selectedSwatches() => [
-            for (final palette in winNotesPalettes)
+      List<WinNotesPalette> selectedSwatches() => <WinNotesPalette>[
+            for (final WinNotesPalette palette in winNotesPalettes)
               if (tester
                   .widget<Semantics>(find.byKey(swatchKey(palette.id)))
                   .properties

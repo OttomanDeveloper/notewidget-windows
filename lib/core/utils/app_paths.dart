@@ -17,15 +17,15 @@ class AppPaths {
   static AppPaths resolve({
     required String reported,
     required String executablePath,
-    Map<String, String> environment = const {},
+    Map<String, String> environment = const <String, String>{},
     String? configured,
   }) {
-    final override = environment[overrideVariable];
+    final String? override = environment[overrideVariable];
 
     // An override outranks a saved preference: the person running the program
     // names the folder for this run, which beats a months-old setting.
     if (override != null && override.trim().isNotEmpty) {
-      final trimmed = override.trim();
+      final String trimmed = override.trim();
       // Absolute only, no `..`: anything else lands somewhere unasked-for,
       // which is where notes get lost.
       if (!isUsableDirectory(trimmed)) {
@@ -64,7 +64,7 @@ class AppPaths {
   /// Whether [path] names a directory we read and write: absolute, no `..`.
   /// Anything else resolves somewhere unasked-for, silently.
   static bool isUsableDirectory(String path) {
-    final trimmed = path.trim();
+    final String trimmed = path.trim();
     // Three characters minimum: `X:\`. Anything shorter cannot name a directory.
     if (trimmed.length < 3) return false;
     if (trimmed[1] != r':' || trimmed[2] != r'\') return false;

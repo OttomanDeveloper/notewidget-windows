@@ -14,11 +14,11 @@ import 'guards.dart';
 /// as code that breaks it.
 String _code(String source) => source
     .split('\n')
-    .where((l) => !l.trimLeft().startsWith('//'))
+    .where((String l) => !l.trimLeft().startsWith('//'))
     .join('\n');
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('the watcher watches the directory', () {
     // §3.8. The failure is invisible until it bites: File.watch() on Windows
@@ -76,9 +76,9 @@ void main() {
     test('the guard would notice if either half changed', () {
       // Proves the two assertions above are not vacuous, which matters because
       // a rename of the local variable would otherwise turn this file green.
-      const wrongWatch = 'await File(target).watch(recursive: false)';
-      const rightWatch = 'await parent.watch(recursive: false)';
-      const noFilter = 'await parent.watch(recursive: false).listen((_) {})';
+      const String wrongWatch = 'await File(target).watch(recursive: false)';
+      const String rightWatch = 'await parent.watch(recursive: false)';
+      const String noFilter = 'await parent.watch(recursive: false).listen((_) {})';
 
       expect(RegExp(r'File\([^)]*\)\s*\.watch\(').hasMatch(wrongWatch), isTrue,
           reason: 'the file form must be caught');
@@ -116,9 +116,9 @@ void main() {
       // the backup afterwards would copy the file just written over the backup,
       // leaving the previous version gone. This is exactly what happened while
       // extracting the helper, so it is asserted rather than trusted.
-      final atomic = tree.read('lib/core/utils/atomic_json_file.dart');
-      final hookIndex = atomic.indexOf('beforeReplace?.call()');
-      final renameIndex = atomic.indexOf('await temp.rename(path)');
+      final String atomic = tree.read('lib/core/utils/atomic_json_file.dart');
+      final int hookIndex = atomic.indexOf('beforeReplace?.call()');
+      final int renameIndex = atomic.indexOf('await temp.rename(path)');
 
       expect(hookIndex, greaterThan(0), reason: 'the hook must still exist');
       expect(renameIndex, greaterThan(0));
@@ -131,7 +131,7 @@ void main() {
     });
 
     test('the export does not write the destination directly', () {
-      final editor = _code(tree.read('lib/features/notes/presentation/screens/editor_app/editor_app.dart'));
+      final String editor = _code(tree.read('lib/features/notes/presentation/screens/editor_app/editor_app.dart'));
       expect(
         editor.contains('.writeAsString'),
         isFalse,
@@ -148,7 +148,7 @@ void main() {
     // added tomorrow in a third file. The rule is about where writes may live at all,
     // which is a source property.
     test('only the two notifiers write notes.json', () {
-      final writers = _filesWritingNotes(tree);
+      final Set<String> writers = _filesWritingNotes(tree);
 
       expect(
         writers,
@@ -169,8 +169,8 @@ void main() {
       // memory for a quarter of a second before they reach disk, so a toggle written
       // from here inside that window overwrites them and silently loses whatever was
       // typed. The runner is asked who owns the file, and the answer decides.
-      final source = tree.read('lib/features/widget/presentation/providers/widget_controller.dart');
-      final unguarded = _methodNamesWritingNotesWithoutAsking(source);
+      final String source = tree.read('lib/features/widget/presentation/providers/widget_controller.dart');
+      final Set<String> unguarded = _methodNamesWritingNotesWithoutAsking(source);
 
       expect(
         unguarded,
@@ -188,7 +188,7 @@ void main() {
       // writes unconditionally, the widget asks. A future change that made the
       // editor ask would mean a hotkey race on startup; one that made the widget
       // write unconditionally would mean a lost-keystroke race on every toggle.
-      final source = tree.read('lib/features/notes/presentation/providers/notes_controller.dart');
+      final String source = tree.read('lib/features/notes/presentation/providers/notes_controller.dart');
 
       expect(
         source.contains('isEditorRunning'),
@@ -208,16 +208,16 @@ void main() {
 
 /// Files under `lib/` that contain a write to the notes repository.
 Set<String> _filesWritingNotes(SourceTree tree) {
-  final out = <String>{};
+  final Set<String> out = <String>{};
   // Matched on the *argument*, not the receiver. The two notifiers name their
   // repositories differently - `_repository` and `_notesRepo` - so a receiver-name
   // heuristic finds one and misses the other, which is how the first version of this
   // check reported a single writer. The argument is the reliable signal: a notes write
   // passes notes, and the settings and widget-state writes pass `next` and
   // `state.requireValue.window`.
-  final save = RegExp(r'\.save\([^)]*\bnotes\b', caseSensitive: false);
+  final RegExp save = RegExp(r'\.save\([^)]*\bnotes\b', caseSensitive: false);
 
-  for (final entry in tree.dartFilesUnderRelative('lib').entries) {
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnderRelative('lib').entries) {
     if (entry.key.endsWith('notes_repository.dart')) continue; // the repository
     if (save.hasMatch(entry.value.join('\n'))) out.add(entry.key);
   }
@@ -226,19 +226,19 @@ Set<String> _filesWritingNotes(SourceTree tree) {
 
 /// Method names in [source] that write notes without asking the runner.
 Set<String> _methodNamesWritingNotesWithoutAsking(String source) {
-  final out = <String>{};
-  final lines = source.split('\n');
+  final Set<String> out = <String>{};
+  final List<String> lines = source.split('\n');
 
   // Same signal as above: the argument, not the receiver.
-  final save = RegExp(r'\.save\([^)]*\bnotes\b', caseSensitive: false);
-  final asks = RegExp(r'isEditorRunning');
+  final RegExp save = RegExp(r'\.save\([^)]*\bnotes\b', caseSensitive: false);
+  final RegExp asks = RegExp(r'isEditorRunning');
 
-  for (var i = 0; i < lines.length; i++) {
+  for (int i = 0; i < lines.length; i++) {
     if (!save.hasMatch(lines[i])) continue;
 
     // Walk back to the enclosing method signature: the first line above that opens a
     // member at two-space indent and ends with `{` or `async {`.
-    var start = i;
+    int start = i;
     while (start >= 0 &&
         !RegExp(r'^  [A-Za-z_].*\{\s*$').hasMatch(lines[start])) {
       start--;
@@ -246,14 +246,14 @@ Set<String> _methodNamesWritingNotesWithoutAsking(String source) {
     if (start < 0) continue;
 
     // And forward to its close, at two-space indent.
-    var end = i;
+    int end = i;
     while (end < lines.length && lines[end] != '  }') {
       end++;
     }
 
-    final body = lines.sublist(start, end + 1).join('\n');
+    final String body = lines.sublist(start, end + 1).join('\n');
     if (!asks.hasMatch(body)) {
-      final name = RegExp(r'^  [\w<>?, ]*?(\w+)\s*\(')
+      final String? name = RegExp(r'^  [\w<>?, ]*?(\w+)\s*\(')
           .firstMatch(lines[start])
           ?.group(1);
       out.add('${name ?? 'line ${start + 1}'} (line ${i + 1})');

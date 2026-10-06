@@ -86,7 +86,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
     /// Loads a note's text into the fields when the selection changes. Guarded
     /// on [Note.id]: overwrites even matching text, or the caret sits in stale content.
   void _syncToSelected(NotesState? state, NotesNotifier notifier, {bool focusBody = false}) {
-    final note = state?.selectedNote;
+    final Note? note = state?.selectedNote;
     if (note == null) {
       _loadedNoteId = null;
       _title.clear();
@@ -113,15 +113,15 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
   }
 
   void _pushToModel(NotesNotifier notifier) {
-    final id = _loadedNoteId;
+    final String? id = _loadedNoteId;
     if (id == null) return;
     notifier.updateNote(id, title: _title.text, body: _body.text);
   }
 
   Future<void> _deleteCurrent(NotesNotifier notifier) async {
-    final note = ref.read(selectedNoteProvider);
+    final Note? note = ref.read(selectedNoteProvider);
     if (note == null) return;
-    final confirmed = await confirmDestructiveAction(
+    final bool confirmed = await confirmDestructiveAction(
       context,
       title: 'Delete this note?',
       message: '"${note.displayTitle}" will be removed from your desktop. '
@@ -141,20 +141,20 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final state = ref.watch(notesProvider).value;
-    final notifier = ref.read(notesProvider.notifier);
+    final ThemeData theme = Theme.of(context);
+    final NotesState? state = ref.watch(notesProvider).value;
+    final NotesNotifier notifier = ref.read(notesProvider.notifier);
 
     // `Consumer` so `_syncToSelected` runs before drawing: it loads the text
     // into the fields, ordered against the build without a post-frame callback.
     return Consumer(
-      builder: (context, ref, _) {
+      builder: (BuildContext context, WidgetRef ref, _) {
         _syncToSelected(state, notifier);
-        final note = state?.selectedNote;
+        final Note? note = state?.selectedNote;
 
         if (note == null) {
           return Stack(
-            children: [
+            children: <Widget>[
               Positioned.fill(
                 child: EmptyState(
                   icon: Icons.edit_note,
@@ -179,7 +179,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+          children: <Widget>[
             if (widget.hasBack)
               EditorBackBar(
                 note: note,
@@ -191,7 +191,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
               ),
             Expanded(
               child: Shortcuts(
-                shortcuts: const {
+                shortcuts: const <ShortcutActivator, Intent>{
                   SingleActivator(LogicalKeyboardKey.keyS, control: true): _SaveIntent(),
                   // Ctrl+D because it is what every other list-shaped thing on
                   // this planet uses for "done", and because finishing a task
@@ -199,7 +199,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                   SingleActivator(LogicalKeyboardKey.keyD, control: true): _DoneIntent(),
                 },
                 child: Actions(
-                  actions: {
+                  actions: <Type, Action<Intent>>{
                     // Ctrl+S exists only to say "there is no save button and
                     // there never will be", so it costs nothing and removes a
                     // reflex-driven worry.
@@ -211,7 +211,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                     ),
                     _DoneIntent: CallbackAction<_DoneIntent>(
                       onInvoke: (_) {
-                        final selected = state?.selectedNote;
+                        final Note? selected = state?.selectedNote;
                         if (selected != null) notifier.toggleCompleted(selected.id);
                         return null;
                       },
@@ -221,10 +221,10 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                     padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+                      children: <Widget>[
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
+                          children: <Widget>[
                             // The one control that says this note is a task
                             // rather than a thought, sitting beside the thing it
                             // applies to rather than in a bar above it.

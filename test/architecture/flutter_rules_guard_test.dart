@@ -10,15 +10,15 @@ import 'guards.dart';
 /// *where* something appears. "Cancelled somewhere in the file" and "cancelled on the
 /// way out" are different claims, and only one of them is the rule.
 List<String> _bodiesOf(String source, String marker) {
-  final out = <String>[];
-  for (final match in RegExp(RegExp.escape(marker)).allMatches(source)) {
+  final List<String> out = <String>[];
+  for (final RegExpMatch match in RegExp(RegExp.escape(marker)).allMatches(source)) {
     // Skip the parameter list first. Starting brace-counting at [match.end]
     // stops at the first `}` inside default values — `dispose({bool flush = true})`
     // would return `{bool flush = true}` as the "body" and miss the real one.
-    var parens = 1;
-    var i = match.end;
+    int parens = 1;
+    int i = match.end;
     for (; i < source.length; i++) {
-      final unit = source.codeUnitAt(i);
+      final int unit = source.codeUnitAt(i);
       if (unit == 0x28) {
         parens++;
       } else if (unit == 0x29) {
@@ -31,13 +31,13 @@ List<String> _bodiesOf(String source, String marker) {
     // an arrow callback has no braces, so without this the cancel is invisible.
     out.add(source.substring(match.end, i));
     // Arrow body (`=> ...;`) has no braces to count beyond the args above.
-    final arrowEnd = source.indexOf(';', i);
-    final braceStart = source.indexOf('{', i);
+    final int arrowEnd = source.indexOf(';', i);
+    final int braceStart = source.indexOf('{', i);
     if (braceStart < 0 || (arrowEnd >= 0 && arrowEnd < braceStart)) continue;
-    var depth = 0;
-    var started = false;
-    for (var j = braceStart; j < source.length; j++) {
-      final unit = source.codeUnitAt(j);
+    int depth = 0;
+    bool started = false;
+    for (int j = braceStart; j < source.length; j++) {
+      final int unit = source.codeUnitAt(j);
       if (unit == 0x7B) {
         depth++;
         started = true;
@@ -102,7 +102,7 @@ List<String> _bodiesOf(String source, String marker) {
 /// The set below is what makes "100%" a number: `the record` group fails if the
 /// rulebook gains a section with no row here, or if a row here points at a section
 /// that no longer exists.
-const _decidedSections = <String>{
+const Set<String> _decidedSections = <String>{
   '1',
   '2',
   '3',
@@ -133,25 +133,25 @@ const _decidedSections = <String>{
 };
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('§7.2 / §3.5 a painter allocates nothing per frame', () {
     // `paint()` runs on the raster thread every time the box changes. A `Paint` and a
     // `Path` allocated there is garbage per frame, for a three-segment tick.
     test('no Paint or Path is constructed inside paint()', () {
-      final offenders = <String>[];
-      for (final entry in tree.dartFilesUnder('lib').entries) {
-        final path = entry.key.replaceAll(r'\', '/');
-        final lines = entry.value;
-        for (var i = 0; i < lines.length; i++) {
+      final List<String> offenders = <String>[];
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+        final String path = entry.key.replaceAll(r'\', '/');
+        final List<String> lines = entry.value;
+        for (int i = 0; i < lines.length; i++) {
           if (!lines[i].contains('void paint(')) continue;
 
           // To the end of the method, by brace counting. A fixed window guessed wrong
           // reports the wrong file, which is worse than not reporting.
-          var depth = 0;
-          var started = false;
-          for (var j = i; j < lines.length; j++) {
-            for (final unit in lines[j].codeUnits) {
+          int depth = 0;
+          bool started = false;
+          for (int j = i; j < lines.length; j++) {
+            for (final int unit in lines[j].codeUnits) {
               if (unit == 0x7B) {
                 depth++;
                 started = true;
@@ -171,10 +171,10 @@ void main() {
             // `final Paint x =` passes cleanly over `final x = Paint(`, which is the
             // same allocation — and the plant that proved it: re-introducing
             // `final paint = Paint()` inside `paint()` left this test green.
-            for (final type in ['Paint', 'Path', 'TextPainter', 'MaskFilter']) {
-              final explicit =
+            for (final String type in <String>['Paint', 'Path', 'TextPainter', 'MaskFilter']) {
+              final RegExp explicit =
                   RegExp('final\\s+$type\\s+\\w+\\s*=\\s*$type\\s*\\(');
-              final inferred = RegExp('final\\s+\\w+\\s*=\\s*$type\\s*\\(');
+              final RegExp inferred = RegExp('final\\s+\\w+\\s*=\\s*$type\\s*\\(');
 
               if (explicit.hasMatch(lines[j]) || inferred.hasMatch(lines[j])) {
                 offenders.add('$path:${j + 1}  allocates a $type in paint()');
@@ -206,7 +206,7 @@ void main() {
     test('and it implements shouldRepaint', () {
       // Without it every repaint is unconditional, which is the same cost the hoisting
       // above avoids, arriving by a different route.
-      final source = tree.read(
+      final String source = tree.read(
           'lib/core/widgets/completion_painter/completion_painter.dart');
       expect(source, contains('bool shouldRepaint('));
     });
@@ -217,13 +217,13 @@ void main() {
       // A `RegExp` is compiled, matched and discarded each time. Built inside a card's
       // build, that is once per card per frame — twenty cards, twenty allocations, for
       // a pattern that never changes.
-      final offenders = <String>[];
-      final ctor = RegExp(r'RegExp\(r?['"'"']');
+      final List<String> offenders = <String>[];
+      final RegExp ctor = RegExp(r'RegExp\(r?['"'"']');
 
-      for (final entry in tree.dartFilesUnder('lib').entries) {
-        final path = entry.key.replaceAll(r'\', '/');
-        final lines = entry.value;
-        for (var i = 0; i < lines.length; i++) {
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+        final String path = entry.key.replaceAll(r'\', '/');
+        final List<String> lines = entry.value;
+        for (int i = 0; i < lines.length; i++) {
           if (!ctor.hasMatch(lines[i])) continue;
 
           // A field or a local? A field is the fix; a local in a helper that is on the
@@ -238,11 +238,11 @@ void main() {
           // the second. Checking one line reported the fixed code as still broken,
           // which is worse than not checking - it trains the reader to ignore the
           // failure.
-          final window = [
+          final String window = <String>[
             if (i > 0) lines[i - 1],
             lines[i],
           ].join(' ');
-          final isField = RegExp(r'(static|final)\s+(final\s+)?RegExp\s+\w')
+          final bool isField = RegExp(r'(static|final)\s+(final\s+)?RegExp\s+\w')
               .hasMatch(window);
 
           if (!isField) {
@@ -264,19 +264,19 @@ void main() {
       // Brace-counted, so a `.where()` in a static helper beside a build method is not
       // blamed for it. That mistake is why the first version of this found five
       // false positives in `markdown_text.dart` and had to be thrown away.
-      final heavy = RegExp(r'\.sort\(|\.sorted\(|jsonDecode|\.fromJson\(');
-      final offenders = <String>[];
+      final RegExp heavy = RegExp(r'\.sort\(|\.sorted\(|jsonDecode|\.fromJson\(');
+      final List<String> offenders = <String>[];
 
-      for (final entry in tree.dartFilesUnder('lib').entries) {
-        final path = entry.key.replaceAll(r'\', '/');
-        final lines = entry.value;
-        for (var i = 0; i < lines.length; i++) {
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+        final String path = entry.key.replaceAll(r'\', '/');
+        final List<String> lines = entry.value;
+        for (int i = 0; i < lines.length; i++) {
           if (!RegExp(r'Widget\s+build\(').hasMatch(lines[i])) continue;
 
-          var depth = 0;
-          var started = false;
-          for (var j = i; j < lines.length; j++) {
-            for (final unit in lines[j].codeUnits) {
+          int depth = 0;
+          bool started = false;
+          for (int j = i; j < lines.length; j++) {
+            for (final int unit in lines[j].codeUnits) {
               if (unit == 0x7B) {
                 depth++;
                 started = true;
@@ -317,24 +317,24 @@ void main() {
       // occurrence was still there — so the guard was checking the wrong question and
       // reporting a pass. The cancel has to be reachable from `dispose()` or from a
       // `ref.onDispose(`.
-      final offenders = <String>[];
-      final declaration =
+      final List<String> offenders = <String>[];
+      final RegExp declaration =
           RegExp(r'(?:late\s+)?(?:final|var)?\s*(\w+)\s*=\s*(?:Timer|StreamSubscription)');
 
-      for (final entry in tree.dartFilesUnder('lib').entries) {
-        final path = entry.key.replaceAll(r'\', '/');
-        final source = entry.value.join('\n');
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+        final String path = entry.key.replaceAll(r'\', '/');
+        final String source = entry.value.join('\n');
 
         // Bodies that count as a teardown, and bodies that do not.
-        final teardown = <String>[
+        final String teardown = <String>[
           ..._bodiesOf(source, 'dispose('),
           ..._bodiesOf(source, 'ref.onDispose('),
           ..._bodiesOf(source, 'cancelTimers('),
         ].join('\n');
 
-        for (final match in declaration.allMatches(source)) {
-          final name = match.group(1)!;
-          final pattern =
+        for (final RegExpMatch match in declaration.allMatches(source)) {
+          final String name = match.group(1)!;
+          final String pattern =
               '${RegExp.escape(name)}\\??\\s*\\.\\s*(cancel|close)\\s*\\(';
           if (!RegExp(pattern).hasMatch(teardown)) {
             offenders.add('$path  $name is never cancelled on a teardown path');
@@ -372,8 +372,8 @@ void main() {
     test('MediaQuery.sizeOf rather than MediaQuery.of(context).size', () {
       // The whole reason §3.5 asks for this: `MediaQuery.of` rebuilds on any
       // inherited change, `sizeOf` only when the size changes.
-      final offenders = <String>[];
-      for (final entry in tree.dartFilesUnder('lib').entries) {
+      final List<String> offenders = <String>[];
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
         if (entry.value.join('\n').contains('MediaQuery.of(context).size')) {
           offenders.add(entry.key.replaceAll(r'\', '/'));
         }
@@ -390,9 +390,9 @@ void main() {
     test('no IntrinsicWidth or IntrinsicHeight', () {
       // Both force a second layout pass over their subtree, and inside a list item
       // that cost is paid per item per frame.
-      final offenders = <String>[];
-      for (final entry in tree.dartFilesUnder('lib').entries) {
-        final source = entry.value.join('\n');
+      final List<String> offenders = <String>[];
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+        final String source = entry.value.join('\n');
         if (source.contains('IntrinsicWidth') || source.contains('IntrinsicHeight')) {
           offenders.add(entry.key.replaceAll(r'\', '/'));
         }
@@ -408,7 +408,7 @@ void main() {
 
   group('§7.3 the release build is obfuscated, with symbols', () {
     test('package.ps1 passes --obfuscate and --split-debug-info', () {
-      final script = tree.read('tool/release/package.ps1');
+      final String script = tree.read('tool/release/package.ps1');
       expect(
         script,
         contains('--obfuscate'),
@@ -426,7 +426,7 @@ void main() {
     test('and it fails the build when the symbols are missing', () {
       // The flag and the check are one decision. A `--split-debug-info` that is passed
       // and never verified is a flag that silently stopped working.
-      final script = tree.read('tool/release/package.ps1');
+      final String script = tree.read('tool/release/package.ps1');
       expect(
         script,
         contains('build\\symbols'),
@@ -448,7 +448,7 @@ void main() {
       // in the comment explaining why debug is exempt. This repository has been bitten
       // by a raw-text guard reading a comment in four different places now; the
       // pattern is to match the call, not the mention.
-      final commands = RegExp(r'flutter build [^\r\n]*--obfuscate')
+      final Iterable<RegExpMatch> commands = RegExp(r'flutter build [^\r\n]*--obfuscate')
           .allMatches(tree.read('tool/release/package.ps1'));
 
       expect(
@@ -474,7 +474,7 @@ void main() {
     test('no comment block in lib/ is longer than three lines', () {
       // Summarise against the code, not by truncation: a shortened comment
       // that no longer says why is a worse trade than a long one.
-      final offenders = findLongComments(tree);
+      final List<String> offenders = findLongComments(tree);
 
       expect(
         offenders,
@@ -486,9 +486,9 @@ void main() {
     });
 
     test('comments exist to check, so the rule above is not vacuous', () {
-      var count = 0;
-      for (final entry in tree.dartFilesUnder('lib').entries) {
-        for (final line in entry.value) {
+      int count = 0;
+      for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+        for (final String line in entry.value) {
           if (line.trimLeft().startsWith('//')) count++;
         }
       }
@@ -524,8 +524,8 @@ void main() {
     });
 
     test('the naming check has widgets to check', () {
-      var count = 0;
-      for (final entry in widgetClassesByFile(tree).values) {
+      int count = 0;
+      for (final List<String> entry in widgetClassesByFile(tree).values) {
         count += entry.length;
       }
       expect(
@@ -551,14 +551,14 @@ void main() {
     });
 
     test('reachability is computed, so it is not three empty sets', () {
-      final reach = widgetReachabilityByFeature(tree);
+      final Map<String, Set<String>> reach = widgetReachabilityByFeature(tree);
       expect(
         reach.keys.toSet(),
-        {'notes', 'widget', 'settings'},
+        <String>{'notes', 'widget', 'settings'},
         reason: 'precondition: one root per feature. A rename in lib/ would '
             'make this silently empty.',
       );
-      for (final entry in reach.entries) {
+      for (final MapEntry<String, Set<String>> entry in reach.entries) {
         expect(
           entry.value.length,
           greaterThan(5),
@@ -597,7 +597,7 @@ void main() {
       // The scanner is a regex over method bodies, and a regex that matches
       // nothing reports a clean tree. Fed a planted body it has to bite, or the
       // test above is decoration.
-      const planted = '''
+      const String planted = '''
 class _Probe extends StatefulWidget {
   const _Probe({super.key});
 
@@ -629,10 +629,10 @@ class _ProbeState extends State<_Probe> {
       // Checked against `_decidedSections` above, not against the doc itself:
       // the doc always contains its own headings, so checking it against itself
       // passes vacuously and records nothing.
-      final doc = tree.read('docs/flutter_architecture_pattern.md');
-      final sections = RegExp(r'^#{2,3} (\d+(?:\.\d+)?)', multiLine: true)
+      final String doc = tree.read('docs/flutter_architecture_pattern.md');
+      final Set<String> sections = RegExp(r'^#{2,3} (\d+(?:\.\d+)?)', multiLine: true)
           .allMatches(doc)
-          .map((m) => m.group(1)!)
+          .map((RegExpMatch m) => m.group(1)!)
           .toSet();
 
       expect(
@@ -641,14 +641,14 @@ class _ProbeState extends State<_Probe> {
         reason: 'precondition: the rulebook has numbered sections',
       );
 
-      final undecided = sections.difference(_decidedSections).toList()..sort();
+      final List<String> undecided = sections.difference(_decidedSections).toList()..sort();
       expect(
         undecided,
         isEmpty,
         reason: 'sections with no row in the decision table above: $undecided',
       );
 
-      final stale =
+      final List<String> stale =
           _decidedSections.difference(sections).toList()..sort();
       expect(
         stale,
@@ -658,8 +658,8 @@ class _ProbeState extends State<_Probe> {
     });
 
     test('the declined rules name the authority that declined them', () {
-      final doc = tree.read('docs/flutter_architecture_pattern.md');
-      for (final authority in [
+      final String doc = tree.read('docs/flutter_architecture_pattern.md');
+      for (final String authority in <String>[
         'AGENTS.md',
         'PROJECT.md',
         'provider_pattern.md',

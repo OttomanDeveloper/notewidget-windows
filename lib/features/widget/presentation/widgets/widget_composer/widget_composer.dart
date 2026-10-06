@@ -41,7 +41,7 @@ class WidgetComposer extends StatelessWidget {
       duration: const Duration(milliseconds: 160),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, animation) => FadeTransition(
+      transitionBuilder: (Widget child, Animation<double> animation) => FadeTransition(
         opacity: animation,
         child: SizeTransition(
           sizeFactor: animation,

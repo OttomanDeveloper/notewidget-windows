@@ -21,7 +21,7 @@ class StorageLocation {
     /// chosen folder's copy, then the default pointer. Unreachable folders are
     /// refused here - recreating one as empty would be total loss.
   static String? followPointer(AppPaths paths) {
-    final pointer = readPointer(paths);
+    final String? pointer = readPointer(paths);
 
     // No folder chosen: the pointer *is* the answer, and there is no second copy.
     if (pointer == null || pointer.trim().isEmpty) return null;
@@ -32,7 +32,7 @@ class StorageLocation {
 
     // The chosen folder's own copy wins, when it has a usable one. This is what makes
     // a chosen folder survive being moved.
-    final own = _readKey(File('$pointer\\settings.json'));
+    final String? own = _readKey(File('$pointer\\settings.json'));
     if (own != null && own.trim().isNotEmpty && isReachable(own)) return own;
 
     return pointer;
@@ -41,7 +41,7 @@ class StorageLocation {
     /// The whole answer in one call, as `main()` uses it. Never null, never
     /// throws: the fallback is the runner's directory.
   static String resolveDataDirectory(AppPaths paths) {
-    final configured = followPointer(paths);
+    final String? configured = followPointer(paths);
     return AppPaths.configuredLocation(
       reported: paths.reportedDirectory ?? paths.dataDirectory,
       configured: configured,
@@ -54,11 +54,11 @@ class StorageLocation {
   static bool isReachable(String path) {
     if (!AppPaths.isUsableDirectory(path)) return false;
     try {
-      final dir = Directory(path.trim());
+      final Directory dir = Directory(path.trim());
       if (!dir.existsSync()) return false;
         // Written then removed: existence and writability differ, and only the
         // second matters. Fails here, not on the first keystroke.
-      final probe = File('${dir.path}\\.wn-write-probe')
+      final File probe = File('${dir.path}\\.wn-write-probe')
         ..createSync()
         ..deleteSync();
       return !probe.existsSync();
@@ -73,7 +73,7 @@ class StorageLocation {
       normalize(a).compareTo(normalize(b)) == 0;
 
   static String normalize(String path) {
-    var p = path.trim().replaceAll('/', r'\');
+    String p = path.trim().replaceAll('/', r'\');
     while (p.length > 3 && p.endsWith(r'\')) {
       p = p.substring(0, p.length - 1);
     }

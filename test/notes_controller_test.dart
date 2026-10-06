@@ -39,7 +39,7 @@ void main() {
 
   group('creating and editing', () {
     test('the first launch has a note ready to type into', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       expect(c.notes, isEmpty);
 
@@ -50,7 +50,7 @@ void main() {
     });
 
     test('ensureAtLeastOneNote does not add a second note', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       c.ensureAtLeastOneNote();
       c.ensureAtLeastOneNote();
@@ -58,11 +58,11 @@ void main() {
     });
 
     test('editing moves a note to the top of the list', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final first = c.createNote()!;
+      final Note first = c.createNote()!;
       c.updateNote(first.id, body: 'first');
-      final second = c.createNote()!;
+      final Note second = c.createNote()!;
       expect(c.notes.first.id, second.id);
 
       // Editing the older note brings it back to the front.
@@ -75,15 +75,15 @@ void main() {
       // these three notes are very likely to land in the same one, and the
       // ordering tie-break is by id - which is random. Before the controller
       // guaranteed a strictly increasing stamp, this was a coin flip.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
-      final b = c.createNote()!;
-      final d = c.createNote()!;
+      final Note a = c.createNote()!;
+      final Note b = c.createNote()!;
+      final Note d = c.createNote()!;
 
-      var edit = 0;
+      int edit = 0;
 
-      for (final target in [a, b, d, a, b, d]) {
+      for (final Note target in <Note>[a, b, d, a, b, d]) {
         // Each edit must actually change something: updateNote deliberately
         // ignores an edit that alters nothing, so a repeated body would leave
         // the note exactly where it was and prove nothing.
@@ -95,22 +95,22 @@ void main() {
     });
 
     test('an edit that changes nothing does not reorder anything', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'A');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       c.updateNote(b.id, title: 'B');
 
-      final orderBefore = c.notes.map((n) => n.id).toList();
+      final List<String> orderBefore = c.notes.map((Note n) => n.id).toList();
       c.updateNote(a.id, title: 'A', body: '');
-      expect(c.notes.map((n) => n.id).toList(), orderBefore);
+      expect(c.notes.map((Note n) => n.id).toList(), orderBefore);
     });
     test('a note whose body is emptied still exists', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final n = c.createNote()!;
+      final Note n = c.createNote()!;
       c.updateNote(n.id, body: 'something');
       expect(c.notes, hasLength(1));
 
@@ -121,12 +121,12 @@ void main() {
     });
 
       test('produces a new state on every change that matters', () async {
-        final c = await controller();
+        final Notes c = await controller();
         await c.load();
-        final before = c.changes;
+        final int before = c.changes;
 
         c.createNote();
-        final n = c.selectedNote!;
+        final Note n = c.selectedNote!;
         c.updateNote(n.id, body: 'x');
         c.setQuery('x');
         // Create, edit and search each produce one new state. Nothing here should
@@ -136,10 +136,10 @@ void main() {
       });
 
       test('setting the same query twice does not produce a new state', () async {
-        final c = await controller();
+        final Notes c = await controller();
         await c.load();
         c.setQuery('milk');
-        final before = c.changes;
+        final int before = c.changes;
         c.setQuery('milk');
         expect(c.changes - before, 0);
       });
@@ -147,9 +147,9 @@ void main() {
 
   group('marking a task finished', () {
     test('a note toggles both ways', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final note = c.createNote()!;
+      final Note note = c.createNote()!;
 
       expect(note.isCompleted, isFalse);
 
@@ -169,34 +169,34 @@ void main() {
       // most recently edited, so bumping the timestamp would send the note to
       // the top every time it is ticked off, and working through a list would
       // become a shuffle with the finished task landing back in front of you.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final first = c.createNote()!;
+      final Note first = c.createNote()!;
       c.updateNote(first.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final second = c.createNote()!;
+      final Note second = c.createNote()!;
       c.updateNote(second.id, title: 'newer');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final third = c.createNote()!;
+      final Note third = c.createNote()!;
       c.updateNote(third.id, title: 'newest');
 
-      expect(c.notes.map((n) => n.title), ['newest', 'newer', 'older']);
-      final stampsBefore = {for (final n in c.notes) n.id: n.updatedAt};
+      expect(c.notes.map((Note n) => n.title), <String>['newest', 'newer', 'older']);
+      final Map<String, DateTime> stampsBefore = <String, DateTime>{for (final Note n in c.notes) n.id: n.updatedAt};
 
       c.toggleCompleted(second.id);
 
-      expect(c.notes.map((n) => n.title), ['newest', 'newer', 'older'],
+      expect(c.notes.map((Note n) => n.title), <String>['newest', 'newer', 'older'],
           reason: 'the list must not move under the pointer');
-      for (final note in c.notes) {
+      for (final Note note in c.notes) {
         expect(note.updatedAt, stampsBefore[note.id],
             reason: 'finishing a task is a state change, not an edit');
       }
     });
 
     test('undo brings a finished note back finished', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final note = c.createNote()!;
+      final Note note = c.createNote()!;
       c.toggleCompleted(note.id);
       await c.flush();
 
@@ -209,32 +209,32 @@ void main() {
     });
 
     test('the finished state is written to disk', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final note = c.createNote()!;
+      final Note note = c.createNote()!;
       c.toggleCompleted(note.id);
       await c.flush();
 
-      final reread = NotesRepository(
+      final NotesRepository reread = NotesRepository(
         AtomicJsonFile(harness.notesFile),
       );
-      final result = await reread.load();
-      final restored = (result as NotesLoaded).notes.single;
+      final NotesLoadResult result = await reread.load();
+      final Note restored = (result as NotesLoaded).notes.single;
       expect(restored.isCompleted, isTrue);
       await reread.dispose();
     });
 
     test('the big card skips finished notes so it is never a struck-through task',
         () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final older = c.createNote()!;
+      final Note older = c.createNote()!;
       c.updateNote(older.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final newer = c.createNote()!;
+      final Note newer = c.createNote()!;
       c.updateNote(newer.id, title: 'newer');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final newest = c.createNote()!;
+      final Note newest = c.createNote()!;
       c.updateNote(newest.id, title: 'newest');
 
       // With nothing picked. createNote selects what it makes, and that is a
@@ -251,12 +251,12 @@ void main() {
 
     test('with everything finished the big card falls back to the most recent',
         () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'a');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       c.updateNote(b.id, title: 'b');
 
       c.toggleCompleted(a.id);
@@ -271,12 +271,12 @@ void main() {
       // The preference is a default, not a rule. If someone has picked a note,
       // moving the selection out from under them would be worse than showing a
       // finished note large.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final older = c.createNote()!;
+      final Note older = c.createNote()!;
       c.updateNote(older.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final newer = c.createNote()!;
+      final Note newer = c.createNote()!;
       c.updateNote(newer.id, title: 'newer');
       c.toggleCompleted(newer.id);
 
@@ -288,9 +288,9 @@ void main() {
       // Every other mutation is refused in this state, and this one has to be too:
       // a note flipped to finished in memory that never reaches disk is a note
       // that comes back unfinished, which is worse than the toggle doing nothing.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final note = c.createNote()!;
+      final Note note = c.createNote()!;
 
       File(harness.notesFile).writeAsStringSync('{ not json');
       await c.load();
@@ -301,7 +301,7 @@ void main() {
     });
 
     test('toggling a note that is not there does nothing', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       c.createNote();
       c.toggleCompleted('no-such-note');
@@ -318,10 +318,10 @@ void main() {
       // path had none, so a scanner passing over the file could stop the app
       // from starting until it was restarted - while telling the user their
       // notes were damaged, which they were not.
-      final c = await controller();
+      final Notes c = await controller();
       File(harness.notesFile)
           .writeAsStringSync('{"format":"winnotes","version":1,"notes":[]}');
-      final lock = _ExclusiveLock.acquire(harness.notesFile);
+      final _ExclusiveLock lock = _ExclusiveLock.acquire(harness.notesFile);
       addTearDown(lock.release);
 
       await c.load();
@@ -344,9 +344,9 @@ void main() {
       // The ladder costs two and a half seconds, and it must only ever be paid
       // when something is actually in the way - otherwise every cold start
       // would be that much slower.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final started = DateTime.now();
+      final DateTime started = DateTime.now();
       c.createNote();
       expect(DateTime.now().difference(started).inSeconds, lessThan(2));
     });
@@ -355,7 +355,7 @@ void main() {
       // Waiting cannot make the content change, so this must not be dressed up
       // as a lock - that would send someone round looking for antivirus instead
       // of telling them their file needs attention.
-      final c = await controller();
+      final Notes c = await controller();
       File(harness.notesFile).writeAsStringSync('{ "format": "winnotes"');
       await c.load();
       expect(c.corrupt, isNotNull);
@@ -365,7 +365,7 @@ void main() {
     test('a missing file is a first run, not a problem to report', () async {
       // The antivirus-quarantine case. There is nothing to lose and nothing to
       // explain, so refusing to start would be the wrong answer entirely.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       expect(c.corrupt, isNull);
       expect(c.notes, isEmpty);
@@ -374,7 +374,7 @@ void main() {
     });
 
     test('a zero-length file is a leftover temp, not corruption', () async {
-      final c = await controller();
+      final Notes c = await controller();
       File(harness.notesFile).writeAsStringSync('');
       await c.load();
       expect(c.corrupt, isNull);
@@ -385,17 +385,17 @@ void main() {
       // Because writes are atomic, WinNotes can never produce a file it cannot
       // read, so corruption is always external - and this is the only copy that
       // survives that.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, body: 'first version');
       await c.flush();
 
-      final note = c.notes.single;
+      final Note note = c.notes.single;
       c.updateNote(note.id, body: 'second version');
       await c.flush();
 
-      final backup = File(harness.backupFile);
+      final File backup = File(harness.backupFile);
       expect(backup.existsSync(), isTrue);
       expect(backup.readAsStringSync(), contains('first version'),
           reason: 'the backup is one write behind, which costs at most the '
@@ -405,9 +405,9 @@ void main() {
     });
 
     test('the previous version restores the notes', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, body: 'the note worth keeping');
       await c.flush();
       c.updateNote(a.id, body: 'the note that got damaged');
@@ -434,7 +434,7 @@ void main() {
     test('restoring reports when there is nothing to restore', () async {
       // One write means no previous version, and the screen must not offer a
       // button that quietly does nothing.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       c.createNote();
       await c.flush();
@@ -451,11 +451,11 @@ void main() {
       // The escape hatch. A refusal with no way out is a trap, and someone in it
       // is already stressed. Nothing is deleted: the damaged file is renamed with
       // the time on the end, because it may still be readable by hand.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       File(harness.notesFile).writeAsStringSync('{{{ truncated');
 
-      final result = await c.startFresh();
+      final ({String? keptAt, RecoveryOutcome outcome}) result = await c.startFresh();
       expect(result.outcome, RecoveryOutcome.startedFresh);
       expect(result.keptAt, isNotNull);
 
@@ -468,15 +468,15 @@ void main() {
 
     test('a second incident does not overwrite the first one', () async {
       // Timestamped names specifically so this holds.
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
 
       File(harness.notesFile).writeAsStringSync('first damage');
-      final first = await c.startFresh();
+      final ({String? keptAt, RecoveryOutcome outcome}) first = await c.startFresh();
 
       await Future<void>.delayed(const Duration(milliseconds: 1100));
       File(harness.notesFile).writeAsStringSync('second damage');
-      final second = await c.startFresh();
+      final ({String? keptAt, RecoveryOutcome outcome}) second = await c.startFresh();
 
       expect(first.keptAt, isNot(second.keptAt));
       expect(File(first.keptAt!).readAsStringSync(), 'first damage');
@@ -485,7 +485,7 @@ void main() {
 
     test('starting fresh writes a valid file, so it does not refuse again',
         () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
       File(harness.notesFile).writeAsStringSync('{{{ truncated');
       await c.startFresh();
@@ -494,7 +494,7 @@ void main() {
       // The whole point of the escape hatch: the app is usable afterwards, which
       // is checked by reading the folder with a controller that has never seen
       // the damaged file.
-      final reloaded = await controller();
+      final Notes reloaded = await controller();
       await reloaded.load();
       expect(reloaded.corrupt, isNull);
       expect(reloaded.notes, isNotEmpty);
@@ -503,39 +503,39 @@ void main() {
 
   group('search', () {
     test('filters on title and body as the user types', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'Groceries', body: 'Milk');
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       c.updateNote(b.id, title: 'Ideas', body: 'Widgets');
 
       expect(c.visibleNotes, hasLength(2));
       c.setQuery('milk');
-      expect(c.visibleNotes.map((n) => n.id), [a.id]);
+      expect(c.visibleNotes.map((Note n) => n.id), <String>[a.id]);
       c.setQuery('widget');
-      expect(c.visibleNotes.map((n) => n.id), [b.id]);
+      expect(c.visibleNotes.map((Note n) => n.id), <String>[b.id]);
       c.setQuery('zzz');
       expect(c.visibleNotes, isEmpty);
     });
 
     test('a whitespace-only query shows everything', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final first0 = c.createNote()!;
+      final Note first0 = c.createNote()!;
       c.updateNote(first0.id, title: 'A');
-      final second0 = c.createNote()!;
+      final Note second0 = c.createNote()!;
       c.updateNote(second0.id, title: 'B');
       c.setQuery('   ');
       expect(c.visibleNotes, hasLength(2));
     });
 
     test('clearing the query restores the full list', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'Groceries');
-      final other = c.createNote()!;
+      final Note other = c.createNote()!;
       c.updateNote(other.id, title: 'Other');
       c.setQuery('groceries');
       expect(c.visibleNotes, hasLength(1));
@@ -546,12 +546,12 @@ void main() {
 
   group('selection', () {
     test('falls back to the most recent note when nothing is picked', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'older');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       c.updateNote(b.id, title: 'newer');
 
       c.select(null);
@@ -561,11 +561,11 @@ void main() {
     });
 
     test('deleting the selected note moves the selection on', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       expect(c.selectedId, b.id);
 
       c.deleteNote(b.id);
@@ -574,9 +574,9 @@ void main() {
     });
 
     test('deleting the last note leaves nothing selected, not a crash', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.deleteNote(a.id);
       expect(c.notes, isEmpty);
       expect(c.selectedNote, isNull);
@@ -585,9 +585,9 @@ void main() {
 
     test('a selection pointing at a missing note resolves to something real',
         () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.select(a.id);
       // As happens when the other surface deletes a note.
       c.deleteNote(a.id);
@@ -598,9 +598,9 @@ void main() {
 
   group('delete and undo', () {
     test('undo restores the note', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final n = c.createNote()!;
+      final Note n = c.createNote()!;
       c.updateNote(n.id, title: 'Groceries', body: 'Milk');
 
       c.deleteNote(n.id);
@@ -615,30 +615,30 @@ void main() {
 
     test('undo puts the note back in its original position, not on top',
         () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'A', body: 'old');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       c.updateNote(b.id, title: 'B', body: 'old');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final d = c.createNote()!;
+      final Note d = c.createNote()!;
       c.updateNote(d.id, title: 'D', body: 'old');
 
-      final order = c.notes.map((n) => n.title).toList();
-      final middle = order[1];
-      final victim = c.notes.firstWhere((n) => n.title == middle);
+      final List<String> order = c.notes.map((Note n) => n.title).toList();
+      final String middle = order[1];
+      final Note victim = c.notes.firstWhere((Note n) => n.title == middle);
       c.deleteNote(victim.id);
       c.undoDelete();
 
-      expect(c.notes.map((n) => n.title).toList(), order);
+      expect(c.notes.map((Note n) => n.title).toList(), order);
     });
 
     test('undo is offered once and then expires', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final n = c.createNote()!;
+      final Note n = c.createNote()!;
       c.deleteNote(n.id);
       expect(c.pendingUndo, isNotNull);
 
@@ -649,15 +649,15 @@ void main() {
 
     test('deleting again replaces the pending undo rather than queueing',
         () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final a = c.createNote()!;
+      final Note a = c.createNote()!;
       c.updateNote(a.id, title: 'A');
-      final b = c.createNote()!;
+      final Note b = c.createNote()!;
       c.updateNote(b.id, title: 'B');
 
       c.deleteNote(a.id);
-      final first = c.pendingUndo;
+      final PendingUndo? first = c.pendingUndo;
       c.deleteNote(b.id);
 
       expect(c.pendingUndo, isNot(first),
@@ -665,14 +665,14 @@ void main() {
       // Undo restores the most recent deletion, which is B. A is still gone:
       // there is one undo slot, and holding two would make the toast ambiguous.
       c.undoDelete();
-      expect(c.notes.map((n) => n.title), ['B']);
+      expect(c.notes.map((Note n) => n.title), <String>['B']);
       expect(c.notes, hasLength(1));
     });
 
     test('the undo window closes on its own', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final n = c.createNote()!;
+      final Note n = c.createNote()!;
       c.deleteNote(n.id);
 
       // Uses the real timer rather than fake async so the assertion covers the
@@ -686,7 +686,7 @@ void main() {
   group('corrupt file', () {
     test('blocks every mutation instead of starting empty', () async {
       File(harness.notesFile).writeAsStringSync('{ not json');
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
 
       expect(c.corrupt, isNotNull);
@@ -696,7 +696,7 @@ void main() {
       c.createNote();
       c.setQuery('x');
       c.notes.isEmpty;
-      final created = c.notes.length;
+      final int created = c.notes.length;
 
       await c.flush();
       expect(File(harness.notesFile).readAsStringSync(), '{ not json');
@@ -704,15 +704,15 @@ void main() {
     });
 
     test('a valid file loads normally and clears the error', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final n = c.createNote()!;
+      final Note n = c.createNote()!;
       c.updateNote(n.id, title: 'Fine');
       // Writes are debounced, so without this the second controller reads a
       // file that does not exist yet.
       await c.flush();
 
-      final fresh = await controller();
+      final Notes fresh = await controller();
       await fresh.load();
       expect(fresh.corrupt, isNull);
       expect(fresh.notes.single.title, 'Fine');
@@ -721,12 +721,12 @@ void main() {
 
   group('import and export', () {
     test('replaceAll swaps the whole library', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final old = c.createNote()!;
+      final Note old = c.createNote()!;
       c.updateNote(old.id, title: 'old');
 
-      final incoming = [
+      final List<Note> incoming = <Note>[
         Note(
           id: 'i1',
           title: 'One',
@@ -736,17 +736,17 @@ void main() {
         ),
       ];
       c.replaceAll(incoming);
-      expect(c.notes.map((n) => n.title), ['One']);
+      expect(c.notes.map((Note n) => n.title), <String>['One']);
       expect(c.selectedId, 'i1');
     });
 
     test('merge keeps existing notes and selects the new one', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final existing = c.createNote()!;
+      final Note existing = c.createNote()!;
       c.updateNote(existing.id, title: 'existing');
 
-      c.merge([
+      c.merge(<Note>[
         Note(
           id: 'i2',
           title: 'imported',
@@ -755,16 +755,16 @@ void main() {
           updatedAt: DateTime(2026),
         ),
       ]);
-      expect(c.notes.map((n) => n.title), containsAll(['existing', 'imported']));
+      expect(c.notes.map((Note n) => n.title), containsAll(<dynamic>['existing', 'imported']));
       expect(c.selectedId, 'i2');
     });
 
     test('merging nothing does nothing', () async {
-      final c = await controller();
+      final Notes c = await controller();
       await c.load();
-      final only = c.createNote()!;
+      final Note only = c.createNote()!;
       c.updateNote(only.id, title: 'only');
-      c.merge([]);
+      c.merge(<Note>[]);
       expect(c.notes, hasLength(1));
     });
   });
@@ -801,9 +801,9 @@ class _ExclusiveLock {
       DynamicLibrary.process().lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>('free');
 
   static Pointer<Uint16> _allocateUtf16(List<int> units) {
-    final raw = _malloc((units.length + 1) * 2);
-    final typed = raw.cast<Uint16>();
-    for (var i = 0; i < units.length; i++) {
+    final Pointer<Void> raw = _malloc((units.length + 1) * 2);
+    final Pointer<Uint16> typed = raw.cast<Uint16>();
+    for (int i = 0; i < units.length; i++) {
       typed[i] = units[i];
     }
     typed[units.length] = 0;
@@ -812,18 +812,18 @@ class _ExclusiveLock {
 
   static _ExclusiveLock acquire(String path) {
     if (!_supported) return _ExclusiveLock(Pointer<Void>.fromAddress(0));
-    final kernel32 = DynamicLibrary.process();
-    final createFile = kernel32.lookupFunction<
+    final DynamicLibrary kernel32 = DynamicLibrary.process();
+    final Pointer<Void> Function(Pointer<Uint16>, int, Pointer<Void>, Pointer<Void>, int, int, Pointer<Void>) createFile = kernel32.lookupFunction<
         Pointer<Void> Function(
             Pointer<Uint16>, Uint32, Pointer<Void>, Pointer<Void>, Uint32, Uint32, Pointer<Void>),
         Pointer<Void> Function(Pointer<Uint16>, int, Pointer<Void>, Pointer<Void>, int, int,
             Pointer<Void>)>('CreateFileW');
 
-    final buffer = _allocateUtf16(path.codeUnits);
+    final Pointer<Uint16> buffer = _allocateUtf16(path.codeUnits);
 
     // Share mode 0 is the whole point: nobody else may open the file, for
     // reading or writing, until this handle is closed.
-    final handle = createFile(
+    final Pointer<Void> handle = createFile(
       buffer,
       _genericRead,
       nullptr,

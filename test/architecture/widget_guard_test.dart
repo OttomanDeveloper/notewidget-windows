@@ -23,7 +23,7 @@ String _seedLoopBody(String source) =>
     '';
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('the editor has a minimum size', () {
     late String windowSource;
@@ -61,16 +61,16 @@ void main() {
     test('the guard bites: no WM_GETMINMAXINFO at all is rejected', () {
       expect(
         faultsFor(windowSource.replaceAll('case WM_GETMINMAXINFO: {', 'case WM_NCPAINT: {'))
-            .any((f) => f.contains('no WM_GETMINMAXINFO')),
+            .any((String f) => f.contains('no WM_GETMINMAXINFO')),
         isTrue,
       );
     });
 
     test('the guard bites: ptMinSize instead of ptMinTrackSize is rejected',
         () {
-      final faulty = windowSource.replaceAll('ptMinTrackSize', 'ptMinSize');
+      final String faulty = windowSource.replaceAll('ptMinTrackSize', 'ptMinSize');
       expect(
-        faultsFor(faulty).any((f) => f.contains('ptMinTrackSize')),
+        faultsFor(faulty).any((String f) => f.contains('ptMinTrackSize')),
         isTrue,
         reason: 'ptMinSize also caps programmatic sizing, so Dart asking for '
             'a size would be silently ignored.',
@@ -78,13 +78,13 @@ void main() {
     });
 
     test('the guard bites: an unscaled floor is rejected', () {
-      final faulty = windowSource.replaceAll(
+      final String faulty = windowSource.replaceAll(
         'ScaleForWindow(window, kMinEditorWidth)',
         'kMinEditorWidth',
       ).replaceAll('ScaleForWindow(window, kMinEditorHeight)', 'kMinEditorHeight');
       expect(faulty, isNot(equals(windowSource)));
       expect(
-        faultsFor(faulty).any((f) => f.contains('unscaled')),
+        faultsFor(faulty).any((String f) => f.contains('unscaled')),
         isTrue,
         reason: 'a literal here is 520 physical pixels, which is 347 logical '
             'pixels at 150% scaling.',
@@ -92,14 +92,14 @@ void main() {
     });
 
     test('the guard bites: claiming ptMaxPosition is rejected', () {
-      final faulty = windowSource.replaceAll(
+      final String faulty = windowSource.replaceAll(
         '      info->ptMinTrackSize.x = ScaleForWindow(window, kMinEditorWidth);',
         '      info->ptMaxPosition.x = 0;\n'
             '      info->ptMinTrackSize.x = ScaleForWindow(window, kMinEditorWidth);',
       );
       expect(faulty, isNot(equals(windowSource)));
       expect(
-        faultsFor(faulty).any((f) => f.contains('ptMaxPosition')),
+        faultsFor(faulty).any((String f) => f.contains('ptMaxPosition')),
         isTrue,
         reason: 'that field governs dragging off-screen, which '
             'ClampToReachableScreen already owns.',
@@ -113,7 +113,7 @@ void main() {
     late String hostSource;
 
     setUpAll(() {
-      final tree = SourceTree();
+      final SourceTree tree = SourceTree();
       windowSource = tree.read('windows/runner/win_notes_window.cpp');
       hostSource = tree.read('windows/runner/win_notes_host.cpp');
     });
@@ -122,7 +122,7 @@ void main() {
         findWidgetAboveEditorFaults(window ?? windowSource, host ?? hostSource);
 
     test('nothing puts the widget above the editor', () {
-      final faults = faultsFor();
+      final List<String> faults = faultsFor();
 
       expect(
         faults,
@@ -151,16 +151,16 @@ void main() {
     });
 
     test('the guard bites: an editor with WS_EX_TOPMOST is rejected', () {
-      final faulty = windowSource.replaceAll(
+      final String faulty = windowSource.replaceAll(
         '    *ex_style = 0;',
         '    *ex_style = WS_EX_TOPMOST;',
       );
       expect(faulty, isNot(equals(windowSource)),
           reason: 'the fixture did not apply; the guard proved nothing');
 
-      final faults = faultsFor(window: faulty);
+      final List<String> faults = faultsFor(window: faulty);
       expect(
-        faults.any((f) => f.contains('gives the editor WS_EX_TOPMOST')),
+        faults.any((String f) => f.contains('gives the editor WS_EX_TOPMOST')),
         isTrue,
         reason: faults.join('\n'),
       );
@@ -170,11 +170,11 @@ void main() {
         () {
       // The half that is easy to leave out. Everything else about the yield can
       // be right and the widget still ends up above the editor.
-      final faulty = hostSource.replaceAll('    editor_->Raise();', '');
+      final String faulty = hostSource.replaceAll('    editor_->Raise();', '');
 
-      final faults = faultsFor(host: faulty);
+      final List<String> faults = faultsFor(host: faulty);
       expect(
-        faults.any((f) => f.contains('does not raise the editor')),
+        faults.any((String f) => f.contains('does not raise the editor')),
         isTrue,
         reason: 'the missing Raise must be named specifically, not lumped in '
             'with the other checks: it is the one that was measured rather '
@@ -183,15 +183,15 @@ void main() {
     });
 
     test('the guard bites: an un-guarded SetAlwaysOnTop is rejected', () {
-      final faulty = windowSource.replaceAll(
+      final String faulty = windowSource.replaceAll(
         'if (window_ == nullptr || !IsWidgetRole(params_.role)) return;',
         'if (window_ == nullptr) return;',
       );
       expect(faulty, isNot(equals(windowSource)));
 
-      final faults = faultsFor(window: faulty);
+      final List<String> faults = faultsFor(window: faulty);
       expect(
-        faults.any((f) => f.contains('IsWidgetRole')),
+        faults.any((String f) => f.contains('IsWidgetRole')),
         isTrue,
         reason: 'without the role check the always-on-top setting reaches the '
             'editor through the back door.\n\n${faults.join('\n')}',
@@ -199,16 +199,16 @@ void main() {
     });
 
     test('the guard bites: no WM_ACTIVATE is rejected', () {
-      final faulty = windowSource.replaceAll('case WM_ACTIVATE: {', 'case WM_NCPAINT: {');
+      final String faulty = windowSource.replaceAll('case WM_ACTIVATE: {', 'case WM_NCPAINT: {');
       expect(faulty, isNot(equals(windowSource)));
       expect(
-        faultsFor(window: faulty).any((f) => f.contains('WM_ACTIVATE')),
+        faultsFor(window: faulty).any((String f) => f.contains('WM_ACTIVATE')),
         isTrue,
       );
     });
 
     test('the guard bites: a host with no activation handler is rejected', () {
-      final faulty = hostSource.replaceAll(
+      final String faulty = hostSource.replaceAll(
         'void Host::OnWindowActivationChanged(SurfaceRole role, bool active) {',
         'void Host::SomeOtherHandler(SurfaceRole role, bool active) {',
       );
@@ -217,7 +217,7 @@ void main() {
 
       expect(
         faultsFor(host: faulty)
-            .any((f) => f.contains('does not define Host::OnWindowActivationChanged')),
+            .any((String f) => f.contains('does not define Host::OnWindowActivationChanged')),
         isTrue,
         reason: 'matching the bare name would have been satisfied by the '
             'mention in a comment, so a renamed handler would have gone '
@@ -228,7 +228,7 @@ void main() {
 
   group('the widget is HTCLIENT everywhere', () {
     test('the runner never answers HTCAPTION', () {
-      final hits = findCaptionHits(tree);
+      final List<String> hits = findCaptionHits(tree);
 
       expect(
         hits,
@@ -246,14 +246,14 @@ void main() {
     test('the scan is not passing because it finds nothing to look for', () {
       // Prove the scanner works by running it over source that does contain the
       // thing. Without this, deleting the regex would turn this file green.
-      const dirty = '''
+      const String dirty = '''
         LRESULT HitTest(POINT p) const {
           if (inCorner(p)) return HTTOPLEFT;
           return HTCAPTION;
         }
       ''';
 
-      final found = RegExp(r'HTCAPTION').allMatches(dirty).length;
+      final int found = RegExp(r'HTCAPTION').allMatches(dirty).length;
       expect(found, 1, reason: 'the scanner must see HTCAPTION in real code');
       expect(
         RegExp(r'return\s+HTTOPLEFT\b').hasMatch(dirty),
@@ -266,11 +266,11 @@ void main() {
       // HitTest's own comment block names HTCAPTION four times, on purpose, to
       // explain why it must never be used. A guard that flagged those would be
       // deleted within a day, which is worse than no guard.
-      final source = tree.runnerSource;
-      final inComments = source
+      final String source = tree.runnerSource;
+      final int inComments = source
           .split('\n')
-          .where((l) => l.trimLeft().startsWith('//'))
-          .where((l) => l.contains('HTCAPTION'))
+          .where((String l) => l.trimLeft().startsWith('//'))
+          .where((String l) => l.contains('HTCAPTION'))
           .length;
 
       expect(
@@ -296,9 +296,9 @@ void main() {
     setUpAll(() => source = tree.runnerSource);
 
     test('both move and resize seed the loop from the pending anchor', () {
-      final move = RegExp(r'case kWmBeginMove:\s*\{(.*?)\n    \}', dotAll: true)
+      final String? move = RegExp(r'case kWmBeginMove:\s*\{(.*?)\n    \}', dotAll: true)
           .firstMatch(source)?.group(1);
-      final resize = RegExp(r'case kWmBeginResize:\s*\{(.*?)\n    \}', dotAll: true)
+      final String? resize = RegExp(r'case kWmBeginResize:\s*\{(.*?)\n    \}', dotAll: true)
           .firstMatch(source)?.group(1);
 
       expect(move, isNotNull, reason: 'the move loop should still exist');
@@ -309,7 +309,7 @@ void main() {
     });
 
     test('the loop cursor comes from the anchor, not from the live cursor', () {
-      final body = _seedLoopBody(source);
+      final String body = _seedLoopBody(source);
       expect(body, contains('pending_anchor_x_'));
       expect(body, contains('pending_anchor_y_'));
       expect(
@@ -335,7 +335,7 @@ void main() {
 
   group('compose mode returns the keyboard', () {
     test('the runner restores WS_EX_NOACTIVATE when compose mode ends', () {
-      final source = tree.runnerSource;
+      final String source = tree.runnerSource;
 
       // Both halves must be present. A runner that dropped the flag and never
       // put it back would leave the widget holding the caret for the rest of
@@ -353,7 +353,7 @@ void main() {
     });
 
     test('focus goes back to the window it was taken from', () {
-      final source = tree.runnerSource;
+      final String source = tree.runnerSource;
 
       expect(
         source.contains('compose_previous_focus_'),
@@ -375,8 +375,8 @@ void main() {
     });
 
     test('WM_MOUSEACTIVATE defers to compose mode', () {
-      final source = tree.runnerSource;
-      final block = RegExp(
+      final String source = tree.runnerSource;
+      final String? block = RegExp(
         r'case WM_MOUSEACTIVATE:\s*\{(.*?)\n    \}',
         dotAll: true,
       ).firstMatch(source)?.group(1);

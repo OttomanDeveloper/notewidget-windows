@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/features/notes/domain/note.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
+import 'package:win_notes/features/widget/domain/widget_state.dart';
 
 import '../../../../../core/platform/shell_channel.dart';
 import '../../../../../core/utils/app_providers.dart';
@@ -51,7 +54,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
 
   /// For handlers; `build()` watches `settingsProvider` and `launchInfoProvider`.
   bool get acrylicAvailable {
-    final settings = ref.read(settingsProvider).value?.settings;
+    final WinNotesSettings? settings = ref.read(settingsProvider).value?.settings;
     return (settings?.acrylicEnabled ?? false) &&
         ref.read(launchInfoProvider).acrylicSupported;
   }
@@ -70,7 +73,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final offset = ref.read(widgetProvider).value?.window.scrollOffset ?? 0.0;
+      final double offset = ref.read(widgetProvider).value?.window.scrollOffset ?? 0.0;
       if (offset > 0 && _scroll.hasClients) {
         _scroll.jumpTo(offset.clamp(0, _scroll.position.maxScrollExtent));
       }
@@ -109,7 +112,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     /// Drags are recognised here (selection, scroll, lock) and performed in the
     /// runner; the grab band follows DPI in logical pixels.
   void _syncGrabBand(BuildContext? context) {
-    final scale =
+    final double scale =
         (context == null ? null : MediaQuery.maybeDevicePixelRatioOf(context)) ?? 1.0;
     _grabBand = (14 / scale).clamp(8.0, 24.0).round();
   }
@@ -122,8 +125,8 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     // While composing, the pointer belongs to the text field; otherwise a click near
     // its edge would resize instead of placing the caret.
     if (_composing.value) return;
-    final size = _surfaceSize;
-    final edge = size == null
+    final Size? size = _surfaceSize;
+    final GestureEdge edge = size == null
         ? GestureEdge.none
         : _edgeUnder(event.localPosition, size, _grabBand);
 
@@ -134,9 +137,9 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
       bounds: _currentBounds(),
     );
 
-    final now = DateTime.now();
-    final quick = now.difference(_lastTap) < const Duration(milliseconds: 350);
-    final near = (event.position - _lastTapPosition).distance < 24;
+    final DateTime now = DateTime.now();
+    final bool quick = now.difference(_lastTap) < const Duration(milliseconds: 350);
+    final bool near = (event.position - _lastTapPosition).distance < 24;
     if (quick && near) {
       onOpenEditor();
       _lastTap = DateTime.fromMillisecondsSinceEpoch(0);
@@ -150,10 +153,10 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   /// Scroll while there is more to read; at the end the widget moves with the drag.
   bool _listCanScroll(double dy) {
     if (!_scroll.hasClients) return false;
-    final position = _scroll.position;
+    final ScrollPosition position = _scroll.position;
     // Half-pixel slack avoids claiming the gesture over rounding; up moves toward the end.
     // Down moves toward the start; reversed hands scrolls to the window.
-    const slack = 0.5;
+    const double slack = 0.5;
     if (dy < 0) {
       return position.pixels < position.maxScrollExtent - slack;
     }
@@ -165,7 +168,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
 
   /// Hands a recognised drag to the runner once; past this the native loop owns the pointer.
   void _onPointerMove(PointerMoveEvent event) {
-    final gesture = _gesture;
+    final WidgetGesture? gesture = _gesture;
     if (gesture == null || gesture.kind == GestureKind.handedOff) return;
     if ((event.position - gesture.anchor).distance < widgetDragThreshold) return;
 
@@ -186,7 +189,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
 
     // Resizing is never locked: the lock is about position, and a corner drag
     // is a deliberate act rather than an accidental one.
-    final resizeEdge = toResizeEdge(gesture.edge);
+    final ResizeEdge resizeEdge = toResizeEdge(gesture.edge);
     unawaited(controller.beginResize(resizeEdge, gesture.anchor));
     _gesture = _gesture?.handedOff();
   }
@@ -216,7 +219,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   BuildContext? _lastContext;
 
   NativeBounds? _currentBounds() {
-    final state = _state.window;
+    final WidgetWindowState state = _state.window;
     if (!state.hasGeometry) return null;
     return NativeBounds(
       left: state.left ?? 0,
@@ -227,10 +230,10 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   }
 
   static GestureEdge _edgeUnder(Offset p, Size size, int band) {
-    final left = p.dx < band;
-    final right = p.dx > size.width - band;
-    final top = p.dy < band;
-    final bottom = p.dy > size.height - band;
+    final bool left = p.dx < band;
+    final bool right = p.dx > size.width - band;
+    final bool top = p.dy < band;
+    final bool bottom = p.dy > size.height - band;
     if (top && left) return GestureEdge.topLeft;
     if (top && right) return GestureEdge.topRight;
     if (bottom && left) return GestureEdge.bottomLeft;
@@ -277,7 +280,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   }
 
   Future<void> _submitComposer() async {
-    final raw = _compose.text.trim();
+    final String raw = _compose.text.trim();
     if (raw.isEmpty) {
       _closeComposer();
       return;
@@ -285,9 +288,9 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     // First line is the title, the rest is the body. It is the same shape the
     // widget already displays - a line, then a preview - so a note jotted here
     // looks like a note written in the editor, with no second box to fill in.
-    final split = raw.indexOf('\n');
-    final title = split < 0 ? raw : raw.substring(0, split).trim();
-    final body = split < 0 ? '' : raw.substring(split + 1).trim();
+    final int split = raw.indexOf('\n');
+    final String title = split < 0 ? raw : raw.substring(0, split).trim();
+    final String body = split < 0 ? '' : raw.substring(split + 1).trim();
     // Close first, so the keyboard goes back before the write is even attempted.
     // Waiting on the round trip would leave the caret parked in the widget while
     // nothing is happening, which is the thing this whole design is avoiding.
@@ -319,31 +322,31 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   Widget build(BuildContext context) {
     // Watched where drawn (`provider_pattern.md` §2, `flutter_architecture_pattern.md`
     // §5.2): the getters above are `read` for handlers, which cannot watch.
-    final brightness = ref.watch(widgetSurfaceThemeProvider).brightness;
-    final palette = ref.watch(accentPaletteProvider);
-    final acrylicEnabled = ref.watch(
-      settingsProvider.select((v) => v.value?.settings.acrylicEnabled),
+    final Brightness brightness = ref.watch(widgetSurfaceThemeProvider).brightness;
+    final WinNotesPalette palette = ref.watch(accentPaletteProvider);
+    final bool? acrylicEnabled = ref.watch(
+      settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings.acrylicEnabled),
     );
-    final acrylicSupported = ref.watch(
-      launchInfoProvider.select((v) => v.acrylicSupported),
+    final bool acrylicSupported = ref.watch(
+      launchInfoProvider.select((LaunchInfo v) => v.acrylicSupported),
     );
-    final acrylicAvailable = (acrylicEnabled ?? false) && acrylicSupported;
-    final dark = brightness == Brightness.dark;
+    final bool acrylicAvailable = (acrylicEnabled ?? false) && acrylicSupported;
+    final bool dark = brightness == Brightness.dark;
     // Resolved through the palette rather than read from the theme, so the
     // focused card's bar, the tick and the composer's border cannot disagree
     // with the editor about what the accent is.
-    final accent = palette.accentFor(brightness);
+    final Color accent = palette.accentFor(brightness);
 
     // The display list, derived in its provider: geometry, scroll and
     // visibility changes leave the cards alone, and each card watches only
     // its own note, so typing in one rebuilds one.
-    final notes = ref.watch(widgetDisplayNotesProvider);
+    final List<Note> notes = ref.watch(widgetDisplayNotesProvider);
 
     // Three former `setState` fields merged into one listener so the surface repaints.
     // Without it writes never rebuild; `no_set_state_test` cannot catch that.
     return ListenableBuilder(
-      listenable: Listenable.merge([_hovering, _composing, _lockedHint]),
-      builder: (context, _) {
+      listenable: Listenable.merge(<Listenable?>[_hovering, _composing, _lockedHint]),
+      builder: (BuildContext context, _) {
         return ClipRRect(
           // Matches the native rounded region so the painted edge and the
           // composited edge are the same curve rather than two approximations.
@@ -356,7 +359,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
               palette: palette,
             ),
             child: Stack(
-              children: [
+              children: <Widget>[
                 Positioned.fill(
                   child: Listener(
                     onPointerDown: _onPointerDown,
@@ -368,7 +371,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                       onEnter: (_) => _setHovering(true),
                       onExit: (_) => _setHovering(false),
                       child: LayoutBuilder(
-                        builder: (context, constraints) {
+                        builder: (BuildContext context, BoxConstraints constraints) {
                           // Remembered so a pointer-down can tell which edge it
                           // landed on without a second layout pass, and so the
                           // grab band can be scaled to the display.
@@ -379,7 +382,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                           _lastContext = context;
 
                           // Decided from the widget's own size: scroll metrics are unreadable during sliver layout.
-                          final roomy = constraints.maxHeight >= 240 &&
+                          final bool roomy = constraints.maxHeight >= 240 &&
                               constraints.maxWidth >= 200;
 
                           if (notes.isEmpty) {
@@ -394,8 +397,8 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                               padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
                               itemCount: notes.length,
                               separatorBuilder: (_, _) => const SizedBox(height: 2),
-                              itemBuilder: (context, index) {
-                                final note = notes[index];
+                              itemBuilder: (BuildContext context, int index) {
+                                final Note note = notes[index];
                                 return WidgetNoteCard(
                                   key: ValueKey(note.id),
                                   noteId: note.id,

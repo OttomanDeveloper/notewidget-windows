@@ -17,7 +17,7 @@ class ShellMissingApp extends StatelessWidget {
             padding: EdgeInsets.all(32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
+              children: <Widget>[
                 Icon(Icons.desktop_access_disabled, size: 40),
                 SizedBox(height: 16),
                 Text(

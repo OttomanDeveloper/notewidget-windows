@@ -34,11 +34,11 @@ class WinNotesPalette {
   /// Surfaces for [brightness]. The widget draws its own surface with an alpha
   /// its theme does not know about, over the desktop rather than its window.
   WidgetSurfaces surfaces(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(
+    final ColorScheme scheme = ColorScheme.fromSeed(
       seedColor: neutralSeed,
       brightness: brightness,
     );
-    final isDark = brightness == Brightness.dark;
+    final bool isDark = brightness == Brightness.dark;
     return isDark
         ? WidgetSurfaces(
             // Dark: the editor sits deepest, the widget floats a little lighter
@@ -182,7 +182,7 @@ const List<WinNotesPalette> winNotesPalettes = <WinNotesPalette>[
 /// an old file must still open, so "never chose one" beats refusing to start.
 WinNotesPalette paletteById(String? id) {
   if (id == null) return winNotesPalettes.first;
-  for (final palette in winNotesPalettes) {
+  for (final WinNotesPalette palette in winNotesPalettes) {
     if (palette.id == id) return palette;
   }
   return winNotesPalettes.first;

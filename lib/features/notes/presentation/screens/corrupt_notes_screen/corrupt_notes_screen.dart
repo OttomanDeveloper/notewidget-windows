@@ -62,7 +62,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
   }
 
   Future<void> _restoreBackup() => _run(() async {
-        final outcome = await widget.onRestoreBackup();
+        final RecoveryOutcome outcome = await widget.onRestoreBackup();
         if (!mounted) return;
         _message.value = switch (outcome) {
           RecoveryOutcome.restoredBackup =>
@@ -76,7 +76,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
       });
 
   Future<void> _startFresh() async {
-    final confirmed = await confirmDestructiveAction(
+    final bool confirmed = await confirmDestructiveAction(
       context,
       title: 'Start fresh?',
       message: 'The file that cannot be read will be kept, renamed with today\'s '
@@ -88,7 +88,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
     if (!confirmed || !mounted) return;
 
     await _run(() async {
-      final result = await widget.onStartFresh();
+      final ({String? keptAt, RecoveryOutcome outcome}) result = await widget.onStartFresh();
       if (!mounted) return;
       _message.value = switch (result.outcome) {
         RecoveryOutcome.startedFresh => result.keptAt == null
@@ -106,8 +106,8 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final transient = widget.error.transient;
+    final ThemeData theme = Theme.of(context);
+    final bool transient = widget.error.transient;
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -117,9 +117,9 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 Row(
-                  children: [
+                  children: <Widget>[
                     Icon(
                       transient ? Icons.hourglass_top_rounded : Icons.warning_amber_rounded,
                       color: transient ? theme.colorScheme.tertiary : theme.colorScheme.error,
@@ -153,11 +153,11 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                 DetailCard(error: widget.error),
                 ValueListenableBuilder<String?>(
                   valueListenable: _message,
-                  builder: (context, message, _) => message == null
+                  builder: (BuildContext context, String? message, _) => message == null
                       ? const SizedBox.shrink()
                       : Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                          children: <Widget>[
                             const SizedBox(height: 16),
                             Text(
                               message,
@@ -172,7 +172,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: [
+                  children: <Widget>[
                       // First: the only route asking nothing of the person. Hidden, not
                       // disabled: a greyed-out button asks "of what?" with no good answer.
                     if (widget.hasBackup)
@@ -192,7 +192,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                         onPressed: _busy.value
                             ? null
                             : () => _run(() async {
-                                  final restored = await widget.onRestore();
+                                  final List<Note>? restored = await widget.onRestore();
                                   if (restored != null && context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
@@ -208,7 +208,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                         onPressed: _busy.value
                             ? null
                             : () => _run(() async {
-                                  final restored = await widget.onRestore();
+                                  final List<Note>? restored = await widget.onRestore();
                                   if (restored != null && context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
@@ -229,7 +229,7 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                       child: const Text('Start fresh instead'),
                     ),
                     Consumer(
-                      builder: (context, ref, _) => TextButton(
+                      builder: (BuildContext context, WidgetRef ref, _) => TextButton(
                         onPressed: _busy.value
                             ? null
                             : () => ref.read(shellProvider).quit(),

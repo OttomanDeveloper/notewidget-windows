@@ -30,8 +30,8 @@ class SourceTree {
   final String root;
 
   static String _findRoot() {
-    var dir = Directory.current;
-    for (var i = 0; i < 8; i++) {
+    Directory dir = Directory.current;
+    for (int i = 0; i < 8; i++) {
       if (File('${dir.path}/pubspec.yaml').existsSync()) return dir.path;
       dir = dir.parent;
     }
@@ -44,12 +44,12 @@ class SourceTree {
   /// forward-slash literal silently matches nothing. Normalising here is what
   /// stops a guard passing vacuously.
   Map<String, List<String>> dartFilesUnder(String relative) {
-    final base = Directory('$root/$relative');
+    final Directory base = Directory('$root/$relative');
     if (!base.existsSync()) {
       throw StateError('No such directory: $relative');
     }
-    final out = <String, List<String>>{};
-    for (final entity in base.listSync(recursive: true)) {
+    final Map<String, List<String>> out = <String, List<String>>{};
+    for (final FileSystemEntity entity in base.listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       out[entity.path] = entity.readAsLinesSync();
     }
@@ -76,25 +76,25 @@ class SourceTree {
   /// fail, so the normalisation lives here and is used by name rather than re-derived
   /// per guard; two guards each doing it by hand is how they came to disagree.
   String relativePath(String absolute) {
-    final full = absolute.replaceAll(r'\', '/');
-    final base = root.replaceAll(r'\', '/');
+    final String full = absolute.replaceAll(r'\', '/');
+    final String base = root.replaceAll(r'\', '/');
     return full.startsWith('$base/') ? full.substring(base.length + 1) : full;
   }
 
   /// As [dartFilesUnder], keyed by repo-relative path with forward slashes.
-  Map<String, List<String>> dartFilesUnderRelative(String relative) => {
-        for (final entry in dartFilesUnder(relative).entries)
+  Map<String, List<String>> dartFilesUnderRelative(String relative) => <String, List<String>>{
+        for (final MapEntry<String, List<String>> entry in dartFilesUnder(relative).entries)
           relativePath(entry.key): entry.value,
       };
 
   String get runnerSource {
-    final dir = Directory('$root/windows/runner');
+    final Directory dir = Directory('$root/windows/runner');
     if (!dir.existsSync()) return '';
     return dir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.cpp') || f.path.endsWith('.h'))
-        .map((f) => f.readAsStringSync())
+        .where((File f) => f.path.endsWith('.cpp') || f.path.endsWith('.h'))
+        .map((File f) => f.readAsStringSync())
         .join('\n');
   }
 
@@ -132,27 +132,27 @@ List<String> findFileOperationsOutsideDataLayer(SourceTree tree) {
   // first false positive this scanner produced. They cannot be reached without
   // a `File(` or `Directory(` somewhere first, which is already matched, so
   // listing them buys a false positive and no coverage.
-  final banned = RegExp(
+  final RegExp banned = RegExp(
     r'''\b(File|Directory|Link)\s*\(|\.writeAsString|\.readAsString|'''
     r'''\.writeAsBytes|\.readAsBytes|\.existsSync|\.lengthSync|'''
     r'''\.lastModifiedSync|\.createSync''',
   );
-  final violations = <String>[];
-  for (final layer in _existingLayers(tree, [
+  final List<String> violations = <String>[];
+  for (final String layer in _existingLayers(tree, <String>[
     'lib/features/notes/presentation',
     'lib/features/widget/presentation',
     'lib/features/settings/presentation',
     'lib/core/platform',
     'lib/core/widgets',
   ])) {
-    for (final entry in tree.dartFilesUnder(layer).entries) {
+    for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder(layer).entries) {
       // Comments are allowed to say "dart:io" — two of ours do, and both do it
       // to explain why the UI must not use it. Only real code counts.
-      final code = entry.value
-          .where((line) => !line.trimLeft().startsWith('//') && !line.trimLeft().startsWith('*'))
+      final String code = entry.value
+          .where((String line) => !line.trimLeft().startsWith('//') && !line.trimLeft().startsWith('*'))
           .join('\n');
-      for (var i = 0; i < code.split('\n').length; i++) {
-        final line = code.split('\n')[i];
+      for (int i = 0; i < code.split('\n').length; i++) {
+        final String line = code.split('\n')[i];
         if (banned.hasMatch(line)) {
           violations.add('${_rel(tree, entry.key)}:${i + 1}  ${line.trim()}');
         }
@@ -167,11 +167,11 @@ List<String> findFileOperationsOutsideDataLayer(SourceTree tree) {
 /// `AGENTS.md` §3. Everything else goes through `ShellChannel`, so that the set
 /// of method names lives in one file and can be checked against the runner.
 List<String> findChannelsOutsidePlatform(SourceTree tree) {
-  final violations = <String>[];
-  for (final entry in tree.dartFilesUnder('lib').entries) {
+  final List<String> violations = <String>[];
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
     if (entry.key.replaceAll(r'\', '/').contains('/core/platform/')) continue;
-    for (var i = 0; i < entry.value.length; i++) {
-      final line = entry.value[i];
+    for (int i = 0; i < entry.value.length; i++) {
+      final String line = entry.value[i];
       if (line.trimLeft().startsWith('//')) continue;
       if (RegExp(r'\bMethodChannel\s*\(').hasMatch(line)) {
         violations.add('${_rel(tree, entry.key)}:${i + 1}  ${line.trim()}');
@@ -191,15 +191,15 @@ List<String> findChannelsOutsidePlatform(SourceTree tree) {
 /// second one makes eleven methods look dead, which is exactly the false
 /// positive this rule has already produced once.
 Set<String> dartMethodNames(SourceTree tree) {
-  final names = <String>{};
-  final literal = RegExp(r"""_fire\(\s*'([^']+)'""");
-  final invoke = RegExp(r"""_invoke(?:<[^>]*>)?\(\s*'([^']+)'""");
-  for (final entry in tree.dartFilesUnder('lib').entries) {
-    for (final line in entry.value) {
-      for (final m in literal.allMatches(line)) {
+  final Set<String> names = <String>{};
+  final RegExp literal = RegExp(r"""_fire\(\s*'([^']+)'""");
+  final RegExp invoke = RegExp(r"""_invoke(?:<[^>]*>)?\(\s*'([^']+)'""");
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+    for (final String line in entry.value) {
+      for (final RegExpMatch m in literal.allMatches(line)) {
         names.add(m.group(1)!);
       }
-      for (final m in invoke.allMatches(line)) {
+      for (final RegExpMatch m in invoke.allMatches(line)) {
         names.add(m.group(1)!);
       }
     }
@@ -211,7 +211,7 @@ Set<String> dartMethodNames(SourceTree tree) {
 Set<String> runnerMethodNames(SourceTree tree) {
   return RegExp(r'method\s*==\s*"([^"]+)"')
       .allMatches(tree.runnerSource)
-      .map((m) => m.group(1)!)
+      .map((RegExpMatch m) => m.group(1)!)
       .toSet();
 }
 
@@ -227,22 +227,22 @@ Set<String> runnerMethodNames(SourceTree tree) {
 /// window — is exactly the tier `docs/testing_pattern.md` §2 records as not in
 /// CI.
 List<String> findCaptionHits(SourceTree tree) {
-  final source = tree.runnerSource;
-  final violations = <String>[];
+  final String source = tree.runnerSource;
+  final List<String> violations = <String>[];
   // Strip line comments so the explanatory prose in HitTest, which mentions
   // HTCAPTION four times on purpose, does not trip the guard it is describing.
-  final code = source
+  final String code = source
       .split('\n')
-      .where((l) => !l.trimLeft().startsWith('//'))
+      .where((String l) => !l.trimLeft().startsWith('//'))
       .join('\n');
-  for (final m in RegExp(r'HTCAPTION').allMatches(code)) {
-    final line = code.substring(0, m.start).split('\n').length;
-    final text = code.split('\n')[line - 1].trim();
+  for (final RegExpMatch m in RegExp(r'HTCAPTION').allMatches(code)) {
+    final int line = code.substring(0, m.start).split('\n').length;
+    final String text = code.split('\n')[line - 1].trim();
     violations.add('windows/runner: $line  $text');
   }
   // The mirror image is also forbidden: HTTOPLEFT and friends would resize the
   // window from a corner Dart already owns, and would fight the gesture.
-  for (final final_ in ['HTTOP', 'HTTOPLEFT', 'HTTOPRIGHT', 'HTBOTTOM',
+  for (final String final_ in <String>['HTTOP', 'HTTOPLEFT', 'HTTOPRIGHT', 'HTBOTTOM',
       'HTBOTTOMLEFT', 'HTBOTTOMRIGHT', 'HTLEFT', 'HTRIGHT']) {
     if (RegExp('return\\s+$final_\\b').hasMatch(code)) {
       violations.add('windows/runner  returns $final_');
@@ -271,7 +271,7 @@ List<String> findCaptionHits(SourceTree tree) {
 /// can be injected without editing the repository. A guard that can only be
 /// tested by breaking the real thing is a guard that gets left untested.
 List<String> findWidgetAboveEditorFaults(String window, String host) {
-  final faults = <String>[];
+  final List<String> faults = <String>[];
 
   /// The body of `signature`, or an empty string if it cannot be found.
   ///
@@ -285,14 +285,14 @@ List<String> findWidgetAboveEditorFaults(String window, String host) {
   /// this runner is indented, so column 0 is the end of the function and
   /// nothing else.
   String body(String source, String signature) {
-    final pattern =
+    final String pattern =
         '${RegExp.escape(signature)}\\s*\\([^)]*\\)\\s*\\{(.*?)\\n\\}';
     return RegExp(pattern, dotAll: true).firstMatch(source)?.group(1) ?? '';
   }
 
   // 1. The editor must never be created topmost.
-  final style = body(window, 'void Window::StyleForRole');
-  final editorBranch = style.split('} else {').length > 1
+  final String style = body(window, 'void Window::StyleForRole');
+  final String editorBranch = style.split('} else {').length > 1
       ? style.split('} else {').last
       : '';
   if (editorBranch.isEmpty) {
@@ -311,7 +311,7 @@ List<String> findWidgetAboveEditorFaults(String window, String host) {
 
   // 2. SetAlwaysOnTop must stay widget-only, or toggling the setting would
   //    reach the editor through the back door.
-  final alwaysOnTop = body(window, 'void Window::SetAlwaysOnTop');
+  final String alwaysOnTop = body(window, 'void Window::SetAlwaysOnTop');
   if (alwaysOnTop.isEmpty) {
     faults.add('Window::SetAlwaysOnTop has gone; the guard cannot check it.');
   } else if (!RegExp(r'IsWidgetRole').hasMatch(alwaysOnTop)) {
@@ -341,15 +341,15 @@ List<String> findWidgetAboveEditorFaults(String window, String host) {
   }
 
   // 4. Both halves of the yield, together, in the same function.
-  final apply = body(host, 'void Host::ApplyWidgetTopmost');
+  final String apply = body(host, 'void Host::ApplyWidgetTopmost');
   if (apply.isEmpty) {
     faults.add(
       'Host::ApplyWidgetTopmost has gone. If the yield is now inline, move it '
       'back so this guard has something to check.',
     );
   } else {
-    final demotes = RegExp(r'SetAlwaysOnTop').hasMatch(apply);
-    final raises = RegExp(r'editor_->Raise\(\)').hasMatch(apply);
+    final bool demotes = RegExp(r'SetAlwaysOnTop').hasMatch(apply);
+    final bool raises = RegExp(r'editor_->Raise\(\)').hasMatch(apply);
     if (!demotes) {
       faults.add(
         'Host::ApplyWidgetTopmost never calls SetAlwaysOnTop, so the widget '
@@ -390,9 +390,9 @@ List<String> findWidgetAboveEditorFaults(String window, String host) {
 ///     programmatic sizing, so Dart asking for a particular size would be
 ///     silently ignored.
 List<String> findEditorMinSizeFaults(String window) {
-  final faults = <String>[];
+  final List<String> faults = <String>[];
 
-  final m = RegExp(
+  final RegExpMatch? m = RegExp(
     r'case WM_GETMINMAXINFO:(.*?)\n    \}',
     dotAll: true,
   ).firstMatch(window);
@@ -409,9 +409,9 @@ List<String> findEditorMinSizeFaults(String window) {
   // ptMaxPosition and ptMaxSize are *not* written, and a scanner that reads its
   // own explanation as code would fail on the comment that documents the rule.
   // The same reason findCaptionHits strips comments.
-  final body = (m.group(1) ?? '')
+  final String body = (m.group(1) ?? '')
       .split('\n')
-      .where((l) => !l.trimLeft().startsWith('//'))
+      .where((String l) => !l.trimLeft().startsWith('//'))
       .join('\n');
 
   if (!RegExp(r'ptMinTrackSize').hasMatch(body)) {
@@ -441,7 +441,7 @@ List<String> findEditorMinSizeFaults(String window) {
     );
   }
 
-  for (final field in ['ptMaxPosition', 'ptMaxSize']) {
+  for (final String field in <String>['ptMaxPosition', 'ptMaxSize']) {
     if (RegExp(field).hasMatch(body)) {
       faults.add(
         'WM_GETMINMAXINFO writes $field.\n'
@@ -483,10 +483,10 @@ const int kChangelogBulletLines = 3;
 /// without editing the repository — which is the only way to prove the scanner
 /// still bites.
 List<String> findChangelogFaults(String markdown) {
-  final lines = markdown.split('\n');
+  final List<String> lines = markdown.split('\n');
 
-  var start = -1;
-  for (var i = 0; i < lines.length; i++) {
+  int start = -1;
+  for (int i = 0; i < lines.length; i++) {
     if (lines[i].trim() == '## Unreleased') {
       start = i;
       break;
@@ -495,25 +495,25 @@ List<String> findChangelogFaults(String markdown) {
   // Nothing being written yet is not a fault. An absent section is the normal
   // state between releases, and failing on it would mean the guard could only
   // ever be satisfied by leaving something in the file.
-  if (start < 0) return const [];
+  if (start < 0) return const <String>[];
 
-  var end = lines.length;
-  for (var i = start + 1; i < lines.length; i++) {
+  int end = lines.length;
+  for (int i = start + 1; i < lines.length; i++) {
     if (RegExp(r'^##\s').hasMatch(lines[i])) {
       end = i;
       break;
     }
   }
 
-  final faults = <String>[];
-  var bulletLines = 0;
-  var bulletAt = 0;
-  var afterBlank = false;
+  final List<String> faults = <String>[];
+  int bulletLines = 0;
+  int bulletAt = 0;
+  bool afterBlank = false;
 
   void closeBullet() => bulletLines = 0;
 
-  for (var i = start + 1; i < end; i++) {
-    final line = lines[i];
+  for (int i = start + 1; i < end; i++) {
+    final String line = lines[i];
 
     if (RegExp(r'^#{2,3}\s').hasMatch(line)) {
       closeBullet();
@@ -635,10 +635,10 @@ Set<String> declaredRuntimeDependencies(String pubspec) {
   // read a four-space pubspec as having no dependencies at all, which is the
   // failure mode that reads as enforcement: a guard that finds nothing because
   // it looked in the wrong place.
-  final lines = <String>[];
-  var inBlock = false;
+  final List<String> lines = <String>[];
+  bool inBlock = false;
 
-  for (final line in pubspec.split('\n')) {
+  for (final String line in pubspec.split('\n')) {
     if (RegExp(r'^dependencies:\s*$').hasMatch(line)) {
       inBlock = true;
       continue;
@@ -654,15 +654,15 @@ Set<String> declaredRuntimeDependencies(String pubspec) {
 
   if (lines.isEmpty) return <String>{};
 
-  final entryIndent = lines
-      .map((line) => RegExp(r'^\s*').firstMatch(line)!.group(0)!.length)
-      .reduce((a, b) => a < b ? a : b);
+  final int entryIndent = lines
+      .map((String line) => RegExp(r'^\s*').firstMatch(line)!.group(0)!.length)
+      .reduce((int a, int b) => a < b ? a : b);
 
-  final names = <String>{};
-  for (final line in lines) {
-    final indent = RegExp(r'^\s*').firstMatch(line)!.group(0)!.length;
+  final Set<String> names = <String>{};
+  for (final String line in lines) {
+    final int indent = RegExp(r'^\s*').firstMatch(line)!.group(0)!.length;
     if (indent != entryIndent) continue;
-    final entry = RegExp(r'^\s+([A-Za-z_][A-Za-z0-9_]*):').firstMatch(line);
+    final RegExpMatch? entry = RegExp(r'^\s+([A-Za-z_][A-Za-z0-9_]*):').firstMatch(line);
     if (entry != null) names.add(entry.group(1)!);
   }
 
@@ -676,7 +676,7 @@ List<String> unapprovedDependencies(
   String pubspec, {
   Set<String> approved = approvedDependencies,
 }) {
-  final declared = declaredRuntimeDependencies(pubspec);
+  final Set<String> declared = declaredRuntimeDependencies(pubspec);
   return declared.difference(approved).toList()..sort();
 }
 
@@ -688,22 +688,22 @@ List<String> unapprovedDependencies(
 List<String> ruleHeadings(String markdown) => RegExp(
       r'^#{2,4}\s+(3\.\d+)',
       multiLine: true,
-    ).allMatches(markdown).map((m) => m.group(1)!).toList();
+    ).allMatches(markdown).map((RegExpMatch m) => m.group(1)!).toList();
 
 /// Test names the doc claims as pinning a rule, in italics or backticks.
 Set<String> citedTestNames(String markdown) {
-  final names = <String>{};
+  final Set<String> names = <String>{};
   // A row is any table line that cites a test file. The names are then pulled
   // from the whole row rather than from "the cell after the file", because a
   // row can legitimately cite two files and put the names in either cell -
   // scoping the search to one column is how this returned an empty set and
   // nearly shipped a guard that checked nothing.
-  final file = RegExp(r'`\w+_test(?:\.dart)?`');
-  for (final line in markdown.split('\n')) {
+  final RegExp file = RegExp(r'`\w+_test(?:\.dart)?`');
+  for (final String line in markdown.split('\n')) {
     if (!line.trimLeft().startsWith('|')) continue;
     if (!file.hasMatch(line)) continue;
-    for (final t in RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)').allMatches(line)) {
-      final name = t.group(1)!.trim();
+    for (final RegExpMatch t in RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)').allMatches(line)) {
+      final String name = t.group(1)!.trim();
       if (name.isNotEmpty) names.add(name);
     }
   }
@@ -712,11 +712,11 @@ Set<String> citedTestNames(String markdown) {
 
 /// Every test name in the suite.
 Set<String> allTestNames(SourceTree tree) {
-  final names = <String>{};
-  final decl = RegExp(r"test(?:Widgets)?\('((?:[^'\\]|\\.)*)'");
-  for (final entry in tree.dartFilesUnder('test').entries) {
-    final text = entry.value.join('\n');
-    for (final m in decl.allMatches(text)) {
+  final Set<String> names = <String>{};
+  final RegExp decl = RegExp(r"test(?:Widgets)?\('((?:[^'\\]|\\.)*)'");
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('test').entries) {
+    final String text = entry.value.join('\n');
+    for (final RegExpMatch m in decl.allMatches(text)) {
       names.add(m.group(1)!.replaceAll(r"\'", "'"));
     }
   }
@@ -766,24 +766,24 @@ class RemovalBudget {
   final String rule;
 
   int get allowanceTotal =>
-      allowance.values.fold(0, (sum, n) => sum + n);
+      allowance.values.fold(0, (int sum, int n) => sum + n);
 
   /// The budget's own sites that no longer exist, sorted.
   List<String> staleAllowances(Map<String, int> live) => allowance.keys
-      .where((p) => !live.containsKey(p))
+      .where((String p) => !live.containsKey(p))
       .toList()
     ..sort();
 
   int liveTotal(Map<String, int> live) =>
-      live.values.fold(0, (sum, n) => sum + n);
+      live.values.fold(0, (int sum, int n) => sum + n);
 
   List<String> faults(Map<String, int> live) {
-    final out = <String>[];
-    final paths = {...live.keys, ...allowance.keys}.toList()..sort();
+    final List<String> out = <String>[];
+    final List<String> paths = <String>{...live.keys, ...allowance.keys}.toList()..sort();
 
-    for (final path in paths) {
-      final now = live[path] ?? 0;
-      final allowed = allowance[path];
+    for (final String path in paths) {
+      final int now = live[path] ?? 0;
+      final int? allowed = allowance[path];
 
       if (allowed == null) {
         out.add(
@@ -828,11 +828,11 @@ Map<String, int> countPerFile(
   String pattern, {
   bool excludeGenerated = true,
 }) {
-  final out = <String, int>{};
-  for (final entry in tree.dartFilesUnder(relative).entries) {
-    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+  final Map<String, int> out = <String, int>{};
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder(relative).entries) {
+    final String path = _rel(tree, entry.key).replaceAll(r'\', '/');
     if (excludeGenerated && path.endsWith('.g.dart')) continue;
-    final n = RegExp(pattern).allMatches(entry.value.join('\n')).length;
+    final int n = RegExp(pattern).allMatches(entry.value.join('\n')).length;
     if (n > 0) out[path] = n;
   }
   return out;
@@ -875,13 +875,13 @@ Map<String, int> setStateCounts(SourceTree tree) =>
 /// insisting on a rule the framework makes impossible, which is how a guard gets
 /// disabled.
 Map<String, int> injectedStateParamCounts(SourceTree tree) {
-  final field = RegExp(
+  final RegExp field = RegExp(
     r'\bthis\.(controller|shell|settings|notifier|store|model|repo|repository|viewModel)\b',
   );
-  final classLine = RegExp(r'^\s*class\s+(\w+)', multiLine: true);
+  final RegExp classLine = RegExp(r'^\s*class\s+(\w+)', multiLine: true);
 
-  final counts = <String, int>{};
-  for (final layer in _existingLayers(tree, [
+  final Map<String, int> counts = <String, int>{};
+  for (final String layer in _existingLayers(tree, <String>[
     'lib/features/notes/presentation/screens',
     'lib/features/notes/presentation/widgets',
     'lib/features/widget/presentation/screens',
@@ -890,19 +890,19 @@ Map<String, int> injectedStateParamCounts(SourceTree tree) {
     'lib/features/settings/presentation/widgets',
     'lib/core/widgets',
   ])) {
-    for (final entry in tree.dartFilesUnder(layer).entries) {
-      final path = _rel(tree, entry.key).replaceAll(r'\', '/');
-      final source = entry.value.join('\n');
+    for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder(layer).entries) {
+      final String path = _rel(tree, entry.key).replaceAll(r'\', '/');
+      final String source = entry.value.join('\n');
 
     // Offsets of every class declaration, so a hit can be attributed to one.
-    final declarations = <int, String>{};
-    for (final m in classLine.allMatches(source)) {
+    final Map<int, String> declarations = <int, String>{};
+    for (final RegExpMatch m in classLine.allMatches(source)) {
       declarations[m.start] = m.group(1) ?? '';
     }
 
-    var found = 0;
-    for (final hit in field.allMatches(source)) {
-      final owner = _enclosingClass(declarations.keys.toSet(), hit.start);
+    int found = 0;
+    for (final RegExpMatch hit in field.allMatches(source)) {
+      final int? owner = _enclosingClass(declarations.keys.toSet(), hit.start);
       if (owner == null) continue;
       if (_isWidgetClass(source, owner)) found++;
     }
@@ -915,7 +915,7 @@ Map<String, int> injectedStateParamCounts(SourceTree tree) {
 /// The offset of the last class declared before [offset].
 int? _enclosingClass(Set<int> starts, int offset) {
   int? best;
-  for (final start in starts) {
+  for (final int start in starts) {
     if (start > offset) break;
     best = start;
   }
@@ -928,9 +928,9 @@ int? _enclosingClass(Set<int> starts, int offset) {
 /// how the rule reaches a `ConsumerStatefulWidget`'s own constructor, since the
 /// widget's fields are inherited rather than repeated.
 bool _isWidgetClass(String source, int offset) {
-  final end = source.indexOf('{', offset);
+  final int end = source.indexOf('{', offset);
   if (end < 0) return false;
-  final header = source.substring(offset, end > offset + 300 ? offset + 300 : end);
+  final String header = source.substring(offset, end > offset + 300 ? offset + 300 : end);
   return RegExp(r'extends\s+[\w<>,\s]*?(Widget|State<)\b').hasMatch(header);
 }
 
@@ -941,8 +941,8 @@ bool _isWidgetClass(String source, int offset) {
 /// its own. Scoped to screens and widgets, not the providers dirs - building a
 /// repository inside its provider file is the rule, not the violation.
 Map<String, int> uiConstructionCounts(SourceTree tree) {
-  final out = <String, int>{};
-  for (final layer in _existingLayers(tree, [
+  final Map<String, int> out = <String, int>{};
+  for (final String layer in _existingLayers(tree, <String>[
     'lib/features/notes/presentation/screens',
     'lib/features/notes/presentation/widgets',
     'lib/features/widget/presentation/screens',
@@ -951,7 +951,7 @@ Map<String, int> uiConstructionCounts(SourceTree tree) {
     'lib/features/settings/presentation/widgets',
     'lib/core/widgets',
   ])) {
-    for (final entry in countPerFile(
+    for (final MapEntry<String, int> entry in countPerFile(
       tree,
       layer,
       r'\b(?:Notes|Settings|WidgetState|Selection)Repository\s*\(|\b'
@@ -985,18 +985,18 @@ Map<String, int> uiConstructionCounts(SourceTree tree) {
 ///  3. `methodChannel.invokeMethod<T>('name')` - direct, hand-rolled catch.
 ///  4. `methodChannel.invokeMapMethod<T,V>('name')` - as 3, returning a map.
 Set<String> channelMethodNames(SourceTree tree) {
-  final names = <String>{};
-  final text = tree.read('lib/core/platform/shell_channel.dart');
+  final Set<String> names = <String>{};
+  final String text = tree.read('lib/core/platform/shell_channel.dart');
 
-  final idioms = <RegExp>[
+  final List<RegExp> idioms = <RegExp>[
     RegExp(r"_fire\s*\(\s*'([^']+)'"),
     RegExp(r"_invoke(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
     RegExp(r"invokeMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
     RegExp(r"invokeMapMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
   ];
 
-  for (final idiom in idioms) {
-    for (final m in idiom.allMatches(text)) {
+  for (final RegExp idiom in idioms) {
+    for (final RegExpMatch m in idiom.allMatches(text)) {
       names.add(m.group(1)!);
     }
   }
@@ -1016,23 +1016,23 @@ Set<String> channelMethodNames(SourceTree tree) {
 /// `docs/platform_pattern.md` §3.3 says to avoid: they reach the channel without a
 /// helper, so each one re-decides its own failure policy.
 Map<String, Set<String>> channelMethodNamesByIdiom(SourceTree tree) {
-  final text = tree.read('lib/core/platform/shell_channel.dart');
-  final out = <String, Set<String>>{
+  final String text = tree.read('lib/core/platform/shell_channel.dart');
+  final Map<String, Set<String>> out = <String, Set<String>>{
     'fire': <String>{},
     'invoke': <String>{},
     'direct': <String>{},
     'directMap': <String>{},
   };
 
-  final idioms = <String, RegExp>{
+  final Map<String, RegExp> idioms = <String, RegExp>{
     'fire': RegExp(r"_fire\s*\(\s*'([^']+)'"),
     'invoke': RegExp(r"_invoke(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
     'direct': RegExp(r"(?<!Map)invokeMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
     'directMap': RegExp(r"invokeMapMethod(?:<[^>]*>)?\s*\(\s*'([^']+)'"),
   };
 
-  for (final entry in idioms.entries) {
-    for (final m in entry.value.allMatches(text)) {
+  for (final MapEntry<String, RegExp> entry in idioms.entries) {
+    for (final RegExpMatch m in entry.value.allMatches(text)) {
       out[entry.key]!.add(m.group(1)!);
     }
   }
@@ -1045,7 +1045,7 @@ Map<String, Set<String>> channelMethodNamesByIdiom(SourceTree tree) {
 /// `event.*` is runner-to-Dart and `everything else` is Dart-to-runner, and the
 /// two sets being disjoint is checked rather than assumed. They travel on one
 /// channel, which is exactly why they are easy to confuse.
-const Set<String> inboundEventPrefixes = {'event.'};
+const Set<String> inboundEventPrefixes = <String>{'event.'};
 
 /// Faults between a declared method registry and the two sides of the channel.
 ///
@@ -1057,9 +1057,9 @@ List<String> platformRegistryFaults({
   required Set<String> called,
   required Set<String> handled,
 }) {
-  final faults = <String>[];
+  final List<String> faults = <String>[];
 
-  final declaredButNeverCalled = registry.difference(called).toList()..sort();
+  final List<String> declaredButNeverCalled = registry.difference(called).toList()..sort();
   if (declaredButNeverCalled.isNotEmpty) {
     faults.add(
       'The registry declares methods Dart never sends: '
@@ -1070,7 +1070,7 @@ List<String> platformRegistryFaults({
     );
   }
 
-  final calledButNotDeclared = called.difference(registry).toList()..sort();
+  final List<String> calledButNotDeclared = called.difference(registry).toList()..sort();
   if (calledButNotDeclared.isNotEmpty) {
     faults.add(
       'Dart sends methods that are not in the registry: '
@@ -1081,7 +1081,7 @@ List<String> platformRegistryFaults({
     );
   }
 
-  final declaredButUnhandled =
+  final List<String> declaredButUnhandled =
       registry.difference(handled).toList()..sort();
   if (declaredButUnhandled.isNotEmpty) {
     faults.add(
@@ -1090,7 +1090,7 @@ List<String> platformRegistryFaults({
     );
   }
 
-  final handledButNotDeclared =
+  final List<String> handledButNotDeclared =
       handled.difference(registry).toList()..sort();
   if (handledButNotDeclared.isNotEmpty) {
     faults.add(
@@ -1099,8 +1099,8 @@ List<String> platformRegistryFaults({
     );
   }
 
-  final inboundLeaked = registry
-      .where((name) => inboundEventPrefixes.any(name.startsWith))
+  final List<String> inboundLeaked = registry
+      .where((String name) => inboundEventPrefixes.any(name.startsWith))
       .toList()
     ..sort();
   if (inboundLeaked.isNotEmpty) {
@@ -1127,17 +1127,17 @@ List<String> platformRegistryFaults({
 /// `docs/flutter_architecture_pattern.md` §2: past 2–3 lines a comment replaces
 /// reading the code. Each entry is `path:first-line (length)`.
 List<String> findLongComments(SourceTree tree) {
-  final out = <String>[];
-  for (final entry in tree.dartFilesUnder('lib').entries) {
-    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
-    final lines = entry.value;
-    var i = 0;
+  final List<String> out = <String>[];
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+    final String path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final List<String> lines = entry.value;
+    int i = 0;
     while (i < lines.length) {
       if (!lines[i].trimLeft().startsWith('//')) {
         i++;
         continue;
       }
-      var j = i;
+      int j = i;
       while (j < lines.length && lines[j].trimLeft().startsWith('//')) {
         j++;
       }
@@ -1152,9 +1152,9 @@ List<String> findLongComments(SourceTree tree) {
 
 /// Code-only line count per §2: imports, blank lines and comments do not count.
 int codeOnlyLines(List<String> lines) {
-  var n = 0;
-  for (final line in lines) {
-    final trimmed = line.trimLeft();
+  int n = 0;
+  for (final String line in lines) {
+    final String trimmed = line.trimLeft();
     if (trimmed.isEmpty) continue;
     if (trimmed.startsWith('//')) continue;
     if (trimmed.startsWith('import ') ||
@@ -1173,16 +1173,16 @@ int codeOnlyLines(List<String> lines) {
 /// arrow callback (`() => t?.cancel()`) has no braces, so a scanner that only
 /// looked for them would report a clean tree.
 List<String> bodiesAfterMarker(String source, String marker) {
-  final out = <String>[];
-  var from = 0;
+  final List<String> out = <String>[];
+  int from = 0;
   while (true) {
-    final match = RegExp(RegExp.escape(marker)).firstMatch(source.substring(from));
+    final RegExpMatch? match = RegExp(RegExp.escape(marker)).firstMatch(source.substring(from));
     if (match == null) break;
-    final start = from + match.end;
-    var parens = 0;
-    var closed = -1;
-    for (var i = start; i < source.length; i++) {
-      final unit = source.codeUnitAt(i);
+    final int start = from + match.end;
+    int parens = 0;
+    int closed = -1;
+    for (int i = start; i < source.length; i++) {
+      final int unit = source.codeUnitAt(i);
       if (unit == 0x28) {
         parens++;
       } else if (unit == 0x29) {
@@ -1195,13 +1195,13 @@ List<String> bodiesAfterMarker(String source, String marker) {
     }
     if (closed < 0) break;
     out.add(source.substring(start, closed));
-    final arrowEnd = source.indexOf(';', closed);
-    final braceStart = source.indexOf('{', closed);
+    final int arrowEnd = source.indexOf(';', closed);
+    final int braceStart = source.indexOf('{', closed);
     if (braceStart >= 0 && (arrowEnd < 0 || braceStart < arrowEnd)) {
-      var depth = 0;
-      var started = false;
-      for (var j = braceStart; j < source.length; j++) {
-        final unit = source.codeUnitAt(j);
+      int depth = 0;
+      bool started = false;
+      for (int j = braceStart; j < source.length; j++) {
+        final int unit = source.codeUnitAt(j);
         if (unit == 0x7B) {
           depth++;
           started = true;
@@ -1224,14 +1224,14 @@ List<String> bodiesAfterMarker(String source, String marker) {
 /// A `State`/`ConsumerState` paired with its widget is not a second widget —
 /// §3.1 says so explicitly — so the `State` classes are read and dropped
 /// rather than counted. A file that declares two real widgets is the violation.
-final _widgetClassPattern = RegExp(
+final RegExp _widgetClassPattern = RegExp(
   r'^\s*(?:abstract\s+)?class\s+(\w+)\s+extends\s+'
   r'(?:\w*StatelessWidget|\w*StatefulWidget|ConsumerWidget|'
   r'ConsumerStatefulWidget|CustomPainter)\b',
   multiLine: true,
 );
 
-final _stateClassPattern = RegExp(
+final RegExp _stateClassPattern = RegExp(
   r'^\s*class\s+(\w+)\s+extends\s+(?:Consumer)?State<(\w+)>',
   multiLine: true,
 );
@@ -1240,20 +1240,20 @@ final _stateClassPattern = RegExp(
 ///
 /// The values are the class names, in declaration order.
 Map<String, List<String>> widgetClassesByFile(SourceTree tree) {
-  final out = <String, List<String>>{};
-  for (final entry in tree.dartFilesUnder('lib').entries) {
-    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
-    final code = entry.value
-        .where((l) => !l.trimLeft().startsWith('//'))
+  final Map<String, List<String>> out = <String, List<String>>{};
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+    final String path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final String code = entry.value
+        .where((String l) => !l.trimLeft().startsWith('//'))
         .join('\n');
-    final states = _stateClassPattern
+    final Set<String> states = _stateClassPattern
         .allMatches(code)
-        .map((m) => m.group(2)!)
+        .map((RegExpMatch m) => m.group(2)!)
         .toSet();
-    final widgets = _widgetClassPattern
+    final List<String> widgets = _widgetClassPattern
         .allMatches(code)
-        .map((m) => m.group(1)!)
-        .where((name) => !states.contains(name))
+        .map((RegExpMatch m) => m.group(1)!)
+        .where((String name) => !states.contains(name))
         .toList();
     if (widgets.isNotEmpty) out[path] = widgets;
   }
@@ -1264,15 +1264,15 @@ Map<String, List<String>> widgetClassesByFile(SourceTree tree) {
 ///
 /// Each entry is `path: classA, classB`.
 List<String> findFilesWithSeveralWidgets(SourceTree tree) {
-  final out = <String>[];
-  widgetClassesByFile(tree).forEach((path, names) {
+  final List<String> out = <String>[];
+  widgetClassesByFile(tree).forEach((String path, List<String> names) {
     if (names.length > 1) out.add('$path: ${names.join(', ')}');
   });
   return out..sort();
 }
 
 String _snakeCase(String className) =>
-    className.replaceAllMapped(RegExp(r'(?<!^)([A-Z])'), (m) => '_${m[1]}').toLowerCase();
+    className.replaceAllMapped(RegExp(r'(?<!^)([A-Z])'), (Match m) => '_${m[1]}').toLowerCase();
 
 /// `docs/flutter_architecture_pattern.md` §4: folder and file named after the widget.
 ///
@@ -1282,17 +1282,17 @@ String _snakeCase(String className) =>
 ///
 /// Each entry is `path: class C, expected folder/file E`.
 List<String> findWidgetsMisnamed(SourceTree tree) {
-  final out = <String>[];
-  widgetClassesByFile(tree).forEach((path, names) {
+  final List<String> out = <String>[];
+  widgetClassesByFile(tree).forEach((String path, List<String> names) {
     // A file holding exactly one widget is the case the rule is about. A file
     // with several is reported by [findFilesWithSeveralWidgets] instead, and
     // naming one of several after the other would be a second complaint about
     // the same thing.
     if (names.length != 1) return;
-    final expected = _snakeCase(names.single);
-    final segments = path.split('/');
-    final folder = segments[segments.length - 2];
-    final file = segments.last.replaceAll('.dart', '');
+    final String expected = _snakeCase(names.single);
+    final List<String> segments = path.split('/');
+    final String folder = segments[segments.length - 2];
+    final String file = segments.last.replaceAll('.dart', '');
     if (folder != expected || file != expected) {
       out.add('$path: class ${names.single}, expected $expected/');
     }
@@ -1301,7 +1301,7 @@ List<String> findWidgetsMisnamed(SourceTree tree) {
 }
 
 /// The repo-relative path of each feature's root screen.
-const Map<String, String> _featureRoots = {
+const Map<String, String> _featureRoots = <String, String>{
   'notes': 'lib/features/notes/presentation/screens/editor_app/editor_app.dart',
   'widget':
       'lib/features/widget/presentation/screens/widget_app/widget_app.dart',
@@ -1315,16 +1315,16 @@ const Map<String, String> _featureRoots = {
 /// imports, not only through what it names. Both `package:win_notes/...` and
 /// relative imports are followed, since the tree uses both.
 Map<String, Set<String>> widgetReachabilityByFeature(SourceTree tree) {
-  final edges = <String, List<String>>{};
-  for (final entry in tree.dartFilesUnder('lib').entries) {
-    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
-    final segments = path.split('/');
-    final directory = segments.sublist(0, segments.length - 1);
-    final deps = <String>[];
-    for (final line in entry.value) {
-      final match = RegExp(r"import\s+'([^']+)'").firstMatch(line);
+  final Map<String, List<String>> edges = <String, List<String>>{};
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+    final String path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final List<String> segments = path.split('/');
+    final List<String> directory = segments.sublist(0, segments.length - 1);
+    final List<String> deps = <String>[];
+    for (final String line in entry.value) {
+      final RegExpMatch? match = RegExp(r"import\s+'([^']+)'").firstMatch(line);
       if (match == null) continue;
-      final target = match.group(1)!;
+      final String target = match.group(1)!;
       if (target.startsWith('package:win_notes/')) {
         // Both key sets are repo-relative *with* the `lib/` prefix, which is what
         // `_rel` produces. Dropping it here is what made every core widget look
@@ -1333,8 +1333,8 @@ Map<String, Set<String>> widgetReachabilityByFeature(SourceTree tree) {
       } else if (target.startsWith('package:') || target.startsWith('dart:')) {
         continue;
       } else {
-        final parts = <String>[...directory];
-        for (final segment in target.split('/')) {
+        final List<String> parts = <String>[...directory];
+        for (final String segment in target.split('/')) {
           if (segment == '..') {
             if (parts.isNotEmpty) parts.removeLast();
           } else if (segment != '.' && segment.isNotEmpty) {
@@ -1347,14 +1347,14 @@ Map<String, Set<String>> widgetReachabilityByFeature(SourceTree tree) {
     edges[path] = deps;
   }
 
-  final out = <String, Set<String>>{};
-  _featureRoots.forEach((feature, root) {
-    final seen = <String>{};
-    final queue = <String>[root];
+  final Map<String, Set<String>> out = <String, Set<String>>{};
+  _featureRoots.forEach((String feature, String root) {
+    final Set<String> seen = <String>{};
+    final List<String> queue = <String>[root];
     while (queue.isNotEmpty) {
-      final next = queue.removeLast();
+      final String next = queue.removeLast();
       if (!seen.add(next)) continue;
-      for (final dep in edges[next] ?? const <String>[]) {
+      for (final String dep in edges[next] ?? const <String>[]) {
         if (edges.containsKey(dep)) queue.add(dep);
       }
     }
@@ -1372,16 +1372,16 @@ Map<String, Set<String>> widgetReachabilityByFeature(SourceTree tree) {
 ///
 /// Each entry is `path: reached by notes, widget`.
 List<String> findWidgetsInTheWrongHome(SourceTree tree) {
-  final reach = widgetReachabilityByFeature(tree);
-  final out = <String>[];
-  widgetClassesByFile(tree).forEach((path, names) {
+  final Map<String, Set<String>> reach = widgetReachabilityByFeature(tree);
+  final List<String> out = <String>[];
+  widgetClassesByFile(tree).forEach((String path, List<String> names) {
     if (!path.startsWith('lib/core/widgets/')) return;
     // `core/widgets` also holds plain functions and painters reached from
     // `main.dart`, which is not a feature. Only a file reachable from exactly
     // one feature is the violation; zero or two or more is fine.
-    final users = reach.entries
-        .where((e) => e.value.contains(path))
-        .map((e) => e.key)
+    final List<String> users = reach.entries
+        .where((MapEntry<String, Set<String>> e) => e.value.contains(path))
+        .map((MapEntry<String, Set<String>> e) => e.key)
         .toList()
       ..sort();
     if (users.length == 1) {
@@ -1399,21 +1399,21 @@ List<String> findWidgetsInTheWrongHome(SourceTree tree) {
 ///
 /// Each entry is `path:line`.
 List<String> findUnkeyedListRows(SourceTree tree) {
-  final out = <String>[];
-  for (final entry in tree.dartFilesUnder('lib').entries) {
-    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
-    final lines = entry.value;
-    for (var i = 0; i < lines.length; i++) {
+  final List<String> out = <String>[];
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
+    final String path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final List<String> lines = entry.value;
+    for (int i = 0; i < lines.length; i++) {
       if (!RegExp(r'ListView\.(builder|separated)\(').hasMatch(lines[i])) continue;
       // The builder's body, to the closing of that call, by brace counting.
-      final body =
+      final String body =
           bodiesAfterMarker(lines.sublist(i).join('\n'), 'itemBuilder:').join('\n');
       if (body.isEmpty) continue;
-      final rows = RegExp(r'return\s+(\w+)\(')
+      final Set<String> rows = RegExp(r'return\s+(\w+)\(')
           .allMatches(body)
-          .map((m) => m.group(1)!)
+          .map((RegExpMatch m) => m.group(1)!)
           .toSet();
-      for (final row in rows) {
+      for (final String row in rows) {
         // `key:` anywhere in the builder body counts: it may be passed through
         // a named parameter rather than set literally.
         if (RegExp(r'\bkey\s*:').hasMatch(body)) continue;
@@ -1432,8 +1432,8 @@ List<String> findUnkeyedListRows(SourceTree tree) {
 ///
 /// Each entry is `path:line`.
 List<String> findLeakedFocusNodes(SourceTree tree) {
-  final out = <String>[];
-  for (final entry in tree.dartFilesUnder('lib').entries) {
+  final List<String> out = <String>[];
+  for (final MapEntry<String, List<String>> entry in tree.dartFilesUnder('lib').entries) {
     out.addAll(focusNodeLeaksIn(
       entry.value,
       _rel(tree, entry.key).replaceAll(r'\', '/'),
@@ -1448,9 +1448,9 @@ List<String> findLeakedFocusNodes(SourceTree tree) {
 /// scanner that only ever ran over `lib/` would report a clean tree when the
 /// tree had no such leak, which is the same as reporting one when it did.
 List<String> focusNodeLeaksIn(List<String> lines, String path) {
-  final out = <String>[];
-  for (var i = 0; i < lines.length; i++) {
-    final line = lines[i];
+  final List<String> out = <String>[];
+  for (int i = 0; i < lines.length; i++) {
+    final String line = lines[i];
     if (line.trimLeft().startsWith('//')) continue;
     // A `FocusNode()` argument to anything but `attach`/`dispose` is the leak:
     // a node held in a field is fine, and one being disposed is being fixed.

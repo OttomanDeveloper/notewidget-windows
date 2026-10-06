@@ -5,11 +5,11 @@ class SettingsDialogHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 12, 14),
       child: Row(
-        children: [
+        children: <Widget>[
           Text(
             'Settings',
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),

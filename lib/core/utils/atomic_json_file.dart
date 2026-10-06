@@ -75,15 +75,15 @@ class AtomicJsonFile {
   /// Reads and decodes the file. A missing file is an empty document, not an
   /// error: this is a first run.
   Future<Map<String, dynamic>> read() async {
-    final file = File(path);
+    final File file = File(path);
     if (!await file.exists()) {
       _lastKnown = null;
-      return const {};
+      return const <String, dynamic>{};
     }
 
     String? raw;
     Object? openError;
-    for (var attempt = 0; attempt <= _readRetryLadder.length; attempt++) {
+    for (int attempt = 0; attempt <= _readRetryLadder.length; attempt++) {
       try {
         raw = await file.readAsString();
         openError = null;
@@ -119,7 +119,7 @@ class AtomicJsonFile {
       // A zero-length file is a leftover temp from a write that never
       // completed. Treat it as empty rather than refusing to start.
       _lastKnown = raw;
-      return const {};
+      return const <String, dynamic>{};
     }
     try {
       final decoded = jsonDecode(raw);
@@ -191,7 +191,7 @@ class AtomicJsonFile {
 
   Future<void> _flush() async {
     _cancelTimers();
-    final payload = _pending;
+    final String? payload = _pending;
     _pending = null;
     if (payload == null) return;
     try {
@@ -231,15 +231,15 @@ class AtomicJsonFile {
     Future<void> Function()? beforeReplace,
     int attempts = 5,
   }) async {
-    final file = File(path);
+    final File file = File(path);
     await file.parent.create(recursive: true);
-    final temp = File('$path.tmp');
+    final File temp = File('$path.tmp');
     await temp.writeAsString(contents, flush: true);
 
     await beforeReplace?.call();
 
     Object? lastError;
-    for (var attempt = 0; attempt < attempts; attempt++) {
+    for (int attempt = 0; attempt < attempts; attempt++) {
       try {
         // rename replaces the destination on Windows.
         await temp.rename(path);
@@ -265,7 +265,7 @@ class AtomicJsonFile {
   /// and failures are swallowed so the edit still lands.
   Future<void> _keepPreviousVersion(String contents) async {
     try {
-      final current = File(path);
+      final File current = File(path);
       if (!await current.exists()) return;
       // Skip no-change writes: compare against the file on disk (the
       // previous version by definition), not what this isolate last wrote.
@@ -281,15 +281,15 @@ class AtomicJsonFile {
   void watch(void Function() onChanged) {
     if (_watchSubscription != null) return;
     try {
-      final target = _normalise(path);
-      final parent = File(target).parent;
+      final String target = _normalise(path);
+      final Directory parent = File(target).parent;
       // The directory has to exist before a watcher will see anything, and a
       // first run has no file yet to watch.
       parent.createSync(recursive: true);
 
       // Directory, not file: File.watch() holds the file open and blocks
       // the other isolate's rename. A directory handle stops nothing.
-      _watchSubscription = parent.watch(recursive: false).where((event) {
+      _watchSubscription = parent.watch(recursive: false).where((FileSystemEvent event) {
         return _normalise(event.path) == target;
       }).listen(
         (_) => _scheduleReload(onChanged),
@@ -305,7 +305,7 @@ class AtomicJsonFile {
 
   /// Canonical form for comparing two paths to the same file.
   static String _normalise(String path) {
-    var value = path.replaceAll('/', r'\').toLowerCase();
+    String value = path.replaceAll('/', r'\').toLowerCase();
     while (value.length > 3 && value.endsWith('\\')) {
       value = value.substring(0, value.length - 1);
     }
@@ -317,7 +317,7 @@ class AtomicJsonFile {
     // Several filesystem events arrive for one logical write, and reading on
     // each of them means parsing a half-replaced file.
     _watchDebounce = Timer(const Duration(milliseconds: 120), () async {
-      final raw = await _readWithRetry();
+      final String? raw = await _readWithRetry();
       if (raw == null) return;
       if (raw == _lastKnown) return;
       _lastKnown = raw;
@@ -329,7 +329,7 @@ class AtomicJsonFile {
   /// Replace opens the destination briefly, so a read landing in that window
   /// fails; without the retry the other surface stops updating till next edit.
   Future<String?> _readWithRetry() async {
-    for (var attempt = 0; attempt < 3; attempt++) {
+    for (int attempt = 0; attempt < 3; attempt++) {
       try {
         return await File(path).readAsString();
       } on PathAccessException {

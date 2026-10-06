@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:riverpod/src/framework.dart';
 import 'package:win_notes/core/utils/atomic_json_file.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
@@ -34,7 +35,7 @@ Future<void> pumpCard(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
+      overrides: <Override>[
         widgetNoteByIdProvider(theNote.id).overrideWithValue(theNote),
       ],
       child: MaterialApp(
@@ -118,7 +119,7 @@ void main() {
     test('absent means off', () {
       // Every file written before this feature existed, and every plain note
       // written after it.
-      final loaded = Note.fromJson({
+      final Note loaded = Note.fromJson(<String, dynamic>{
         'id': 'a',
         'title': 't',
         'body': 'b',
@@ -131,8 +132,8 @@ void main() {
     test('only a literal true turns it on', () {
       // A hand-edited "yes" or 1 must not produce a note the renderer has never
       // been asked to handle.
-      for (final value in ['yes', 1, 'true', null]) {
-        final loaded = Note.fromJson({
+      for (final Object? value in <Object?>['yes', 1, 'true', null]) {
+        final Note loaded = Note.fromJson(<String, dynamic>{
           'id': 'a',
           'title': 't',
           'body': 'b',
@@ -151,8 +152,8 @@ void main() {
 
     test('the body is never rewritten by turning it on or off', () {
       // The whole promise of the flag: it decides presentation, not content.
-      const source = '# Heading\n\n**bold** and `code`';
-      var n = note('t', source);
+      const String source = '# Heading\n\n**bold** and `code`';
+      Note n = note('t', source);
       n = n.copyWith(markdown: true);
       expect(n.body, source, reason: 'switching on must not touch the source');
       n = n.copyWith(markdown: false);
@@ -162,49 +163,49 @@ void main() {
 
   group('the renderer', () {
     testWidgets('bold, italic and strikethrough survive as styles',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpMarkdown(tester, 'a **b** c *d* e ~~f~~ g');
 
-      final runs = _runs(tester);
+      final List<({GestureRecognizer? recognizer, TextStyle style, String text})> runs = _runs(tester);
       expect(
-        runs.any((r) => r.text == 'b' && r.style.fontWeight == FontWeight.w700),
+        runs.any((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'b' && r.style.fontWeight == FontWeight.w700),
         isTrue,
         reason: 'bold',
       );
       expect(
-        runs.any((r) => r.text == 'd' && r.style.fontStyle == FontStyle.italic),
+        runs.any((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'd' && r.style.fontStyle == FontStyle.italic),
         isTrue,
         reason: 'italic',
       );
       expect(
         runs.any(
-          (r) => r.text == 'f' && r.style.decoration == TextDecoration.lineThrough,
+          (({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'f' && r.style.decoration == TextDecoration.lineThrough,
         ),
         isTrue,
         reason: 'strikethrough',
       );
     });
 
-    testWidgets('a heading is larger than the body', (tester) async {
+    testWidgets('a heading is larger than the body', (WidgetTester tester) async {
       await pumpMarkdown(tester, '# Big\n\ntext');
 
-      final heading = _runs(tester).firstWhere((r) => r.text == 'Big');
-      final body = _runs(tester).firstWhere((r) => r.text == 'text');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) heading = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Big');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) body = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'text');
       expect(heading.style.fontSize, greaterThan(body.style.fontSize!),
           reason: 'an h1 must be bigger than body text');
     });
 
-    testWidgets('an h6 is still not smaller than the body', (tester) async {
+    testWidgets('an h6 is still not smaller than the body', (WidgetTester tester) async {
       // The floor. Without it the smallest heading renders smaller than the text
       // around it, which inverts the one thing a heading is for.
       await pumpMarkdown(tester, '###### Deep\n\ntext');
 
-      final heading = _runs(tester).firstWhere((r) => r.text == 'Deep');
-      final body = _runs(tester).firstWhere((r) => r.text == 'text');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) heading = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Deep');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) body = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'text');
       expect(heading.style.fontSize, greaterThanOrEqualTo(body.style.fontSize!));
     });
 
-    testWidgets('only the compact card flattens a heading', (tester) async {
+    testWidgets('only the compact card flattens a heading', (WidgetTester tester) async {
       // A compact card shows the note's title immediately above the body, so a
       // body opening with `# Title` repeats itself. At 1.3x that repeat ate a
       // third of a two-line budget and pushed the content off the end of the
@@ -214,12 +215,12 @@ void main() {
       // Driven through WidgetNoteCard rather than MarkdownText, because the
       // decision belongs to the card: density alone cannot express "two lines"
       // against "seven".
-      const body = '# Release\n\n- [x] one\n- [ ] two';
-      final n = note('Release checklist', body, markdown: true);
+      const String body = '# Release\n\n- [x] one\n- [ ] two';
+      final Note n = note('Release checklist', body, markdown: true);
 
       await pumpCard(tester, n, roomy: false);
-      final compact = _runs(tester).firstWhere((r) => r.text == 'Release');
-      final compactBody = _runs(tester).firstWhere((r) => r.text == 'one');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) compact = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Release');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) compactBody = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'one');
       expect(compact.style.fontSize, compactBody.style.fontSize,
           reason: 'a heading must not cost a two-line card more than the line '
               'it is');
@@ -227,23 +228,23 @@ void main() {
           reason: 'it still has to read as a heading');
 
       await pumpCard(tester, n, roomy: true);
-      final large = _runs(tester).firstWhere((r) => r.text == 'Release');
-      final largeBody = _runs(tester).firstWhere((r) => r.text == 'one');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) large = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Release');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) largeBody = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'one');
       expect(large.style.fontSize, greaterThan(largeBody.style.fontSize!));
     });
 
-    testWidgets('editor density still gives a heading its size', (tester) async {
+    testWidgets('editor density still gives a heading its size', (WidgetTester tester) async {
       // The other half of the rule above. Density is about the room available,
       // not a belief that headings are unimportant.
       await pumpMarkdown(tester, '# Release\n\ntext',
           density: MarkdownDensity.editor);
 
-      final heading = _runs(tester).firstWhere((r) => r.text == 'Release');
-      final body = _runs(tester).firstWhere((r) => r.text == 'text');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) heading = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Release');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) body = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'text');
       expect(heading.style.fontSize, greaterThan(body.style.fontSize!));
     });
 
-    testWidgets('an explicit heading scale is honoured exactly', (tester) async {
+    testWidgets('an explicit heading scale is honoured exactly', (WidgetTester tester) async {
       // Asking for 1.0 must not quietly return 1.05, which is what happens if
       // the floor is left behind when the scale is overridden.
       await tester.pumpWidget(
@@ -270,13 +271,13 @@ void main() {
       );
       await tester.pump();
 
-      final heading = _runs(tester).firstWhere((r) => r.text == 'Release');
-      final body = _runs(tester).firstWhere((r) => r.text == 'text');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) heading = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Release');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) body = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'text');
       expect(heading.style.fontSize, body.style.fontSize);
     });
 
     testWidgets('a task list draws a box and keeps the words beside it',
-        (tester) async {
+        (WidgetTester tester) async {
       // The parser replaces `[ ]` with an <input> element rather than leaving the
       // characters in the text, so a renderer that looked for the brackets drew
       // a bullet and dropped the item's words on the floor.
@@ -288,7 +289,7 @@ void main() {
       expect(find.textContaining('done'), findsOneWidget);
     });
 
-    testWidgets('a task marker is not a control', (tester) async {
+    testWidgets('a task marker is not a control', (WidgetTester tester) async {
       // The one place the renderer refuses to be useful, on purpose: completion
       // is per note here and per line in Markdown, and two sources of truth is
       // worse than one that only looks like the other.
@@ -299,25 +300,25 @@ void main() {
       expect(find.byType(TextButton), findsNothing);
     });
 
-    testWidgets('links are styled but cannot be tapped', (tester) async {
+    testWidgets('links are styled but cannot be tapped', (WidgetTester tester) async {
       // PROJECT.md: the app does not touch the internet at all. A widget with
       // nowhere to send you has no business pretending otherwise.
       await pumpMarkdown(tester, 'see [the docs](https://example.com) now');
 
-      final link = _runs(tester).firstWhere((r) => r.text == 'the docs');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) link = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'the docs');
       expect(link.style.color, isNotNull);
       expect(link.recognizer, isNull,
           reason: 'a link must carry no gesture recogniser at all');
     });
 
-    testWidgets('inline code is monospace', (tester) async {
+    testWidgets('inline code is monospace', (WidgetTester tester) async {
       await pumpMarkdown(tester, 'use `dart run` here');
 
-      final code = _runs(tester).firstWhere((r) => r.text == 'dart run');
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) code = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'dart run');
       expect(code.style.fontFamily, 'Consolas');
     });
 
-    testWidgets('an image becomes its alt text, never a fetch', (tester) async {
+    testWidgets('an image becomes its alt text, never a fetch', (WidgetTester tester) async {
       await pumpMarkdown(tester, '![a chart](https://example.com/x.png) here');
 
       expect(find.textContaining('a chart'), findsWidgets);
@@ -325,55 +326,55 @@ void main() {
           reason: 'this app has no network code and must not pretend to');
     });
 
-    testWidgets('raw HTML is text, not markup', (tester) async {
+    testWidgets('raw HTML is text, not markup', (WidgetTester tester) async {
       await pumpMarkdown(tester, '<b>not bold</b> here');
 
       // The parser hands this back as one literal text run - the brackets are
       // characters, not an element - so the assertion is on the run that
       // contains the words, not on a run of exactly those words.
-      final run = _runs(tester).firstWhere((r) => r.text.contains('not bold'));
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) run = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text.contains('not bold'));
       expect(run.style.fontWeight, isNot(FontWeight.w700));
       expect(find.textContaining('<b>'), findsWidgets,
           reason: 'the brackets are shown as the characters they are');
     });
 
-    testWidgets('a horizontal rule draws a divider', (tester) async {
+    testWidgets('a horizontal rule draws a divider', (WidgetTester tester) async {
       await pumpMarkdown(tester, 'above\n\n---\n\nbelow');
       expect(find.byType(Divider), findsWidgets);
     });
 
-    testWidgets('a block quote is indented and muted', (tester) async {
+    testWidgets('a block quote is indented and muted', (WidgetTester tester) async {
       await pumpMarkdown(tester, '> quoted words');
-      final run = _runs(tester).firstWhere((r) => r.text.contains('quoted'));
+      final ({GestureRecognizer? recognizer, TextStyle style, String text}) run = _runs(tester).firstWhere((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text.contains('quoted'));
 
-      final container = tester.widgetList<Container>(find.byType(Container))
-          .firstWhere((c) => c.decoration is BoxDecoration);
-      final decoration = container.decoration! as BoxDecoration;
+      final Container container = tester.widgetList<Container>(find.byType(Container))
+          .firstWhere((Container c) => c.decoration is BoxDecoration);
+      final BoxDecoration decoration = container.decoration! as BoxDecoration;
       expect((decoration.border as Border).left.width, greaterThan(0));
       expect(run.style.color, isNotNull);
     });
 
     testWidgets('a fenced block keeps its code and shows the language',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpMarkdown(tester, '```dart\nvoid main() {}\n```');
       expect(find.textContaining('void main() {}'), findsWidgets);
       expect(find.text('dart'), findsOneWidget);
     });
 
-    testWidgets('a nested list is not a flat one', (tester) async {
+    testWidgets('a nested list is not a flat one', (WidgetTester tester) async {
       await pumpMarkdown(tester, '- outer\n  - inner');
       expect(find.textContaining('outer'), findsOneWidget);
       expect(find.textContaining('inner'), findsOneWidget);
     });
 
-    testWidgets('an ordered list numbers itself', (tester) async {
+    testWidgets('an ordered list numbers itself', (WidgetTester tester) async {
       await pumpMarkdown(tester, '1. one\n2. two');
       expect(find.textContaining('1.'), findsOneWidget);
       expect(find.textContaining('2.'), findsOneWidget);
     });
 
     testWidgets('unrecognised content degrades to text, never to nothing',
-        (tester) async {
+        (WidgetTester tester) async {
       // The promise that matters most: a note must never render as less than
       // what it says.
       await pumpMarkdown(tester, 'Some perfectly ordinary sentence.');
@@ -381,8 +382,8 @@ void main() {
     });
 
     testWidgets('a code block is clamped and says how much was hidden',
-        (tester) async {
-      final long = List.generate(20, (i) => 'line $i').join('\n');
+        (WidgetTester tester) async {
+      final String long = List.generate(20, (int i) => 'line $i').join('\n');
       await pumpMarkdown(tester, '```\n$long\n```',
           density: MarkdownDensity.widget);
 
@@ -392,27 +393,27 @@ void main() {
     });
 
     testWidgets('widget density is smaller than editor density',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpMarkdown(tester, 'plain words here',
           density: MarkdownDensity.widget);
-      final widgetSize = _runs(tester).first.style.fontSize;
+      final double? widgetSize = _runs(tester).first.style.fontSize;
 
       await pumpMarkdown(tester, 'plain words here',
           density: MarkdownDensity.editor);
-      final editorSize = _runs(tester).first.style.fontSize;
+      final double? editorSize = _runs(tester).first.style.fontSize;
 
       expect(widgetSize, lessThan(editorSize!));
     });
 
     testWidgets('an empty source renders nothing rather than throwing',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpMarkdown(tester, '');
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('malformed syntax does not throw', (tester) async {
+    testWidgets('malformed syntax does not throw', (WidgetTester tester) async {
       // Half-written Markdown is the normal state of a note being typed.
-      for (final source in [
+      for (final String source in <String>[
         '**unclosed',
         '[link](unclosed',
         '```\nunterminated fence',
@@ -429,18 +430,18 @@ void main() {
     });
 
     testWidgets('a table is real in the editor and readable text in a card',
-        (tester) async {
-      const table = '| a | b |\n|---|---|\n| 1 | 2 |';
+        (WidgetTester tester) async {
+      const String table = '| a | b |\n|---|---|\n| 1 | 2 |';
 
       await pumpMarkdown(tester, table, density: MarkdownDensity.editor);
       expect(
-        _runs(tester).where((r) => r.text.trim() == '1'),
+        _runs(tester).where((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text.trim() == '1'),
         isNotEmpty,
         reason: 'cells are separate runs, not one blob of pipes',
       );
 
       await pumpMarkdown(tester, table, density: MarkdownDensity.widget);
-      final cardText = _allText(tester).join(' ');
+      final String cardText = _allText(tester).join(' ');
 
       // One line per row, cells still separated. Flattening the *grid* is the
       // point; flattening the *cells together* would turn `a | b` into `ab`,
@@ -459,7 +460,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('dev.winnotes/shell'),
-        (call) async => null,
+        (MethodCall call) async => null,
       );
       harness = TestHarness.build();
     });
@@ -473,7 +474,7 @@ void main() {
     /// The file is written *before* the provider is first read, because a provider
     /// builds on first read and that read is what pulls the file in.
     Future<Notes> load(List<Note> notes) async {
-      final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
+      final NotesRepository repo = NotesRepository(AtomicJsonFile(harness.notesFile));
       await repo.saveNow(notes);
       await harness.notes();
       controller = Notes(harness);
@@ -481,7 +482,7 @@ void main() {
     }
 
     test('turning it on changes the note and persists', () async {
-      await load([note('a', '# hi')]);
+      await load(<Note>[note('a', '# hi')]);
       expect(controller.notes.single.markdown, isFalse);
 
       controller.setMarkdown('a', enabled: true);
@@ -489,7 +490,7 @@ void main() {
       expect(controller.notes.single.markdown, isTrue);
 
       // And it reaches disk, debounce and all.
-      final written = await waitForContent(
+      final String written = await waitForContent(
         File(harness.notesFile),
         '"markdown": true',
       );
@@ -507,14 +508,14 @@ void main() {
       // Finishing a note deliberately does not reorder the list. Switching a
       // note into Markdown *is* an edit - it changes how the note reads - so it
       // earns its place at the top like any other change.
-      await load([note('a', 'body')]);
-      final before = controller.notes.single.updatedAt;
+      await load(<Note>[note('a', 'body')]);
+      final DateTime before = controller.notes.single.updatedAt;
 
       controller.setMarkdown('a', enabled: true);
       expect(controller.notes.single.updatedAt.isAfter(before), isTrue);
 
-      await load([note('b', 'body')]);
-      final beforeToggle = controller.notes.single.updatedAt;
+      await load(<Note>[note('b', 'body')]);
+      final DateTime beforeToggle = controller.notes.single.updatedAt;
       await Future<void>.delayed(const Duration(milliseconds: 5));
       controller.toggleCompleted('b');
       expect(controller.notes.single.updatedAt, beforeToggle,
@@ -522,21 +523,21 @@ void main() {
     });
 
     test('setting it to what it already is does nothing', () async {
-      await load([note('a', 'body', markdown: true)]);
-      final before = controller.notes.single.updatedAt;
+      await load(<Note>[note('a', 'body', markdown: true)]);
+      final DateTime before = controller.notes.single.updatedAt;
       controller.setMarkdown('a', enabled: true);
       expect(controller.notes.single.updatedAt, before);
     });
 
     test('a note that is not there is ignored', () async {
-      await load([note('a', 'body')]);
+      await load(<Note>[note('a', 'body')]);
       controller.setMarkdown('missing', enabled: true);
       expect(controller.notes.single.markdown, isFalse);
     });
   });
 
   group('the widget card', () {
-    testWidgets('a plain note is untouched by any of this', (tester) async {
+    testWidgets('a plain note is untouched by any of this', (WidgetTester tester) async {
       await pumpCard(tester, note('Title', '**not bold**'));
       // The asterisks stay visible, because the note did not ask for otherwise.
       expect(find.textContaining('**not bold**'), findsWidgets);
@@ -544,7 +545,7 @@ void main() {
     });
 
     testWidgets('a markdown note renders rather than showing its source',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpCard(tester, note('Title', '**bold** words', markdown: true));
 
       expect(_allText(tester).join(' '), isNot(contains('**')),
@@ -552,32 +553,32 @@ void main() {
       expect(find.byType(MarkdownText), findsWidgets);
     });
 
-    testWidgets('a markdown title honours inline formatting', (tester) async {
+    testWidgets('a markdown title honours inline formatting', (WidgetTester tester) async {
       await pumpCard(tester, note('**Loud** title', 'body', markdown: true));
-      final texts = _allText(tester).join(' ');
+      final String texts = _allText(tester).join(' ');
       expect(texts, isNot(contains('**')));
       expect(texts, contains('Loud'));
     });
 
-    testWidgets('a finished markdown card is struck through', (tester) async {
-      final finished = note('t', '**bold**', markdown: true)
+    testWidgets('a finished markdown card is struck through', (WidgetTester tester) async {
+      final Note finished = note('t', '**bold**', markdown: true)
           .copyWith(completedAt: DateTime(2026));
       await pumpCard(tester, finished);
 
       // Carried by the enclosing DefaultTextStyle rather than by any one span,
       // because a rendered note is many spans and none of them is "the text".
-      final carried = tester
+      final bool carried = tester
           .widgetList<DefaultTextStyle>(find.byType(DefaultTextStyle))
-          .any((d) => d.style.decoration == TextDecoration.lineThrough);
+          .any((DefaultTextStyle d) => d.style.decoration == TextDecoration.lineThrough);
       expect(carried, isTrue,
           reason: 'a finished note must still read as finished');
     });
 
     testWidgets('a compact card still clamps to its line budget',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpCard(
         tester,
-        note('Title', List.generate(20, (i) => 'line $i').join('\n\n'),
+        note('Title', List.generate(20, (int i) => 'line $i').join('\n\n'),
             markdown: true),
         roomy: false,
       );
@@ -593,7 +594,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('dev.winnotes/shell'),
-        (call) async => null,
+        (MethodCall call) async => null,
       );
       harness = TestHarness.build();
     });
@@ -613,7 +614,7 @@ void main() {
     /// advances.
     Future<void> pumpList(WidgetTester tester, List<Note> notes) async {
       await tester.runAsync(() async {
-        final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
+        final NotesRepository repo = NotesRepository(AtomicJsonFile(harness.notesFile));
         await repo.saveNow(notes);
         await harness.notes();
       });
@@ -642,10 +643,10 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('a plain row still shows its source', (tester) async {
+    testWidgets('a plain row still shows its source', (WidgetTester tester) async {
       // The whole point of the per-note flag: a note that never asked for
       // Markdown must be byte-for-byte what it was.
-      await pumpList(tester, [note('Plain', '**not bold** and `code`')]);
+      await pumpList(tester, <Note>[note('Plain', '**not bold** and `code`')]);
 
       expect(find.byType(MarkdownText), findsNothing);
       expect(find.textContaining('**not bold**'), findsOneWidget);
@@ -653,33 +654,33 @@ void main() {
     });
 
     testWidgets('a markdown row renders its preview rather than its source',
-        (tester) async {
-      await pumpList(tester, [
+        (WidgetTester tester) async {
+      await pumpList(tester, <Note>[
         note('Reference', '**Bold**, *italic*, ~~struck~~ and `code`',
             markdown: true),
       ]);
 
-      final text = _allText(tester).join(' ');
+      final String text = _allText(tester).join(' ');
       expect(text, isNot(contains('**')), reason: 'bold markers');
       expect(text, isNot(contains('*italic*')), reason: 'italic markers');
       expect(text, isNot(contains('~~')), reason: 'strikethrough markers');
       expect(text, isNot(contains('`')), reason: 'code backticks');
 
-      final runs = _runs(tester);
-      expect(runs.any((r) => r.text == 'Bold' && r.style.fontWeight == FontWeight.w700),
+      final List<({GestureRecognizer? recognizer, TextStyle style, String text})> runs = _runs(tester);
+      expect(runs.any((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Bold' && r.style.fontWeight == FontWeight.w700),
           isTrue);
-      expect(runs.any((r) => r.text == 'italic' && r.style.fontStyle == FontStyle.italic),
+      expect(runs.any((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'italic' && r.style.fontStyle == FontStyle.italic),
           isTrue);
-      expect(runs.any((r) => r.text == 'code' && r.style.fontFamily == 'Consolas'),
+      expect(runs.any((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'code' && r.style.fontFamily == 'Consolas'),
           isTrue);
     });
 
     testWidgets('a markdown row keeps list structure in its preview',
-        (tester) async {
+        (WidgetTester tester) async {
       // Inline-only rendering would have concatenated the items with no marker
       // at all, which is *less* than the note said - the same failure the table
       // flatten had. Rows get blocks, not just spans.
-      await pumpList(tester, [
+      await pumpList(tester, <Note>[
         note('Tasks', '- [ ] open\n- [x] done', markdown: true),
       ]);
 
@@ -687,39 +688,39 @@ void main() {
       expect(find.textContaining('☑'), findsWidgets);
     });
 
-    testWidgets('a markdown row renders its title inline', (tester) async {
-      await pumpList(tester, [note('**Loud** title', 'body', markdown: true)]);
+    testWidgets('a markdown row renders its title inline', (WidgetTester tester) async {
+      await pumpList(tester, <Note>[note('**Loud** title', 'body', markdown: true)]);
 
       expect(_allText(tester).join(' '), isNot(contains('**')));
-      expect(_runs(tester).any((r) => r.text == 'Loud'), isTrue);
+      expect(_runs(tester).any((({GestureRecognizer? recognizer, TextStyle style, String text}) r) => r.text == 'Loud'), isTrue);
     });
 
-    testWidgets('a markdown row stays inside the row height', (tester) async {
+    testWidgets('a markdown row stays inside the row height', (WidgetTester tester) async {
       // A long note must clip rather than grow the row or throw. Overflow is
       // what `maxLines` cannot prevent - it bounds lines inside one Text, not
       // the number of blocks.
-      await pumpList(tester, [
+      await pumpList(tester, <Note>[
         note(
           'Long',
-          List.generate(30, (i) => 'line $i').join('\n\n'),
+          List.generate(30, (int i) => 'line $i').join('\n\n'),
           markdown: true,
         ),
       ]);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a markdown row is no taller than a plain one', (tester) async {
+    testWidgets('a markdown row is no taller than a plain one', (WidgetTester tester) async {
       // Both get two lines of preview, so the list rhythm does not change
       // depending on whether a note happens to use Markdown.
-      await pumpList(tester, [
+      await pumpList(tester, <Note>[
         note('Md', '# Heading\n\nsome **body** text', markdown: true),
       ]);
-      final mdHeight = tester.getSize(find.byType(NoteListPane)).height;
+      final double mdHeight = tester.getSize(find.byType(NoteListPane)).height;
 
-      await pumpList(tester, [
+      await pumpList(tester, <Note>[
         note('Plain', '# Heading\n\nsome **body** text'),
       ]);
-      final plainHeight = tester.getSize(find.byType(NoteListPane)).height;
+      final double plainHeight = tester.getSize(find.byType(NoteListPane)).height;
 
       // The pane fills its box either way; what matters is that nothing threw
       // and the row content stayed put.
@@ -733,24 +734,24 @@ void main() {
       // Two lines means two lines you can read. If the band came out of them,
       // the second line would sit inside the fade and be unreadable - which
       // looks like the renderer lost a line rather than like a clamp.
-      final two = MarkdownText.budgetForLines(
+      final double two = MarkdownText.budgetForLines(
         fontSize: 13,
         lineHeight: 1.35,
         lines: 2,
       );
-      const oneLine = 13 * 1.35;
+      const double oneLine = 13 * 1.35;
 
       expect(two, greaterThan(oneLine * 2));
       expect(two, lessThan(oneLine * 3));
     });
 
     test('the budget scales with the surface type size', () {
-      final small = MarkdownText.budgetForLines(
+      final double small = MarkdownText.budgetForLines(
         fontSize: 12,
         lineHeight: 1.35,
         lines: 2,
       );
-      final large = MarkdownText.budgetForLines(
+      final double large = MarkdownText.budgetForLines(
         fontSize: 13,
         lineHeight: 1.35,
         lines: 2,
@@ -758,7 +759,7 @@ void main() {
       expect(large, greaterThan(small));
     });
 
-    testWidgets('a title honours the line count it is given', (tester) async {
+    testWidgets('a title honours the line count it is given', (WidgetTester tester) async {
       // Regression: `MarkdownText.inline` used to ignore `maxLines` and always
       // clip at one, so the large widget card's two-line title silently got
       // one.
@@ -784,8 +785,8 @@ void main() {
       );
       await tester.pump();
 
-      final text = tester.widget<RichText>(find.byType(RichText).first);
-      final span = text.text;
+      final RichText text = tester.widget<RichText>(find.byType(RichText).first);
+      final InlineSpan span = text.text;
       expect(span, isA<TextSpan>());
       expect((span as TextSpan).style?.decoration, isNot(TextDecoration.lineThrough));
       // maxLines and overflow are RichText's, not the span's.
@@ -802,7 +803,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
         const MethodChannel('dev.winnotes/shell'),
-        (call) async => null,
+        (MethodCall call) async => null,
       );
       harness = TestHarness.build();
     });
@@ -823,8 +824,8 @@ void main() {
       // never completes. Which looks exactly like a widget test that hangs for no
       // reason. See docs/testing_pattern.md section 4.
       await tester.runAsync(() async {
-        final repo = NotesRepository(AtomicJsonFile(harness.notesFile));
-        await repo.saveNow([
+        final NotesRepository repo = NotesRepository(AtomicJsonFile(harness.notesFile));
+        await repo.saveNow(<Note>[
           note('t', '# Heading\n\n**bold** words', markdown: true),
         ]);
         // Warmed here, before the pump, for the same reason as everywhere else:
@@ -853,13 +854,13 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('the switch is present', (tester) async {
+    testWidgets('the switch is present', (WidgetTester tester) async {
       await pumpPane(tester, 800);
       expect(find.byKey(markdownToggleKey), findsOneWidget);
     });
 
     testWidgets('a wide pane shows the source and the preview together',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpPane(tester, 800);
       // Title and body source. A preview is not a third field.
       expect(find.byType(TextField), findsNWidgets(2));
@@ -869,7 +870,7 @@ void main() {
     });
 
     testWidgets('a narrow pane offers a switch instead of two cramped columns',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpPane(tester, 380);
       expect(find.byType(MarkdownText), findsNothing,
           reason: 'no room for both, so it asks rather than guessing');
@@ -883,7 +884,7 @@ void main() {
     });
 
     testWidgets('tapping the switch turns Markdown off for that note',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpPane(tester, 800);
       expect(controller.notes.single.markdown, isTrue);
 
@@ -909,12 +910,12 @@ void main() {
     });
 
     testWidgets('the source keeps the syntax while it is being typed',
-        (tester) async {
+        (WidgetTester tester) async {
       await pumpPane(tester, 800);
       // The preview is rendered; the field beside it still holds the raw text,
       // because rendering must never rewrite what gets saved.
-      final fields = tester.widgetList<TextField>(find.byType(TextField));
-      final body = fields.last;
+      final Iterable<TextField> fields = tester.widgetList<TextField>(find.byType(TextField));
+      final TextField body = fields.last;
       expect(body.controller!.text, contains('# Heading'));
     });
   });
@@ -930,12 +931,12 @@ void main() {
 List<({String text, TextStyle style, GestureRecognizer? recognizer})> _runs(
   WidgetTester tester,
 ) {
-  final out =
+  final List<({GestureRecognizer? recognizer, TextStyle style, String text})> out =
       <({String text, TextStyle style, GestureRecognizer? recognizer})>[];
 
   void walk(InlineSpan span, TextStyle inherited) {
-    final own = span is TextSpan ? span.style : null;
-    final effective =
+    final TextStyle? own = span is TextSpan ? span.style : null;
+    final TextStyle effective =
         own?.inherit == false ? (own ?? const TextStyle()) : inherited.merge(own);
     if (span is TextSpan && span.text != null) {
       out.add((
@@ -945,7 +946,7 @@ List<({String text, TextStyle style, GestureRecognizer? recognizer})> _runs(
       ));
     }
     if (span is TextSpan) {
-      for (final child in span.children ?? const <InlineSpan>[]) {
+      for (final InlineSpan child in span.children ?? const <InlineSpan>[]) {
         walk(child, effective);
       }
     }
@@ -954,7 +955,7 @@ List<({String text, TextStyle style, GestureRecognizer? recognizer})> _runs(
   // Seeded empty: every span this renderer builds carries its style on the
   // root of the run, which is what a child span inherits from. Plain Text`n  // widgets get their style from a DefaultTextStyle instead and are read
   // through [_allText], which asks the widget directly.
-  for (final r in tester.widgetList<RichText>(find.byType(RichText))) {
+  for (final RichText r in tester.widgetList<RichText>(find.byType(RichText))) {
     walk(r.text, const TextStyle());
   }
   return out;
@@ -963,12 +964,12 @@ List<({String text, TextStyle style, GestureRecognizer? recognizer})> _runs(
 /// Every string on screen, including the plain `Text` widgets the renderer uses
 /// for list markers.
 List<String> _allText(WidgetTester tester) {
-  final out = <String>[];
-  for (final t in tester.widgetList<Text>(find.byType(Text))) {
-    final data = t.data;
+  final List<String> out = <String>[];
+  for (final Text t in tester.widgetList<Text>(find.byType(Text))) {
+    final String? data = t.data;
     if (data != null) out.add(data);
   }
-  for (final r in _runs(tester)) {
+  for (final ({GestureRecognizer? recognizer, TextStyle style, String text}) r in _runs(tester)) {
     out.add(r.text);
   }
   return out;

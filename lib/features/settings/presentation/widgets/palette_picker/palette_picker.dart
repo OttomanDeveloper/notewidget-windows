@@ -14,19 +14,19 @@ class PalettePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return SizedBox(
       width: 196,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           Wrap(
             spacing: 6,
             runSpacing: 6,
             alignment: WrapAlignment.end,
-            children: [
-              for (final palette in winNotesPalettes)
+            children: <Widget>[
+              for (final WinNotesPalette palette in winNotesPalettes)
                 PaletteSwatch(
                   palette: palette,
                   isSelected: palette.id == selected.id,

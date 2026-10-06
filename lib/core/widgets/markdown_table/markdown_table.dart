@@ -25,14 +25,14 @@ class MarkdownTable extends StatelessWidget {
   Widget build(BuildContext context) {
       // Rows live one level down (`thead`/`tbody`), not as direct children: looking
       // only there finds no rows, which reads as "no table support" instead of a bug.
-    final rows = <List<md.Element>>[];
+    final List<List<md.Element>> rows = <List<md.Element>>[];
     void collect(md.Element parent) {
-      for (final child in parent.children ?? const <md.Node>[]) {
+      for (final md.Node child in parent.children ?? const <md.Node>[]) {
         if (child is! md.Element) continue;
         if (child.tag == 'tr') {
           rows.add((child.children ?? const <md.Node>[])
               .whereType<md.Element>()
-              .where((cell) => cell.tag == 'th' || cell.tag == 'td')
+              .where((md.Element cell) => cell.tag == 'th' || cell.tag == 'td')
               .toList());
         } else {
           collect(child);
@@ -48,14 +48,14 @@ class MarkdownTable extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (index, row) in rows.indexed)
+        children: <Widget>[
+          for (final (int index, List<md.Element> row) in rows.indexed)
             Padding(
               padding: EdgeInsets.only(bottom: index == 0 ? 5 : 3),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final cell in row)
+                children: <Widget>[
+                  for (final md.Element cell in row)
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(right: 10),

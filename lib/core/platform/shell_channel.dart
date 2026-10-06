@@ -137,7 +137,7 @@ class ShellChannel {
     // during the first frame is dropped.
     ShellEvents.instance.install();
     try {
-      final raw = await methodChannel.invokeMapMethod<String, dynamic>('bootstrap');
+      final Map<String, dynamic>? raw = await methodChannel.invokeMapMethod<String, dynamic>('bootstrap');
       if (raw == null) return null;
       return LaunchInfo(
         role: raw['role'] as String? ?? 'editor',
@@ -154,11 +154,11 @@ class ShellChannel {
                 ?.whereType<Map>()
                 .map(MonitorInfo.fromMap)
                 .toList() ??
-            const [],
+            const <MonitorInfo>[],
         autostartEnabled: raw['autostartEnabled'] as bool? ?? false,
         autostartCommand: raw['autostartCommand'] as String? ?? '',
         defaultWidgetBounds: NativeBounds.fromMap(
-          raw['defaultWidgetBounds'] as Map? ?? const {'left': 0, 'top': 0, 'width': 360, 'height': 420},
+          raw['defaultWidgetBounds'] as Map? ?? const <dynamic, dynamic>{'left': 0, 'top': 0, 'width': 360, 'height': 420},
         ),
       );
     } on PlatformException {
@@ -168,11 +168,11 @@ class ShellChannel {
     }
   }
 
-  Future<void> showWindow(String role) => _fire('window.show', {'role': role});
-  Future<void> hideWindow(String role) => _fire('window.hide', {'role': role});
-  Future<void> focusWindow(String role) => _fire('window.focus', {'role': role});
+  Future<void> showWindow(String role) => _fire('window.show', <String, dynamic>{'role': role});
+  Future<void> hideWindow(String role) => _fire('window.hide', <String, dynamic>{'role': role});
+  Future<void> focusWindow(String role) => _fire('window.focus', <String, dynamic>{'role': role});
   Future<void> setWindowTitle(String role, String title) =>
-      _fire('window.setTitle', {'role': role, 'title': title});
+      _fire('window.setTitle', <String, dynamic>{'role': role, 'title': title});
 
   /// Pushes every widget appearance choice into the runner in one call, so the
   /// widget can never be half-configured mid-frame.
@@ -188,7 +188,7 @@ class ShellChannel {
     /// that decides how the widget looks and behaves.
     bool positionLocked = true,
   }) =>
-      _fire('widget.configure', {
+      _fire('widget.configure', <String, dynamic>{
         'alwaysOnTop': alwaysOnTop,
         'opacity': opacity,
         'acrylic': acrylic,
@@ -201,27 +201,27 @@ class ShellChannel {
   ///
   /// Dropped again when `active` goes false, handing the keyboard back.
   Future<void> setWidgetComposeMode({required bool active}) =>
-      _fire('widget.setComposeMode', {'active': active, 'role': 'widget'});
+      _fire('widget.setComposeMode', <String, dynamic>{'active': active, 'role': 'widget'});
 
   /// Asks the editor isolate to add a note, which is the only writer of
   /// notes.json. Only called when [isEditorRunning] is false.
   Future<void> requestCreateNote({required String title, required String body}) =>
-      _fire('note.create', {'title': title, 'body': body});
+      _fire('note.create', <String, dynamic>{'title': title, 'body': body});
 
   /// Whether an editor window exists, and therefore owns notes.json.
   ///
   /// Asked live: the editor opens and closes, so a cached answer goes stale.
   Future<bool> isEditorRunning() async {
-    final result = await _invoke('editor.running');
+    final Object? result = await _invoke('editor.running');
     return result == true;
   }
 
   /// Asks the editor isolate to toggle a note. The caller writes the file
   /// itself when no editor exists.
   Future<void> requestToggleCompleted(String id) =>
-      _fire('note.toggleCompleted', {'id': id});
+      _fire('note.toggleCompleted', <String, dynamic>{'id': id});
 
-  Future<void> setWidgetGeometry(NativeBounds bounds) => _fire('widget.setGeometry', {
+  Future<void> setWidgetGeometry(NativeBounds bounds) => _fire('widget.setGeometry', <String, dynamic>{
         'left': bounds.left,
         'top': bounds.top,
         'width': bounds.width,
@@ -232,11 +232,11 @@ class ShellChannel {
   /// Dart only sees view-relative positions, so the native loop must start
   /// from the screen-space anchor this is given.
   Future<void> beginWidgetMove(Offset anchor) =>
-      _fire('widget.beginMove', {'anchorX': anchor.dx, 'anchorY': anchor.dy});
+      _fire('widget.beginMove', <String, dynamic>{'anchorX': anchor.dx, 'anchorY': anchor.dy});
 
   Future<void> beginWidgetResize(ResizeEdge edge, Offset anchor) => _fire(
         'widget.beginResize',
-        {
+        <String, dynamic>{
           'edge': ResizeEdgeCode.value[edge],
           'anchorX': anchor.dx,
           'anchorY': anchor.dy,
@@ -247,7 +247,7 @@ class ShellChannel {
   /// geometry the runner picks the placement, and a drag needs something to
   /// move relative to.
   Future<NativeBounds?> widgetBounds() async {
-    final result = await _invoke('widget.getBounds');
+    final Object? result = await _invoke('widget.getBounds');
     if (result is! Map) return null;
     return NativeBounds.fromMap(result);
   }
@@ -258,7 +258,7 @@ class ShellChannel {
     required bool enabled,
   }) async {
     try {
-      final raw = await methodChannel.invokeMapMethod<String, dynamic>('hotkey.register', {
+      final Map<String, dynamic>? raw = await methodChannel.invokeMapMethod<String, dynamic>('hotkey.register', <String, Object>{
         'modifiers': modifiers,
         'key': key,
         'enabled': enabled,
@@ -276,7 +276,7 @@ class ShellChannel {
 
   Future<bool> queryAutoStart() async {
     try {
-      final raw = await methodChannel.invokeMapMethod<String, dynamic>('autostart.query');
+      final Map<String, dynamic>? raw = await methodChannel.invokeMapMethod<String, dynamic>('autostart.query');
       return raw?['enabled'] as bool? ?? false;
     } on PlatformException {
       return false;
@@ -287,7 +287,7 @@ class ShellChannel {
 
   Future<bool> setAutoStart({required bool enabled}) async {
     try {
-      final raw = await methodChannel.invokeMapMethod<String, dynamic>('autostart.set', {
+      final Map<String, dynamic>? raw = await methodChannel.invokeMapMethod<String, dynamic>('autostart.set', <String, bool>{
         'enabled': enabled,
       });
       return raw?['ok'] as bool? ?? false;
@@ -299,7 +299,7 @@ class ShellChannel {
   }
 
   Future<void> showNotice(String title, String body) =>
-      _fire('tray.notice', {'title': title, 'body': body});
+      _fire('tray.notice', <String, dynamic>{'title': title, 'body': body});
 
   Future<void> showEditor() => _fire('shell.showEditor');
   Future<void> showWidget() => _fire('shell.showWidget');
@@ -314,12 +314,12 @@ class ShellChannel {
     }
   }
 
-  Future<void> openPath(String path) => _fire('path.open', {'path': path});
-  Future<void> revealPath(String path) => _fire('path.reveal', {'path': path});
+  Future<void> openPath(String path) => _fire('path.open', <String, dynamic>{'path': path});
+  Future<void> revealPath(String path) => _fire('path.reveal', <String, dynamic>{'path': path});
 
   Future<String?> pickFolder({String? start}) async {
     try {
-      return await methodChannel.invokeMethod<String>('path.pickFolder', {'start': start ?? ''});
+      return await methodChannel.invokeMethod<String>('path.pickFolder', <String, String>{'start': start ?? ''});
     } on PlatformException {
       return null;
     } on MissingPluginException {
@@ -329,7 +329,7 @@ class ShellChannel {
 
   Future<String?> pickFile({String? start, String filter = 'WinNotes backups|*.txt|All files|*.*'}) async {
     try {
-      return await methodChannel.invokeMethod<String>('path.pickFile', {'start': start ?? '', 'filter': filter});
+      return await methodChannel.invokeMethod<String>('path.pickFile', <String, String>{'start': start ?? '', 'filter': filter});
     } on PlatformException {
       return null;
     } on MissingPluginException {
@@ -343,7 +343,7 @@ class ShellChannel {
     String filter = 'Text files|*.txt|All files|*.*',
   }) async {
     try {
-      return await methodChannel.invokeMethod<String>('path.saveFile', {
+      return await methodChannel.invokeMethod<String>('path.saveFile', <String, String>{
         'start': start ?? '',
         'suggestedName': suggestedName,
         'filter': filter,
@@ -401,8 +401,8 @@ class ShellEvents {
   void install() {
     if (_installed) return;
     _installed = true;
-    ShellChannel.methodChannel.setMethodCallHandler((call) async {
-      final event = ShellEvent.fromMethod(call.method, call.arguments);
+    ShellChannel.methodChannel.setMethodCallHandler((MethodCall call) async {
+      final ShellEvent event = ShellEvent.fromMethod(call.method, call.arguments);
       if (_controller.isClosed) return null;
       _controller.add(event);
       return null;
@@ -454,14 +454,14 @@ extension ShellEventData on ShellEvent {
       : true;
 
   NativeBounds? get bounds {
-    final args = arguments;
+    final Object? args = arguments;
     if (args is! Map) return null;
     return NativeBounds.fromMap(args);
   }
 
   /// The note an `event.toggleCompleted` refers to, or null if it named none.
   String? get noteId {
-    final args = arguments;
+    final Object? args = arguments;
     if (args is! Map) return null;
     final id = args['id'];
     return id is String && id.isNotEmpty ? id : null;
@@ -469,7 +469,7 @@ extension ShellEventData on ShellEvent {
 
   /// Title and body from an `event.createNote`.
   ({String title, String body})? get newNote {
-    final args = arguments;
+    final Object? args = arguments;
     if (args is! Map) return null;
     final title = args['title'];
     final body = args['body'];
@@ -505,7 +505,7 @@ enum ResizeEdge {
 class ResizeEdgeCode {
   const ResizeEdgeCode._();
 
-  static const Map<ResizeEdge, int> value = {
+  static const Map<ResizeEdge, int> value = <ResizeEdge, int>{
     ResizeEdge.left: 1,
     ResizeEdge.right: 2,
     ResizeEdge.top: 3,

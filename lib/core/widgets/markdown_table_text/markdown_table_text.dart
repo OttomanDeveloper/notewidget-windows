@@ -23,17 +23,17 @@ class MarkdownTableText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lines = <String>[];
+    final List<String> lines = <String>[];
 
     void collect(md.Element parent) {
-      for (final child in parent.children ?? const <md.Node>[]) {
+      for (final md.Node child in parent.children ?? const <md.Node>[]) {
         if (child is! md.Element) continue;
         if (child.tag == 'tr') {
-          final cells = (child.children ?? const <md.Node>[])
+          final List<String> cells = (child.children ?? const <md.Node>[])
               .whereType<md.Element>()
-              .where((cell) => cell.tag == 'th' || cell.tag == 'td')
-              .map((cell) => cell.textContent.trim())
-              .where((cell) => cell.isNotEmpty)
+              .where((md.Element cell) => cell.tag == 'th' || cell.tag == 'td')
+              .map((md.Element cell) => cell.textContent.trim())
+              .where((String cell) => cell.isNotEmpty)
               .toList();
           if (cells.isNotEmpty) lines.add(cells.join(' | '));
         } else {

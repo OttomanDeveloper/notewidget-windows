@@ -22,8 +22,8 @@ class MarkdownInlineLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spans = <InlineSpan>[];
-    for (final node in nodes) {
+    final List<InlineSpan> spans = <InlineSpan>[];
+    for (final md.Node node in nodes) {
       spans.addAll(MarkdownSpans.of(node, style));
     }
     if (spans.isEmpty) {

@@ -55,25 +55,25 @@ class WidgetNoteCard extends ConsumerWidget {
     // Gone (deleted or never loaded) reads as empty rather than crashing: the
     // parent list rebuilds on every notes change, so this is only the frame
     // between the deletion and the list catching up.
-    final note = ref.watch(widgetNoteByIdProvider(noteId));
+    final Note? note = ref.watch(widgetNoteByIdProvider(noteId));
     if (note == null) return const SizedBox.shrink();
 
-    final bodyColor = widgetBodyColor(
+    final Color bodyColor = widgetBodyColor(
       dark ? Brightness.dark : Brightness.light,
     );
-    final mutedColor = widgetMutedColor(
+    final Color mutedColor = widgetMutedColor(
       dark ? Brightness.dark : Brightness.light,
     );
 
-    final renderLarge = focused && roomy;
-    final done = note.isCompleted;
-    final toggleSize = renderLarge ? 20.0 : 16.0;
+    final bool renderLarge = focused && roomy;
+    final bool done = note.isCompleted;
+    final double toggleSize = renderLarge ? 20.0 : 16.0;
 
     // Finished notes recede subtly; the runner already draws the widget at reduced opacity.
-    final titleColor = done
+    final Color titleColor = done
         ? mutedColor.withValues(alpha: 0.7)
         : (renderLarge ? bodyColor : mutedColor);
-    final previewColor = done
+    final Color previewColor = done
         ? mutedColor.withValues(alpha: 0.6)
         : (renderLarge ? bodyColor.withValues(alpha: 0.88) : mutedColor);
 
@@ -108,7 +108,7 @@ class WidgetNoteCard extends ConsumerWidget {
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 // Offset clear of the outer resize grab so the tick is not swallowed by it.
                 Padding(
                   padding: const EdgeInsets.only(top: 1),
@@ -125,10 +125,10 @@ class WidgetNoteCard extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
-                    children: [
+                    children: <Widget>[
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                        children: <Widget>[
                           Expanded(
                             child: note.markdown
                                 // Title is one line: `#` is not a heading here, but `**` and backticks are kept as emphasis.
@@ -175,7 +175,7 @@ class WidgetNoteCard extends ConsumerWidget {
                             ),
                         ],
                       ),
-                      if (_hasBody(note)) ...[
+                      if (_hasBody(note)) ...<Widget>[
                         SizedBox(height: renderLarge ? 8 : 3),
                         if (note.markdown)
                           // Rendered body clamped by height, not line count; see `MarkdownDensity`.
@@ -211,7 +211,7 @@ class WidgetNoteCard extends ConsumerWidget {
                               completed: done,
                             ),
                           ),
-                      ] else if (renderLarge && note.title.trim().isEmpty) ...[
+                      ] else if (renderLarge && note.title.trim().isEmpty) ...<Widget>[
                         // Only for a fully empty note; a title-only note already shows its content above.
                         const SizedBox(height: 8),
                         Text(
@@ -243,7 +243,7 @@ class WidgetNoteCard extends ConsumerWidget {
   static final RegExp lineBreaks = RegExp(r'\s*\n\s*');
 
   static String _preview(Note note, bool renderLarge) {
-    final body = note.body.trim();
+    final String body = note.body.trim();
     if (renderLarge) return body;
     return body.replaceAll(lineBreaks, ' ');
   }

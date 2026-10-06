@@ -25,10 +25,10 @@ class NotesRepository implements INotesRepository {
   @override
   Future<NotesLoadResult> load() async {
     try {
-      final json = await _file.read();
+      final Map<String, dynamic> json = await _file.read();
       // A file that is valid JSON but not ours is still a file the app did not
       // write and cannot vouch for, so it is treated the same as unparseable.
-      if (json.isEmpty) return const NotesLoaded([]);
+      if (json.isEmpty) return const NotesLoaded(<Note>[]);
       final format = json['format'];
       if (format != _formatTag) {
         throw CorruptDataFile(
@@ -43,7 +43,7 @@ class NotesRepository implements INotesRepository {
           reason: 'The "notes" entry is missing or is not a list.',
         );
       }
-      final notes = <Note>[];
+      final List<Note> notes = <Note>[];
       for (final entry in rawNotes) {
         if (entry is! Map) {
           throw CorruptDataFile(
@@ -76,9 +76,9 @@ class NotesRepository implements INotesRepository {
 
   /// Newest first, always, with no sorting options to get wrong.
   static List<Note> sorted(Iterable<Note> notes) {
-    final list = notes.toList();
-    list.sort((a, b) {
-      final byRecency = b.updatedAt.compareTo(a.updatedAt);
+    final List<Note> list = notes.toList();
+    list.sort((Note a, Note b) {
+      final int byRecency = b.updatedAt.compareTo(a.updatedAt);
       // Ids break ties so the order does not shuffle between two writes of the
       // same millisecond.
       return byRecency != 0 ? byRecency : b.id.compareTo(a.id);
@@ -89,18 +89,18 @@ class NotesRepository implements INotesRepository {
   @override
   void save(List<Note> notes) {
     if (_file.blocked != null) return;
-    _file.write({
+    _file.write(<String, dynamic>{
       'format': _formatTag,
       'version': _formatVersion,
-      'notes': notes.map((n) => n.toJson()).toList(),
+      'notes': notes.map((Note n) => n.toJson()).toList(),
     });
   }
 
   @override
-  Future<void> saveNow(List<Note> notes) => _file.writeNow({
+  Future<void> saveNow(List<Note> notes) => _file.writeNow(<String, dynamic>{
         'format': _formatTag,
         'version': _formatVersion,
-        'notes': notes.map((n) => n.toJson()).toList(),
+        'notes': notes.map((Note n) => n.toJson()).toList(),
       });
 
   /// Watches for a document written by the other surface. Only the widget
@@ -119,7 +119,7 @@ class NotesRepository implements INotesRepository {
   /// offered only when it would actually do something.
   @override
   String? get backupPath {
-    final candidate = AtomicJsonFile.backupPathFor(_file.path);
+    final String candidate = AtomicJsonFile.backupPathFor(_file.path);
     return File(candidate).existsSync() ? candidate : null;
   }
 
@@ -127,12 +127,12 @@ class NotesRepository implements INotesRepository {
   /// asking nothing of the person; null (block stays) when unusable.
   @override
   Future<int?> restoreBackup() async {
-    final backup = backupPath;
+    final String? backup = backupPath;
     if (backup == null) return null;
 
-    final result = await loadFrom(File(backup));
+    final NotesLoadResult result = await loadFrom(File(backup));
     switch (result) {
-      case NotesLoaded(:final notes):
+      case NotesLoaded(:final List<Note> notes):
         _file.blocked = null;
         // Copied rather than re-serialised: a normal write would first back up
         // the corrupt file over the only good copy. Both files then hold the
@@ -156,15 +156,15 @@ class NotesRepository implements INotesRepository {
   /// deletes (timestamped); returns where it went, or null when held open.
   @override
   Future<String?> setAsideAndStartFresh() async {
-    final source = File(_file.path);
+    final File source = File(_file.path);
     if (!source.existsSync()) {
       // Nothing to move. The file has already gone, which is the case the app
       // already treats as a first run, so just unblock.
       _file.blocked = null;
       return null;
     }
-    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final kept = '${_file.path}.broken-$stamp';
+    final String stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final String kept = '${_file.path}.broken-$stamp';
     try {
       await source.rename(kept);
     } on FileSystemException {
@@ -179,7 +179,7 @@ class NotesRepository implements INotesRepository {
   /// screen shown *because* a file could not be read.
   static FileDescription? describeFile(String path) {
     try {
-      final file = File(path);
+      final File file = File(path);
       if (!file.existsSync()) return null;
       return (
         bytes: file.lengthSync(),
@@ -194,14 +194,14 @@ class NotesRepository implements INotesRepository {
   @override
   Future<NotesLoadResult> loadFrom(File file) async {
     try {
-      final raw = await file.readAsString();
-      if (raw.trim().isEmpty) return const NotesLoaded([]);
+      final String raw = await file.readAsString();
+      if (raw.trim().isEmpty) return const NotesLoaded(<Note>[]);
       final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return const NotesLoaded([]);
-      if (decoded['format'] != _formatTag) return const NotesLoaded([]);
+      if (decoded is! Map<String, dynamic>) return const NotesLoaded(<Note>[]);
+      if (decoded['format'] != _formatTag) return const NotesLoaded(<Note>[]);
       final rawNotes = decoded['notes'];
-      if (rawNotes is! List) return const NotesLoaded([]);
-      final notes = <Note>[];
+      if (rawNotes is! List) return const NotesLoaded(<Note>[]);
+      final List<Note> notes = <Note>[];
       for (final entry in rawNotes) {
         if (entry is! Map) continue;
         try {
@@ -245,9 +245,9 @@ class BackupService implements IBackupService {
   /// inside a body.
   static bool _isDivider(String line) {
     if (line.startsWith(bodyIndent)) return false;
-    final trimmed = line.trimRight();
+    final String trimmed = line.trimRight();
     if (trimmed.length < 3) return false;
-    for (final unit in trimmed.codeUnits) {
+    for (final int unit in trimmed.codeUnits) {
       if (unit != 0x2D && unit != 0x2A && unit != 0x5F) return false;
     }
     return true;
@@ -259,7 +259,7 @@ class BackupService implements IBackupService {
 
   @override
   String export(List<Note> notes) {
-    final buffer = StringBuffer()
+    final StringBuffer buffer = StringBuffer()
       ..writeln('WinNotes backup')
       ..writeln('Exported: ${DateTime.now().toIso8601String()}')
       ..writeln('Notes: ${notes.length}')
@@ -267,12 +267,12 @@ class BackupService implements IBackupService {
 
     // Written in the order the user sees them, which is already newest first,
     // so an import produces the same list a person was looking at.
-    for (final note in NotesRepository.sorted(notes)) {
+    for (final Note note in NotesRepository.sorted(notes)) {
       buffer
         ..writeln(separator)
         ..writeln(note.title.trim())
         ..writeln();
-      for (final line in note.body.split('\n')) {
+      for (final String line in note.body.split('\n')) {
         // A blank body line is written as a bare indent rather than an empty
         // line, so the reader can tell "blank line in the body" from "blank
         // line that ends the body".
@@ -287,7 +287,7 @@ class BackupService implements IBackupService {
   /// reached for when everything failed, so a truncated one is the worst outcome.
   @override
   Future<String> exportTo(String path, List<Note> notes) async {
-    final text = export(notes);
+    final String text = export(notes);
     await AtomicJsonFile.writeTextAtomically(path, text);
     return text;
   }
@@ -297,8 +297,8 @@ class BackupService implements IBackupService {
   @override
   Future<List<Note>?> readFrom(String path) async {
     try {
-      final text = await File(path).readAsString();
-      final notes = import(text);
+      final String text = await File(path).readAsString();
+      final List<Note> notes = import(text);
       return notes.isEmpty ? null : notes;
     } on FileSystemException {
       return null;
@@ -314,11 +314,11 @@ class BackupService implements IBackupService {
     // Normalised first so a file saved or edited on Windows reads the same as
     // one written anywhere else. Splitting on \r\n alone would leave a stray \r
     // glued to the end of every body line.
-    final lines = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
-    final notes = <Note>[];
-    final factory = NoteIdFactory();
+    final List<String> lines = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    final List<Note> notes = <Note>[];
+    final NoteIdFactory factory = NoteIdFactory();
 
-    var index = 0;
+    int index = 0;
     // Skip the header up to the first divider.
     while (index < lines.length && !_isDivider(lines[index])) {
       index++;
@@ -337,7 +337,7 @@ class BackupService implements IBackupService {
 
       // The title is taken verbatim, blanks included: skipping them would eat
       // the one legitimate empty title a block can have.
-      final title = lines[index].trim();
+      final String title = lines[index].trim();
       index++;
 
       // The exporter writes one blank line between the title and the body.
@@ -348,10 +348,10 @@ class BackupService implements IBackupService {
       // Only indented lines are body; the blank run before the next divider is
       // exporter spacing, and treating it as content minted a phantom empty
       // note between every pair of real ones.
-      final body = <String>[];
-      var indentStops = false;
+      final List<String> body = <String>[];
+      bool indentStops = false;
       while (index < lines.length && !_isDivider(lines[index])) {
-        final line = lines[index];
+        final String line = lines[index];
         if (line.startsWith(bodyIndent)) {
           body.add(line.substring(bodyIndent.length));
         } else if (indentStops && line.trim().isEmpty) {
@@ -366,7 +366,7 @@ class BackupService implements IBackupService {
         index++;
       }
 
-      final now = DateTime.now();
+      final DateTime now = DateTime.now();
       notes.add(Note(
         id: factory.next(),
         title: title,
@@ -380,14 +380,14 @@ class BackupService implements IBackupService {
 
   /// True when anything but blank lines remains.
   static bool _hasContent(List<String> lines, int from) {
-    for (var i = from; i < lines.length; i++) {
+    for (int i = from; i < lines.length; i++) {
       if (lines[i].trim().isNotEmpty) return true;
     }
     return false;
   }
 
   static List<String> _trimTrailingBlanks(List<String> lines) {
-    var end = lines.length;
+    int end = lines.length;
     while (end > 0 && lines[end - 1].trim().isEmpty) {
       end--;
     }

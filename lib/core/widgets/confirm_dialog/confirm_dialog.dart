@@ -10,12 +10,12 @@ Future<bool> confirmDestructiveAction(
   String confirmLabel = 'Delete',
   String cancelLabel = 'Cancel',
 }) async {
-  final result = await showDialog<bool>(
+  final bool? result = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (BuildContext context) => AlertDialog(
       title: Text(title),
       content: Text(message),
-      actions: [
+      actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           child: Text(cancelLabel),

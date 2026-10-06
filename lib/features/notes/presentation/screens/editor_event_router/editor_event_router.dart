@@ -44,18 +44,18 @@ class EditorEventRouterState extends ConsumerState<EditorEventRouter> {
       case ShellEventKind.hotkey:
         _focusEditor();
       case ShellEventKind.openSettings:
-        final messenger = ScaffoldMessenger.maybeOf(context);
+        final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
         if (!mounted) return;
         unawaited(openSettings(context, ref));
         messenger?.hideCurrentSnackBar();
       case ShellEventKind.toggleCompleted:
           // The widget asks rather than writing (one writer per file); the change
           // lands here, and the widget sees it through its directory watcher.
-        final id = event.noteId;
+        final String? id = event.noteId;
         if (id != null) ref.read(notesProvider.notifier).toggleCompleted(id);
       case ShellEventKind.createNote:
         // A note written in the widget, for the same reason as above.
-        final incoming = event.newNote;
+        final ({String body, String title})? incoming = event.newNote;
         if (incoming != null) {
           ref.read(notesProvider.notifier).addNote(
                 title: incoming.title,

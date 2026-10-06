@@ -121,7 +121,7 @@ class WinNotesSettings {
         dockEdge: dockEdge ?? this.dockEdge,
       );
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson() => <String, dynamic>{
         'version': 1,
         'themeMode': themeMode.name,
         // Omitted rather than written as '' when unset, for the same reason
@@ -141,20 +141,20 @@ class WinNotesSettings {
       };
 
   static WinNotesSettings fromJson(Map<String, dynamic> json) {
-    final fallback = defaults;
+    final WinNotesSettings fallback = defaults;
     T pick<T>(String key, T fallbackValue) {
       final value = json[key];
       return value is T ? value : fallbackValue;
     }
 
     final themeName = json['themeMode'];
-    final theme = ThemeMode.values.firstWhere(
-      (m) => m.name == themeName,
+    final ThemeMode theme = ThemeMode.values.firstWhere(
+      (ThemeMode m) => m.name == themeName,
       orElse: () => fallback.themeMode,
     );
 
     final hotkeyJson = json['editorHotkey'];
-    final delay = pick<int>('autoStartDelayMs', fallback.autoStartDelayMs);
+    final int delay = pick<int>('autoStartDelayMs', fallback.autoStartDelayMs);
 
     return WinNotesSettings(
       themeMode: theme,

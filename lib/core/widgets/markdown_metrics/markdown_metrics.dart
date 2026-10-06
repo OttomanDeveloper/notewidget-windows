@@ -45,7 +45,7 @@ class MarkdownMetrics {
   /// Width reserved for a bullet or number, so wrapped text lines up.
   final double markerWidth;
 
-  static const widget = MarkdownMetrics(
+  static const MarkdownMetrics widget = MarkdownMetrics(
     body: 13,
     lineHeight: 1.35,
     paragraphGap: 6,
@@ -58,7 +58,7 @@ class MarkdownMetrics {
     markerWidth: 15,
   );
 
-  static const editor = MarkdownMetrics(
+  static const MarkdownMetrics editor = MarkdownMetrics(
     body: 14.5,
     lineHeight: 1.55,
     paragraphGap: 12,
@@ -93,7 +93,7 @@ class MarkdownMetrics {
   /// Ratios kept, pixel values scaled; `maxCodeLines` is a count, unscaled.
   MarkdownMetrics scaledTo(double size) {
     if (size == body) return this;
-    final k = size / body;
+    final double k = size / body;
     return MarkdownMetrics(
       body: size,
       lineHeight: lineHeight,

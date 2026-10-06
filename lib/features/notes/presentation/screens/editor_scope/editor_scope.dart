@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,7 +52,7 @@ class EditorScopeState extends ConsumerState<EditorScope>
 
   @override
   void didChangePlatformBrightness() {
-    final view = View.of(context);
+    final FlutterView view = View.of(context);
     ref.read(systemBrightnessProvider.notifier).report(
           brightness: MediaQueryData.fromView(view).platformBrightness,
         );
@@ -69,7 +70,7 @@ class EditorScopeState extends ConsumerState<EditorScope>
 
   @override
   Widget build(BuildContext context) {
-    final theme = ref.watch(widgetSurfaceThemeProvider);
+    final ThemeData theme = ref.watch(widgetSurfaceThemeProvider);
 
     return MaterialApp(
       title: 'WinNotes',
@@ -109,7 +110,7 @@ class EditorBootstrap {
     await settingsReady;
     await notesReady;
 
-    final saved = selection.readSelection();
+    final String? saved = selection.readSelection();
     if (saved != null) notes.select(saved);
 
     await settings.syncPlatform();

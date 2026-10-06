@@ -25,7 +25,7 @@ class SettingsDialog extends ConsumerWidget {
     // The dialog itself does not read the settings; each group watches what it
     // draws, so toggling the theme repaints the appearance group and not the
     // storage group's folder path.
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
@@ -33,13 +33,13 @@ class SettingsDialog extends ConsumerWidget {
         constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
+          children: <Widget>[
             const SettingsDialogHeader(),
             Divider(height: 1, color: theme.dividerColor),
             Flexible(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                children: [
+                children: <Widget>[
                   const AppearanceSettingsGroup(),
                   const SizedBox(height: 20),
                   const WidgetSettingsGroup(),

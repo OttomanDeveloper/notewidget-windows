@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'guards.dart';
 
 /// Docs that carry a rule-to-test table, and the heading of that table.
-const _tables = <String, String>{
+const Map<String, String> _tables = <String, String>{
   'docs/storage_pattern.md': '## 8. Tests',
   'docs/widget_pattern.md': '## 7. Tests',
   'docs/provider_pattern.md': '## 7. Tests',
@@ -24,8 +24,8 @@ const _tables = <String, String>{
 };
 
 void main() {
-  final tree = SourceTree();
-  final suite = allTestNames(tree);
+  final SourceTree tree = SourceTree();
+  final Set<String> suite = allTestNames(tree);
 
   group('the pattern docs', () {
     test('the scanner found tests to check against', () {
@@ -37,9 +37,9 @@ void main() {
       );
     });
 
-    for (final entry in _tables.entries) {
-      final path = entry.key;
-      final heading = entry.value;
+    for (final MapEntry<String, String> entry in _tables.entries) {
+      final String path = entry.key;
+      final String heading = entry.value;
 
       group(path, () {
         late String markdown;
@@ -49,16 +49,16 @@ void main() {
           markdown = tree.read(path);
           // The table is everything from its heading to the next `##`, which is
           // where the Guarantees section begins in both docs.
-          final start = markdown.indexOf(heading);
+          final int start = markdown.indexOf(heading);
           expect(start, greaterThanOrEqualTo(0),
               reason: '$path has no "$heading" section');
-          final rest = markdown.substring(start + heading.length);
-          final end = rest.indexOf('\n## ');
+          final String rest = markdown.substring(start + heading.length);
+          final int end = rest.indexOf('\n## ');
           table = end < 0 ? rest : rest.substring(0, end);
         });
 
         test('every rule in section 3 has a row in the table', () {
-          final rules = ruleHeadings(markdown);
+          final List<String> rules = ruleHeadings(markdown);
           expect(
             rules,
             isNotEmpty,
@@ -69,12 +69,12 @@ void main() {
           // Each row cites a § number in its first column. Checked by set, not
           // by counting rows: a count would be satisfied by thirteen rows all
           // pointing at §3.1, which is precisely the rot this is meant to catch.
-          final pinned = RegExp(r'^\|\s*(\d+\.\d+)\s*\|', multiLine: true)
+          final Set<String> pinned = RegExp(r'^\|\s*(\d+\.\d+)\s*\|', multiLine: true)
               .allMatches(table)
-              .map((m) => m.group(1)!)
+              .map((RegExpMatch m) => m.group(1)!)
               .toSet();
 
-          final unpinned = rules.where((r) => !pinned.contains(r)).toList();
+          final List<String> unpinned = rules.where((String r) => !pinned.contains(r)).toList();
           expect(
             unpinned,
             isEmpty,
@@ -84,8 +84,8 @@ void main() {
 
           // And the reverse: a row citing a § that no longer exists is a stale
           // claim of enforcement.
-          final stale =
-              pinned.difference(rules.toSet()).where((r) => r != '—').toList();
+          final List<String> stale =
+              pinned.difference(rules.toSet()).where((String r) => r != '—').toList();
           expect(
             stale,
             isEmpty,
@@ -94,14 +94,14 @@ void main() {
         });
 
         test('every test name it cites actually exists', () {
-          final cited = citedTestNames(markdown);
+          final Set<String> cited = citedTestNames(markdown);
           expect(
             cited,
             isNotEmpty,
             reason: '$path cites no test names, so the table is decoration.',
           );
 
-          final missing = cited.difference(suite).toList()..sort();
+          final List<String> missing = cited.difference(suite).toList()..sort();
           expect(
             missing,
             isEmpty,
@@ -114,20 +114,20 @@ void main() {
     }
 
     test('AGENTS.md points at docs that exist', () {
-      final agents = tree.read('AGENTS.md');
+      final String agents = tree.read('AGENTS.md');
       // Any path ending in `.md`, at any depth. The character class used to be
       // `[\w_]+`, which cannot match a `/` — so a citation like
       // `docs/testing/README.md` was invisible here rather than checked. Five
       // such paths were added to the docs index before anyone noticed, and the
       // guard was the thing that was supposed to notice.
-      final referenced = RegExp(r'`([\w./-]+\.md)`')
+      final Set<String> referenced = RegExp(r'`([\w./-]+\.md)`')
           .allMatches(agents)
-          .map((m) => m.group(1)!)
-          .where((r) => r.contains('/') || r.endsWith('.md'))
+          .map((RegExpMatch m) => m.group(1)!)
+          .where((String r) => r.contains('/') || r.endsWith('.md'))
           .toSet();
 
-      final missing = referenced
-          .where((r) => r != 'PROJECT.md' && !tree.exists(r))
+      final List<String> missing = referenced
+          .where((String r) => r != 'PROJECT.md' && !tree.exists(r))
           .toSet()
           .toList();
 
@@ -143,9 +143,9 @@ void main() {
       // A regex that matches nothing reports a clean index. Fed a citation with
       // a subdirectory in it — the shape five real entries have — it must find
       // it, or the test above is decoration.
-      final cited = RegExp(r'`([\w./-]+\.md)`').allMatches('`docs/testing/x.md`');
+      final Iterable<RegExpMatch> cited = RegExp(r'`([\w./-]+\.md)`').allMatches('`docs/testing/x.md`');
       expect(
-        cited.map((m) => m.group(1)).toList(),
+        cited.map((RegExpMatch m) => m.group(1)).toList(),
         contains('docs/testing/x.md'),
         reason: 'a path with a directory in it is the case the old character '
             'class could not match',
@@ -153,7 +153,7 @@ void main() {
     });
 
     test('AGENTS.md no longer claims an unenforced rule', () {
-      final agents = tree.read('AGENTS.md');
+      final String agents = tree.read('AGENTS.md');
 
       // §4 used to record the non-atomic export as a known divergence. It is
       // fixed, so the claim must be gone: a stale divergence is as misleading as
@@ -167,7 +167,7 @@ void main() {
     });
 
     test('the storage doc no longer lists outstanding layer violations', () {
-      final doc = tree.read('docs/storage_pattern.md');
+      final String doc = tree.read('docs/storage_pattern.md');
 
       expect(
         findFileOperationsOutsideDataLayer(tree),
@@ -186,22 +186,22 @@ void main() {
       // A doc that points at a guard which was renamed or deleted is claiming
       // enforcement it does not have, which is the failure this whole file
       // exists to prevent.
-      final guards = SourceTree()
+      final Set<String> guards = SourceTree()
           .dartFilesUnder('test/architecture')
           .keys
-          .map((p) => p.replaceAll(r'\', '/').split('/').last)
+          .map((String p) => p.replaceAll(r'\', '/').split('/').last)
           .toSet();
 
-      for (final path in _tables.keys) {
-        final markdown = tree.read(path);
-        final cited = RegExp(r'\*\*guard\*\*\s+`(\w+_test)`')
+      for (final String path in _tables.keys) {
+        final String markdown = tree.read(path);
+        final Set<String> cited = RegExp(r'\*\*guard\*\*\s+`(\w+_test)`')
             .allMatches(markdown)
-            .map((m) => '${m.group(1)}.dart')
+            .map((RegExpMatch m) => '${m.group(1)}.dart')
             .toSet();
 
         expect(cited, isNotEmpty,
             reason: '$path should cite at least one architecture guard');
-        for (final c in cited) {
+        for (final String c in cited) {
           expect(
             guards,
             contains(c),

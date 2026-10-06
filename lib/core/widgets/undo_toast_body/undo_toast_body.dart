@@ -16,11 +16,11 @@ class UndoToast {
   }) {
     dismiss();
 
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    final OverlayState? overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
 
-    final entry = OverlayEntry(
-      builder: (context) => UndoToastBody(
+    final OverlayEntry entry = OverlayEntry(
+      builder: (BuildContext context) => UndoToastBody(
         message: message,
         duration: duration,
         onUndo: () {
@@ -79,7 +79,7 @@ class _UndoToastBodyState extends State<UndoToastBody>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return Positioned(
       left: 0,
       right: 0,
@@ -95,7 +95,7 @@ class _UndoToastBodyState extends State<UndoToastBody>
               decoration: BoxDecoration(
                 color: theme.colorScheme.inverseSurface,
                 borderRadius: BorderRadius.circular(10),
-                boxShadow: const [
+                boxShadow: const <BoxShadow>[
                   BoxShadow(
                     color: Color(0x33000000),
                     blurRadius: 16,
@@ -105,7 +105,7 @@ class _UndoToastBodyState extends State<UndoToastBody>
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [
+                children: <Widget>[
                   Flexible(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),

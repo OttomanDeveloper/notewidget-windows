@@ -77,8 +77,8 @@ class MarkdownText extends StatelessWidget {
     required TextStyle style,
     int? maxLines,
   }) {
-    final nodes = _ParseCache.of(source);
-    final inlineStyle = MarkdownStyle(
+    final List<md.Node> nodes = _ParseCache.of(source);
+    final MarkdownStyle inlineStyle = MarkdownStyle(
       base: style,
       accent: accent,
       muted: color.withValues(alpha: 0.62),
@@ -97,7 +97,7 @@ class MarkdownText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var metrics = MarkdownMetrics.of(density);
+    MarkdownMetrics metrics = MarkdownMetrics.of(density);
     if (headingScale != null) {
       metrics = metrics.withHeadingScale(headingScale!);
     }
@@ -106,7 +106,7 @@ class MarkdownText extends StatelessWidget {
       // fight the theme or ignore a change to it.
       metrics = metrics.scaledTo(fontSize!);
     }
-    final style = MarkdownStyle(
+    final MarkdownStyle style = MarkdownStyle(
       base: TextStyle(
         color: color,
         fontSize: metrics.body,
@@ -130,14 +130,14 @@ class MarkdownText extends StatelessWidget {
       // OverflowBox + ClipRect + fade: a Column of blocks overflows its box and
       // clipping paint does not silence it; `maxLines` bounds one Text, not
       // a block count. The cut is faded (it cannot land on a line boundary).
-      final fadeBand = metrics.body * metrics.lineHeight * _fadeLines;
+      final double fadeBand = metrics.body * metrics.lineHeight * _fadeLines;
       child = SizedBox(
         height: maxHeight,
         child: ClipRect(
           child: ShaderMask(
             blendMode: BlendMode.dstIn,
-            shaderCallback: (bounds) {
-              final fadeFrom = bounds.height <= 0
+            shaderCallback: (Rect bounds) {
+              final double fadeFrom = bounds.height <= 0
                   ? 1.0
                   : ((bounds.height - fadeBand) / bounds.height)
                       .clamp(0.0, 1.0)
@@ -145,12 +145,12 @@ class MarkdownText extends StatelessWidget {
               return LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: const [
+                colors: const <Color>[
                   Color(0xFFFFFFFF),
                   Color(0xFFFFFFFF),
                   Color(0x00000000),
                 ],
-                stops: [0.0, fadeFrom, 1.0],
+                stops: <double>[0.0, fadeFrom, 1.0],
               ).createShader(bounds);
             },
             child: OverflowBox(
@@ -179,12 +179,12 @@ class _ParseCache {
   static final Map<String, List<md.Node>> _entries = <String, List<md.Node>>{};
 
   static List<md.Node> of(String source) {
-    final hit = _entries.remove(source);
+    final List<md.Node>? hit = _entries.remove(source);
     if (hit != null) {
       _entries[source] = hit;
       return hit;
     }
-    final nodes = _parse(source);
+    final List<md.Node> nodes = _parse(source);
     _entries[source] = nodes;
     if (_entries.length > _capacity) {
       _entries.remove(_entries.keys.first);

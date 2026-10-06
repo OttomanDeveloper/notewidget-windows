@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../providers/settings_controller.dart';
 import '../settings_group/settings_group.dart';
@@ -12,27 +13,27 @@ class StartupSettingsGroup extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Only the two fields this group draws.
-    final settings = ref.watch(
+    final (bool, int) settings = ref.watch(
       settingsProvider.select(
-        (v) => (
+        (AsyncValue<SettingsState> v) => (
           v.value?.settings.autoStart ?? true,
           v.value?.settings.autoStartDelayMs ?? 0,
         ),
       ),
     );
-    final autoStart = settings.$1;
-    final delayMs = settings.$2;
-    final controller = ref.read(settingsProvider.notifier);
+    final bool autoStart = settings.$1;
+    final int delayMs = settings.$2;
+    final SettingsNotifier controller = ref.read(settingsProvider.notifier);
     return SettingsGroup(
       title: 'Startup',
-      children: [
+      children: <Widget>[
         SettingsRow(
           label: 'Bring the widget back after every restart',
           description: 'One entry under your own account, so no administrator '
               'rights are needed and it shows up in Task Manager.',
           trailing: Switch(
             value: autoStart,
-            onChanged: (enabled) => controller.setAutoStart(enabled: enabled),
+            onChanged: (bool enabled) => controller.setAutoStart(enabled: enabled),
           ),
         ),
         const SettingsSeparator(),
@@ -51,8 +52,8 @@ class StartupSettingsGroup extends ConsumerWidget {
               max: 15000,
               divisions: 30,
               label: '${(delayMs / 1000).toStringAsFixed(1)}s',
-              onChanged: (value) => controller.apply(
-                (s) => s.copyWith(autoStartDelayMs: value.round()),
+              onChanged: (double value) => controller.apply(
+                (WinNotesSettings s) => s.copyWith(autoStartDelayMs: value.round()),
               ),
             ),
           ),

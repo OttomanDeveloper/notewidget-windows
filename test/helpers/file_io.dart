@@ -25,8 +25,8 @@ void deleteTempDir(Directory dir) {
   // last handle survives is not a property of the code under test. A previous
   // budget of one second failed about one run in six - long enough to look like
   // it worked, short enough to keep losing.
-  const attempts = 200;
-  for (var attempt = 0; attempt < attempts; attempt++) {
+  const int attempts = 200;
+  for (int attempt = 0; attempt < attempts; attempt++) {
     if (!dir.existsSync()) return;
     try {
       dir.deleteSync(recursive: true);
@@ -44,9 +44,9 @@ void deleteTempDir(Directory dir) {
 /// on the result can catch the file mid-replace. `errno 32` from here says
 /// nothing about whether the write succeeded.
 String readFileEventually(File file) {
-  const attempts = 200;
+  const int attempts = 200;
   Object? last;
-  for (var attempt = 0; attempt < attempts; attempt++) {
+  for (int attempt = 0; attempt < attempts; attempt++) {
     try {
       return file.readAsStringSync();
     } on FileSystemException catch (e) {
@@ -67,8 +67,8 @@ Future<String> waitForContent(
   String needle, {
   Duration timeout = const Duration(seconds: 10),
 }) async {
-  final deadline = DateTime.now().add(timeout);
-  var content = '';
+  final DateTime deadline = DateTime.now().add(timeout);
+  String content = '';
   while (DateTime.now().isBefore(deadline)) {
     if (file.existsSync()) {
       content = readFileEventually(file);

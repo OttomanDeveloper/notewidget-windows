@@ -14,14 +14,14 @@ class EditorStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 10, 20, 14),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: theme.dividerColor)),
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           Icon(Icons.check, size: 14, color: theme.colorScheme.outline),
           const SizedBox(width: 6),
           Expanded(

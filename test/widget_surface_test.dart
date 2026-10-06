@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:riverpod/src/framework.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/core/theme/theme.dart';
 import 'package:win_notes/features/widget/presentation/providers/widget_providers.dart';
@@ -32,7 +33,7 @@ void main() {
   }) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
+        overrides: <Override>[
           widgetNoteByIdProvider(theNote.id).overrideWithValue(theNote),
         ],
         child: MaterialApp(
@@ -61,7 +62,7 @@ void main() {
   }
 
   group('the focused card', () {
-    testWidgets('shows the title, the body and its line breaks', (tester) async {
+    testWidgets('shows the title, the body and its line breaks', (WidgetTester tester) async {
       await pump(
         tester,
         theNote: note('Groceries', 'Milk, sourdough\nCheck the bike light'),
@@ -73,16 +74,16 @@ void main() {
       expect(find.textContaining('Check the bike light'), findsOneWidget);
     });
 
-    testWidgets('is larger than a compact card', (tester) async {
+    testWidgets('is larger than a compact card', (WidgetTester tester) async {
       await pump(tester, theNote: note('T', 'B'), focused: true, roomy: true);
-      final large = tester.widget<Text>(find.text('T'));
+      final Text large = tester.widget<Text>(find.text('T'));
       await pump(tester, theNote: note('T', 'B'), focused: false, roomy: true);
-      final small = tester.widget<Text>(find.text('T'));
+      final Text small = tester.widget<Text>(find.text('T'));
 
       expect(large.style!.fontSize, greaterThan(small.style!.fontSize!));
     });
 
-    testWidgets('says so when a note has nothing in it at all', (tester) async {
+    testWidgets('says so when a note has nothing in it at all', (WidgetTester tester) async {
       // Not merely "no body". A note with a title and no body has its content on
       // screen in the line above, and telling someone "No text yet" about it is
       // wrong - which is the shape every note added from the widget's composer
@@ -93,14 +94,14 @@ void main() {
     });
 
     testWidgets('says nothing about the body when there is a title',
-        (tester) async {
+        (WidgetTester tester) async {
       await pump(tester, theNote: note('milk', ''), focused: true, roomy: true);
       expect(find.text('milk'), findsOneWidget);
       expect(find.text('No text yet'), findsNothing,
           reason: 'the note has a title; that is its content');
     });
 
-    testWidgets('falls back to a placeholder when untitled', (tester) async {
+    testWidgets('falls back to a placeholder when untitled', (WidgetTester tester) async {
       await pump(tester, theNote: note('', 'some text'), focused: true, roomy: true);
       expect(find.text('Untitled note'), findsOneWidget);
     });
@@ -108,18 +109,18 @@ void main() {
 
   group('a compact card', () {
     testWidgets('collapses line breaks so previews stay one paragraph',
-        (tester) async {
+        (WidgetTester tester) async {
       await pump(
         tester,
         theNote: note('Ideas', 'first line\nsecond line'),
         focused: false,
         roomy: true,
       );
-      final preview = tester.widget<Text>(find.textContaining('first line'));
+      final Text preview = tester.widget<Text>(find.textContaining('first line'));
       expect(preview.data, isNot(contains('\n')));
     });
 
-    testWidgets('shows a preview even with no body', (tester) async {
+    testWidgets('shows a preview even with no body', (WidgetTester tester) async {
       await pump(tester, theNote: note('Empty', ''), focused: false, roomy: true);
       // A compact card omits the placeholder; it just shows the title alone.
       expect(find.text('Empty'), findsOneWidget);
@@ -127,27 +128,27 @@ void main() {
   });
 
   group('a widget too small for a large card', () {
-    testWidgets('renders every card compact', (tester) async {
+    testWidgets('renders every card compact', (WidgetTester tester) async {
       await pump(
         tester,
         theNote: note('Groceries', 'a long body line of text'),
         focused: true,
         roomy: false,
       );
-      final focused = tester.widget<Text>(find.text('Groceries'));
+      final Text focused = tester.widget<Text>(find.text('Groceries'));
       // Same size as any other card, because there is no room to differ.
       expect(focused.style!.fontSize, 13);
     });
   });
 
   testWidgets('is announced as one actionable thing, not loose text',
-      (tester) async {
-    final handle = tester.ensureSemantics();
-    var taps = 0;
-    final grocery = note('Groceries', 'Milk');
+      (WidgetTester tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    int taps = 0;
+    final Note grocery = note('Groceries', 'Milk');
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
+        overrides: <Override>[
           widgetNoteByIdProvider(grocery.id).overrideWithValue(grocery),
         ],
         child: MaterialApp(

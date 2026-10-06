@@ -18,7 +18,7 @@ class BrandGlyph extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [WinNotesColors.indigoDeep, Color(0xFF332A6B), WinNotesColors.indigo],
+            colors: <Color>[WinNotesColors.indigoDeep, Color(0xFF332A6B), WinNotesColors.indigo],
           ),
         ),
         child: Center(

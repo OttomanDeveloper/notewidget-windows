@@ -13,12 +13,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'guards.dart';
 
 void main() {
-  final tree = SourceTree();
-  final pubspec = tree.read('pubspec.yaml');
+  final SourceTree tree = SourceTree();
+  final String pubspec = tree.read('pubspec.yaml');
 
   group('runtime dependencies are enumerated rather than open-ended', () {
     test('nothing is declared beyond the approved list', () {
-      final unapproved = unapprovedDependencies(pubspec);
+      final List<String> unapproved = unapprovedDependencies(pubspec);
 
       expect(
         unapproved,
@@ -62,15 +62,15 @@ void main() {
       // pubspec.yaml says - but if the constraints ever diverge, this app is
       // building against two versions of the same library, which is a class of
       // bug that shows up as an unexplained cast error at runtime.
-      final declared = RegExp(r'^\s{2}(riverpod|flutter_riverpod):\s*(\S+)',
+      final List<String> declared = RegExp(r'^\s{2}(riverpod|flutter_riverpod):\s*(\S+)',
               multiLine: true)
           .allMatches(SourceTree().read('pubspec.yaml'))
-          .map((m) => '${m.group(1)}=${m.group(2)}')
+          .map((RegExpMatch m) => '${m.group(1)}=${m.group(2)}')
           .toList();
 
       expect(declared, hasLength(2), reason: 'both should be declared');
-      final constraints =
-          declared.map((d) => d.substring(d.indexOf('=') + 1)).toSet();
+      final Set<String> constraints =
+          declared.map((String d) => d.substring(d.indexOf('=') + 1)).toSet();
       expect(
         constraints,
         hasLength(1),
@@ -83,7 +83,7 @@ void main() {
       // rather than by editing this repository's. A guard that can only be
       // tested by breaking the thing it guards is a guard that gets left
       // untested.
-      const planted = '''
+      const String planted = '''
 name: win_notes
 dependencies:
   flutter:
@@ -103,7 +103,7 @@ dev_dependencies:
       // Two ways this could silently pass while doing nothing: reading
       // dev_dependencies as well, or running off the end of the file and
       // collecting every indented `name:` in it.
-      const planted = '''
+      const String planted = '''
 name: win_notes
 dependencies:
   flutter:
@@ -138,7 +138,7 @@ dev_dependencies:
       // A scanner hard-coded to two spaces finds nothing in a four-space pubspec
       // and reports a clean bill of health. That is the failure that reads as
       // enforcement, so it is worth a test of its own.
-      const wide = '''
+      const String wide = '''
 name: win_notes
 dependencies:
     flutter:

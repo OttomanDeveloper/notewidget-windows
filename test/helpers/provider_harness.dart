@@ -15,6 +15,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/src/framework.dart';
 import 'package:win_notes/core/utils/app_paths.dart';
 import 'package:win_notes/core/utils/atomic_json_file.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
@@ -109,7 +110,7 @@ Future<void> dispose({bool keepProfile = false}) async {
       // Nothing queued, or the provider was never built.
     }
 
-    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    final DateTime deadline = DateTime.now().add(const Duration(seconds: 5));
     while (_temp.existsSync()) {
       if (keepProfile) return;
       try {
@@ -164,22 +165,22 @@ Future<void> dispose({bool keepProfile = false}) async {
     LaunchInfo? launch,
     String? at,
   }) {
-    final temp = at == null
+    final Directory temp = at == null
         ? Directory.systemTemp.createTempSync('winnotes_providers')
         : Directory(at);
-    final paths = AppPaths(
+    final AppPaths paths = AppPaths(
       dataDirectory: temp.path,
       executablePath: temp.path,
     );
-    final resolved = launch ?? launchFor(paths, isWidgetSurface: isWidgetSurface);
+    final LaunchInfo resolved = launch ?? launchFor(paths, isWidgetSurface: isWidgetSurface);
 
     // Owned here so [cancelPendingWrites] can reach it. Overriding the provider
     // rather than duplicating the construction is what keeps the container reading
     // the same file the tests write to.
-    final notesJson = AtomicJsonFile(paths.notesFile);
+    final AtomicJsonFile notesJson = AtomicJsonFile(paths.notesFile);
 
-    final container = ProviderContainer(
-      overrides: [
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Override>[
         shellProvider.overrideWithValue(ShellChannel()),
         launchInfoProvider.overrideWithValue(resolved),
         appPathsProvider.overrideWithValue(paths),
@@ -216,7 +217,7 @@ Future<void> dispose({bool keepProfile = false}) async {
       highContrast: false,
       acrylicSupported: acrylicSupported,
       buildNumber: 0,
-      monitors: const [],
+      monitors: const <MonitorInfo>[],
       autostartEnabled: false,
       autostartCommand: '',
       defaultWidgetBounds: const NativeBounds(
@@ -273,7 +274,7 @@ Future<void> dispose({bool keepProfile = false}) async {
   /// write. Delete the directory first and the write recreates it - hundreds of them
   /// left in the developer's `%TEMP%`, with every test green. That happened once.
   Future<void> drain() async {
-    final flushes = <Future<void> Function()>[
+    final List<Future<void> Function()> flushes = <Future<void> Function()>[
       if (_used.contains(_Kind.notes))
         () => container.read(notesProvider.notifier).flush(),
       if (_used.contains(_Kind.settings))
@@ -281,7 +282,7 @@ Future<void> dispose({bool keepProfile = false}) async {
       if (_used.contains(_Kind.widget))
         () => container.read(widgetProvider.notifier).flush(),
     ];
-    for (final flush in flushes) {
+    for (final Future<void> Function() flush in flushes) {
       try {
         await flush();
       } catch (_) {
@@ -409,8 +410,8 @@ class Notes {
 
   /// Runs [action] and counts it if it produced a new state.
   T _counted<T>(T Function() action) {
-    final before = _c.read(notesProvider);
-    final result = action();
+    final AsyncValue<NotesState> before = _c.read(notesProvider);
+    final T result = action();
     if (!identical(before, _c.read(notesProvider))) changes++;
     return result;
   }

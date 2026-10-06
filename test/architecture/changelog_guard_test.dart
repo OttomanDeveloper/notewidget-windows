@@ -39,11 +39,11 @@ const String _terse = '''
 ''';
 
 void main() {
-  final tree = SourceTree();
+  final SourceTree tree = SourceTree();
 
   group('a changelog entry says what changed', () {
     test('the real changelog has no Unreleased entry that breaks the rule', () {
-      final faults = findChangelogFaults(tree.read('CHANGELOG.md'));
+      final List<String> faults = findChangelogFaults(tree.read('CHANGELOG.md'));
 
       expect(
         faults,
@@ -64,7 +64,7 @@ void main() {
       // The fingerprint the rule exists to catch. A wrapped bullet, a blank
       // line, then more indented text with no bullet above it — which is what
       // every one of the 1.2.0 notes looked like.
-      const essay = '''
+      const String essay = '''
 # Changelog
 
 ## Unreleased
@@ -79,16 +79,16 @@ void main() {
   already collapses to one pane below 760 wide.
 ''';
 
-      final faults = findChangelogFaults(essay);
+      final List<String> faults = findChangelogFaults(essay);
       expect(
-        faults.any((f) => f.contains('indented line with no bullet above it')),
+        faults.any((String f) => f.contains('indented line with no bullet above it')),
         isTrue,
         reason: faults.join('\n'),
       );
     });
 
     test('the rule bites: a bullet longer than the limit is rejected', () {
-      const long = '''
+      const String long = '''
 # Changelog
 
 ## Unreleased
@@ -101,9 +101,9 @@ void main() {
   the part that gives it away.
 ''';
 
-      final faults = findChangelogFaults(long);
+      final List<String> faults = findChangelogFaults(long);
       expect(
-        faults.any((f) => f.contains('lines; the limit is')),
+        faults.any((String f) => f.contains('lines; the limit is')),
         isTrue,
         reason: faults.join('\n'),
       );
@@ -121,7 +121,7 @@ void main() {
       // and the test failed for the wrong reason while still reading as a guard
       // of something. A negative fixture that depends on the thing it is testing
       // for continuing to exist is not a guard. So the excerpt lives here.
-      const essay = '''
+      const String essay = '''
 # Changelog
 
 ## Unreleased
@@ -159,7 +159,7 @@ void main() {
     test('a released section is never judged, however long it runs', () {
       // The counterpart to the above: the guard must not push anyone to rewrite
       // a shipped changelog.
-      const history = '''
+      const String history = '''
 # Changelog
 
 ## Unreleased

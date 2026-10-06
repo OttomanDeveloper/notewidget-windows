@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../../data/settings_repository.dart';
 import '../../../data/storage_transfer.dart';
@@ -17,24 +18,24 @@ class StorageSettingsGroup extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(
-          settingsProvider.select((v) => v.value?.settings),
+    final WinNotesSettings settings = ref.watch(
+          settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings),
         ) ??
         SettingsRepository.defaults;
-    final controller = ref.read(settingsProvider.notifier);
-    final theme = Theme.of(context);
-    final active = ref.watch(storageDirectoryProvider(defaultDirectory));
-    final isCustom = settings.storageDirectory.trim().isNotEmpty;
+    final SettingsNotifier controller = ref.read(settingsProvider.notifier);
+    final ThemeData theme = Theme.of(context);
+    final String active = ref.watch(storageDirectoryProvider(defaultDirectory));
+    final bool isCustom = settings.storageDirectory.trim().isNotEmpty;
 
     return SettingsGroup(
       title: 'Storage',
-      children: [
+      children: <Widget>[
         SettingsRow(
           label: 'Notes file',
           description: active,
           trailing: Wrap(
             spacing: 4,
-            children: [
+            children: <Widget>[
               IconButton(
                 icon: const Icon(Icons.folder_open, size: 18),
                 tooltip: 'Show the folder',
@@ -44,16 +45,16 @@ class StorageSettingsGroup extends ConsumerWidget {
                 icon: const Icon(Icons.drive_file_rename_outline, size: 18),
                 tooltip: 'Choose another folder',
                 onPressed: () async {
-                  final picked = await ref.read(shellProvider).pickFolder(start: active);
+                  final String? picked = await ref.read(shellProvider).pickFolder(start: active);
                   if (picked == null || !context.mounted) return;
 
                   // Confirmed before anything is written, because this is the one
                   // place in Settings where a click can touch somebody's notes. The
                   // wording is the decision: a copy, not a move, and a restart.
-                  final agreed = await _confirmTransfer(context, picked);
+                  final bool? agreed = await _confirmTransfer(context, picked);
                   if (agreed != true) return;
 
-                  final outcome = await controller.moveTo(picked);
+                  final StorageTransferOutcome outcome = await controller.moveTo(picked);
                   if (!context.mounted) return;
                   await _reportTransfer(context, outcome, from: active, to: picked);
                 },
@@ -63,11 +64,11 @@ class StorageSettingsGroup extends ConsumerWidget {
                   icon: const Icon(Icons.restart_alt, size: 18),
                   tooltip: 'Back to the default folder',
                   onPressed: () async {
-                    final destination = ref.read(appPathsProvider).defaultStorageDirectory;
-                    final agreed = await _confirmTransfer(context, destination);
+                    final String destination = ref.read(appPathsProvider).defaultStorageDirectory;
+                    final bool? agreed = await _confirmTransfer(context, destination);
                     if (agreed != true) return;
 
-                    final outcome = await controller.moveToDefault();
+                    final StorageTransferOutcome outcome = await controller.moveToDefault();
                     if (!context.mounted) return;
                     await _reportTransfer(context, outcome, from: active, to: destination);
                   },
@@ -101,14 +102,14 @@ class StorageSettingsGroup extends ConsumerWidget {
 Future<bool?> _confirmTransfer(BuildContext context, String destination) {
   return showDialog<bool>(
     context: context,
-    builder: (dialogContext) {
-      final theme = Theme.of(dialogContext);
+    builder: (BuildContext dialogContext) {
+      final ThemeData theme = Theme.of(dialogContext);
       return AlertDialog(
         title: const Text('Copy your notes here?'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          children: <Widget>[
             Text('Your notes will be copied to:', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
             SelectableText(
@@ -128,7 +129,7 @@ Future<bool?> _confirmTransfer(BuildContext context, String destination) {
             ),
           ],
         ),
-        actions: [
+        actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
@@ -152,7 +153,7 @@ Future<void> _reportTransfer(
   required String from,
   required String to,
 }) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
+  final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
 
   final (String title, String detail, bool isProblem) = switch (outcome) {

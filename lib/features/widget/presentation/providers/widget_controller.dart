@@ -3,6 +3,7 @@ import 'dart:ui' show Offset;
 
 import 'package:flutter/material.dart';
 import 'package:riverpod/riverpod.dart';
+import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../../notes/domain/note.dart';
 import '../../../notes/domain/repositories.dart';
@@ -19,7 +20,7 @@ import '../../../settings/presentation/providers/settings_controller.dart';
 /// One writer per file, so no lost updates [`docs/isolate_pattern.md` §2].
 class WidgetSurfaceState {
   const WidgetSurfaceState({
-    this.notes = const [],
+    this.notes = const <Note>[],
     this.selectedId,
     this.window = WidgetWindowState.empty,
     this.visible = true,
@@ -45,7 +46,7 @@ class WidgetSurfaceState {
   List<Note> get displayNotes => displayNotesIn(notes, selectedId);
 
   bool get hasAnyNoteWithText =>
-      notes.any((n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty);
+      notes.any((Note n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty);
 
   WidgetSurfaceState copyWith({
     List<Note>? notes,
@@ -90,11 +91,11 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     _notesRepo.watch(_onNotesChangedExternally);
     ref.onDispose(() => _geometrySaveTimer?.cancel());
 
-    final window = await _widgetRepo.load();
-    final selectedId = _selectionRepo.readSelection();
-    final notes = await _readNotes();
+    final WidgetWindowState window = await _widgetRepo.load();
+    final String? selectedId = _selectionRepo.readSelection();
+    final List<Note> notes = await _readNotes();
 
-    var next = WidgetSurfaceState(
+    WidgetSurfaceState next = WidgetSurfaceState(
       notes: notes,
       selectedId: selectedId,
       window: window,
@@ -103,7 +104,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     );
 
     // Ask the runner for live bounds; a first run has no saved geometry to drag from.
-    final live = await _shell.widgetBounds();
+    final NativeBounds? live = await _shell.widgetBounds();
     if (live != null) {
       next = next.copyWith(
         window: window.copyWith(
@@ -116,13 +117,13 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     }
 
     // An empty widget is never shown, since there would be nothing to look at.
-    final shouldShow = next.hasAnyNoteWithText;
-    final ready = next.copyWith(visible: shouldShow);
+    final bool shouldShow = next.hasAnyNoteWithText;
+    final WidgetSurfaceState ready = next.copyWith(visible: shouldShow);
 
     // Applies palette/opacity to the runner, narrowed to four window fields.
     ref.listen(
       settingsProvider.select(
-        (v) => (
+        (AsyncValue<SettingsState> v) => (
           v.value?.settings.alwaysOnTop,
           v.value?.settings.widgetOpacity,
           v.value?.settings.acrylicEnabled,
@@ -141,18 +142,18 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       false;
 
   Future<List<Note>> _readNotes() async {
-    final result = await _notesRepo.load();
+    final NotesLoadResult result = await _notesRepo.load();
     return switch (result) {
-      NotesLoaded(:final notes) => NotesRepository.sorted(notes),
+      NotesLoaded(:final List<Note> notes) => NotesRepository.sorted(notes),
       // A widget with nothing to show is not an error worth interrupting the
       // desktop for; the editor is where the file problem gets reported.
-      NotesCorrupt() => const [],
+      NotesCorrupt() => const <Note>[],
     };
   }
 
   /// Applies the saved geometry to the runner once the window exists.
   Future<void> restoreGeometry() async {
-    final window = state.requireValue.window;
+    final WidgetWindowState window = state.requireValue.window;
     if (!window.hasGeometry) return;
     await _shell.setWidgetGeometry(NativeBounds(
       left: window.left!,
@@ -165,20 +166,20 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   /// Applies the autostart delay, which only ever applies to the autostart launch.
   /// Launching by hand shows the widget immediately.
   Future<void> applyStartupDelay() async {
-    final launch = ref.read(launchInfoProvider);
-    final settings = ref.read(settingsProvider).value?.settings;
-    final delay = settings?.autoStartDelayMs ?? 0;
+    final LaunchInfo launch = ref.read(launchInfoProvider);
+    final WinNotesSettings? settings = ref.read(settingsProvider).value?.settings;
+    final int delay = settings?.autoStartDelayMs ?? 0;
     if (!launch.isAutostartLaunch || delay <= 0) return;
     await Future<void>.delayed(Duration(milliseconds: delay));
   }
 
   /// Re-reads `notes.json` and republishes visibility; public because tests cannot rely on the watcher.
   Future<void> reloadNotes() async {
-    final current = state.value;
+    final WidgetSurfaceState? current = state.value;
     if (current == null) return;
-    final notes = await _readNotes();
-    final shouldShow = notes.any(
-      (n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty,
+    final List<Note> notes = await _readNotes();
+    final bool shouldShow = notes.any(
+      (Note n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty,
     );
     state = AsyncData(current.copyWith(notes: notes, visible: shouldShow));
     if (shouldShow != current.visible) {
@@ -188,16 +189,16 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
 
   Future<void> _onNotesChangedExternally() => reloadNotes();
   void _onSelectionChangedExternally() {
-    final current = state.value;
-    final next = _selectionRepo.cached;
+    final WidgetSurfaceState? current = state.value;
+    final String? next = _selectionRepo.cached;
     if (current == null || next == current.selectedId) return;
     state = AsyncData(current.copyWith(selectedId: next));
   }
 
   /// Tells the runner what the window looks like; [from] exists because `build` configures before `state` exists.
   Future<void> _applyWindowConfiguration([WidgetSurfaceState? from]) async {
-    final current = from ?? state.value;
-    final settings = ref.read(settingsProvider).value?.settings;
+    final WidgetSurfaceState? current = from ?? state.value;
+    final WinNotesSettings? settings = ref.read(settingsProvider).value?.settings;
     if (current == null || settings == null) return;
     await _shell.configureWidget(
       alwaysOnTop: settings.alwaysOnTop,
@@ -213,8 +214,8 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
 
   /// Called when the native side reports the widget was moved or resized.
   void onGeometryChanged(NativeBounds bounds) {
-    final current = _require();
-    final window = current.window.copyWith(
+    final WidgetSurfaceState current = _require();
+    final WidgetWindowState window = current.window.copyWith(
       left: bounds.left,
       top: bounds.top,
       width: bounds.width,
@@ -230,9 +231,9 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   }
 
   void rememberScroll(double offset) {
-    final current = _require();
+    final WidgetSurfaceState current = _require();
     if ((offset - current.window.scrollOffset).abs() < 0.5) return;
-    final window = current.window.copyWith(scrollOffset: offset);
+    final WidgetWindowState window = current.window.copyWith(scrollOffset: offset);
     state = AsyncData(current.copyWith(window: window));
     // Writes the whole state including the note selection, so a tap that changes
     // the selection and a scroll that changes the offset can queue on top of each
@@ -243,7 +244,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   /// Focusing a card from the widget is a normal thing to want, and the editor picks
   /// the change up through the same file.
   void focusNote(String id) {
-    final current = _require();
+    final WidgetSurfaceState current = _require();
     if (current.selectedId == id) return;
     state = AsyncData(current.copyWith(selectedId: id));
     _selectionRepo.setSelection(id);
@@ -258,16 +259,16 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       return;
     }
 
-    final current = _require();
-    final index = current.notes.indexWhere((n) => n.id == id);
+    final WidgetSurfaceState current = _require();
+    final int index = current.notes.indexWhere((Note n) => n.id == id);
     if (index < 0) return;
-    final note = current.notes[index];
+    final Note note = current.notes[index];
     // No timestamp bump, exactly as in the editor: ticking a list must not reorder
     // it.
-    final updated = note.isCompleted
+    final Note updated = note.isCompleted
         ? note.copyWith(clearCompletedAt: true)
         : note.copyWith(completedAt: DateTime.now());
-    final notes = [...current.notes]..[index] = updated;
+    final List<Note> notes = <Note>[...current.notes]..[index] = updated;
     state = AsyncData(current.copyWith(notes: notes));
     _notesRepo.save(state.requireValue.notes);
   }
@@ -281,9 +282,9 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       return true;
     }
 
-    final current = _require();
-    final now = DateTime.now();
-    final note = Note(
+    final WidgetSurfaceState current = _require();
+    final DateTime now = DateTime.now();
+    final Note note = Note(
       // The same factory the editor uses, rather than something invented here: ids
       // only have to be unique within one profile folder, and this is the code that
       // already guarantees that.
@@ -294,7 +295,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       updatedAt: now,
     );
     state = AsyncData(
-      current.copyWith(notes: NotesRepository.sorted([...current.notes, note])),
+      current.copyWith(notes: NotesRepository.sorted(<Note>[...current.notes, note])),
     );
     _notesRepo.save(state.requireValue.notes);
     return true;
@@ -306,7 +307,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   }
 
   void setWidgetVisibleFromPlatform({required bool visible}) {
-    final current = _require();
+    final WidgetSurfaceState current = _require();
     if (visible == current.visible) return;
     state = AsyncData(current.copyWith(visible: visible));
   }
@@ -336,5 +337,5 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
 }
 
 /// The widget surface's provider, declared here so `providers.dart` need not import this.
-final widgetProvider =
+final AsyncNotifierProvider<WidgetNotifier, WidgetSurfaceState> widgetProvider =
     AsyncNotifierProvider<WidgetNotifier, WidgetSurfaceState>(WidgetNotifier.new);

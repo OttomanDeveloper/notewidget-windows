@@ -134,6 +134,8 @@ namespace WN {
     public static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int index);
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int X, Y; }
     [DllImport("user32.dll")]
@@ -239,18 +241,35 @@ function Wait-For {
   return $null
 }
 
-function Send-Mouse {
-  param([int] $X, [int] $Y, [switch] $Down, [switch] $Up)
-  $flags = [WN.Native]::MOUSEEVENTF_MOVE -bor [WN.Native]::MOUSEEVENTF_ABSOLUTE -bor
-           [WN.Native]::MOUSEEVENTF_VIRTUALDESK
-  if ($Down) { $flags = $flags -bor [WN.Native]::MOUSEEVENTF_LEFTDOWN }
-  if ($Up) { $flags = $flags -bor [WN.Native]::MOUSEEVENTF_LEFTUP }
+function Send-Click {
+  <#
+    A button press or release, with no coordinates.
+
+    Deliberately *not* `MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE`: those normalise
+    against the primary monitor unless `MOUSEEVENTF_VIRTUALDESK` is set, and with
+    it set they normalise against the whole virtual desktop - which is wider than
+    `GetSystemMetrics(0)` whenever a second monitor exists. On a two-monitor
+    machine that put the cursor somewhere else entirely, and every wave-2 drag
+    missed the window. The whole of wave 2 reported no movement, which is what
+    gave it away: four separate rows failing identically is a probe fault, not
+    four app faults.
+
+    Positions therefore go through `SetCursorPos`, which takes real screen
+    coordinates and gets multi-monitor right on its own.
+  #>
+  param([switch] $Down, [switch] $Up)
+  $flags = 0
+  if ($Down) { $flags = [WN.Native]::MOUSEEVENTF_LEFTDOWN }
+  if ($Up) { $flags = [WN.Native]::MOUSEEVENTF_LEFTUP }
   $input = New-Object WN.INPUT
   $input.type = [WN.Native]::INPUT_MOUSE
-  $input.u.mi.dx = [int](($X / [WN.Native]::GetSystemMetrics(0)) * 65535)
-  $input.u.mi.dy = [int](($Y / [WN.Native]::GetSystemMetrics(1)) * 65535)
   $input.u.mi.dwFlags = $flags
   [WN.Native]::SendInput(1, @($input), [Runtime.InteropServices.Marshal]::SizeOf([type][WN.INPUT])) | Out-Null
+}
+
+function Move-To {
+  param([int] $X, [int] $Y)
+  [WN.Native]::SetCursorPos($X, $Y) | Out-Null
 }
 
 function Invoke-Drag {
@@ -260,18 +279,30 @@ function Invoke-Drag {
     measured 60px wrong looks exactly like a drag measured 60px right.
   #>
   param([int] $FromX, [int] $FromY, [int] $ToX, [int] $ToY, [int] $Steps = 12)
-  [WN.Native]::SetCursorPos($FromX, $FromY) | Out-Null
+  Move-To $FromX $FromY
   Start-Sleep -Milliseconds 80
-  Send-Mouse -X $FromX -Y $FromY -Down
+  Send-Click -Down
   Start-Sleep -Milliseconds 60
   for ($i = 1; $i -le $Steps; $i++) {
     $x = [int]($FromX + ($ToX - $FromX) * $i / $Steps)
     $y = [int]($FromY + ($ToY - $FromY) * $i / $Steps)
-    Send-Mouse -X $x -Y $y
+    Move-To $x $y
     Start-Sleep -Milliseconds 25
   }
-  Send-Mouse -X $ToX -Y $ToY -Up
-  Start-Sleep -Milliseconds 150
+  Move-To $ToX $ToY
+  Start-Sleep -Milliseconds 40
+  Send-Click -Up
+  Start-Sleep -Milliseconds 200
+}
+
+function Invoke-Click {
+  param([int] $X, [int] $Y)
+  Move-To $X $Y
+  Start-Sleep -Milliseconds 120
+  Send-Click -Down
+  Start-Sleep -Milliseconds 60
+  Send-Click -Up
+  Start-Sleep -Milliseconds 200
 }
 
 function Get-ProfileFingerprint {
@@ -288,7 +319,7 @@ function Get-ProfileFingerprint {
 # AGENTS.md §5.1 requires: a script may only delete a directory it created.
 $script:owned = $null
 $realProfile = Join-Path $env:APPDATA 'WinNotes'
-$before = Get-ProfileFingerprint $realProfile
+$script:profileBefore = Get-ProfileFingerprint $realProfile
 
 function Remove-OwnedProfile {
   if (-not $script:owned) { return }
@@ -446,27 +477,33 @@ if ($wants -contains '2') {
     # WN-DRAG-001: five consecutive drags at exactly -60, 0
     $deltas = @()
     for ($i = 0; $i -lt 5; $i++) {
-      $before = Get-Widget
+      $pre = Get-Widget
       Invoke-Drag -FromX $cx -FromY $cy -ToX ($cx - 60) -ToY $cy
-      $after = Get-Widget
-      $deltas += ($after.Left - $before.Left)
+      $post = Get-Widget
+      $deltas += ($post.Left - $pre.Left)
     }
     $ok = ($deltas | Where-Object { $_ -ne -60 }).Count -eq 0
     Add-Result -Id 'WN-DRAG-001' -Wave '2' -Verdict $(if ($ok) { 'PASS (probe)' } else { 'FAIL' }) `
       -Claim 'five drags at exactly -60,0 move the window -60,0 px; not rounded, not clamped' `
       -Observed ("deltas: {0}" -f ($deltas -join ', '))
 
-    # WN-DRAG-002: the 200x140 floor against a long haul on the bottom-right
+    # WN-DRAG-002: the 200x140 floor against a long haul on the bottom-right.
+    #
+    # The assertion is **exactly** 200x140, not "at least the floor". An earlier
+    # version accepted anything at or above the floor, which a window that had not
+    # resized at all also satisfies - so it passed on a probe that had stopped
+    # reaching the app. A floor test has to fail when nothing happened.
     $w = Get-Widget
     $right = $w.Left + $w.Width - 3
     $bottom = $w.Top + $w.Height - 3
-    Invoke-Drag -FromX $right -FromY $bottom -ToX ($right + 900) -ToY ($bottom + 900) -Steps 24
+    Invoke-Drag -FromX $right -FromY $bottom -ToX ($right - 900) -ToY ($bottom - 900) -Steps 24
     $small = Get-Widget
-    $floorHeld = ($small.Width -ge 200 -and $small.Height -ge 140)
-    Add-Result -Id 'WN-DRAG-002' -Wave '2' -Verdict $(if ($floorHeld) { 'PASS (probe)' } else { 'FAIL' }) `
-      -Claim 'a 900 px haul on one edge stops at exactly 200x140 and never below' `
-      -Observed ("{0}x{1} after a 900 px haul" -f $small.Width, $small.Height) `
-      -Note 'the floor is exactly 200x140 only if the grab band missed; a resize that did not happen at all also passes'
+    $atFloor = ($small.Width -eq 200 -and $small.Height -eq 140)
+    $didResize = ($small.Width -ne $w.Width -or $small.Height -ne $w.Height)
+    Add-Result -Id 'WN-DRAG-002' -Wave '2' -Verdict $(if ($atFloor) { 'PASS (probe)' } else { 'FAIL' }) `
+      -Claim 'a 900 px inward haul stops at exactly 200x140 and never below' `
+      -Observed ("{0}x{1} -> {2}x{3} (resized: {4})" -f $w.Width, $w.Height, $small.Width, $small.Height, $didResize) `
+      -Note $(if (-not $didResize) { 'the window did not resize at all, so this says nothing about the floor' } else { '' })
 
     # WN-DRAG-003: every edge resizes
     $edges = @(
@@ -495,9 +532,14 @@ if ($wants -contains '2') {
     Add-Result -Id 'WN-DRAG-003' -Wave '2' -Verdict $(if ($edgeOk) { 'PASS (probe)' } else { 'FAIL' }) `
       -Claim 'all four edges resize' -Observed ($edgeReport -join '; ')
 
-    # WN-DRAG-006: the lock refuses without moving
-    # Needs settings.json with positionLocked on, which is the settings feature's
-    # to write; attempted rather than skipped so the row is honestly open.
+    # WN-DRAG-006: the lock refuses without moving - with a control.
+    #
+    # "Did not move" proves nothing on its own: a probe that has stopped reaching
+    # the app also gets a window that does not move, and that is exactly what
+    # every row in this wave looked like before the cursor maths was fixed. So
+    # the *same* drag is run unlocked and then locked, and the row passes only if
+    # the unlocked run moves and the locked one does not. WN-DRAG-001 already
+    # proved the unlocked drag works in this run, which is the control.
     $lockSettings = @{
       format = 'winnotes'; version = 1
       settings = @{ positionLocked = $true }
@@ -509,14 +551,17 @@ if ($wants -contains '2') {
     if ($null -eq $widget) {
       Add-Result -Id 'WN-DRAG-006' -Wave '2' -Verdict 'BLOCKED' -Claim 'a locked widget does not move' -Observed 'widget did not appear with the lock on'
     } else {
-      $before = Get-Widget
-      $cx = $before.Left + [int]($before.Width / 2)
-      $cy = $before.Top + [int]($before.Height / 2)
+      $pre = Get-Widget
+      $cx = $pre.Left + [int]($pre.Width / 2)
+      $cy = $pre.Top + [int]($pre.Height / 2)
       Invoke-Drag -FromX $cx -FromY $cy -ToX ($cx - 80) -ToY $cy
-      $after = Get-Widget
-      Add-Result -Id 'WN-DRAG-006' -Wave '2' -Verdict $(if ($after.Left -eq $before.Left) { 'PASS (probe)' } else { 'FAIL' }) `
+      $post = Get-Widget
+      $controlOk = ($deltas | Where-Object { $_ -ne 0 }).Count -gt 0
+      $heldStill = ($post.Left -eq $pre.Left)
+      Add-Result -Id 'WN-DRAG-006' -Wave '2' -Verdict $(if ($heldStill -and $controlOk) { 'PASS (probe)' } else { 'FAIL' }) `
         -Claim 'a locked widget refuses the drag without moving' `
-        -Observed ("left {0} -> {1} (moved {2})" -f $before.Left, $after.Left, ($after.Left - $before.Left))
+        -Observed ("left {0} -> {1} (moved {2}); unlocked control moved: {3}" -f $pre.Left, $post.Left, ($post.Left - $pre.Left), $controlOk) `
+        -Note $(if (-not $controlOk) { 'the unlocked drag did not move either, so this row proves nothing' } else { '' })
     }
 
     Remove-OwnedProfile
@@ -558,10 +603,7 @@ if ($wants -contains '3') {
     # Found by probing the lower area rather than by hard-coded coordinates.
     $cx = $widget.Left + [int]($widget.Width / 2)
     $cy = $widget.Top + $widget.Height - 30
-    [WN.Native]::SetCursorPos($cx, $cy) | Out-Null
-    Start-Sleep -Milliseconds 100
-    Send-Mouse -X $cx -Y $cy -Down
-    Send-Mouse -X $cx -Y $cy -Up
+    Invoke-Click -X $cx -Y $cy
     Start-Sleep -Milliseconds 700
 
     $widgetNow = Get-Widget
@@ -600,20 +642,37 @@ if ($wants -contains '3') {
 # --- the real profile, checked ----------------------------------------------
 
 Stop-App
-$after = Get-ProfileFingerprint $realProfile
-$untouched = ($before.Count -eq $after.Count) -and
-             (-not (Compare-Object $before $after))
+$script:profileAfter = Get-ProfileFingerprint $realProfile
+
+# The snapshot is compared at the very end, so anything that reassigns those
+# names in between silently replaces it. That happened: a drag measurement used
+# `$before` for "the window before the drag", and the final check then compared a
+# *window* against a list of hashes and reported that the real profile had
+# changed. It had not - but a check that cries wolf about the profile is worse
+# than no check, because it is the one alert everyone is told to never ignore.
+#
+# So the snapshot is asserted to still be a list of `name:hash` strings, at the
+# point of comparison, rather than trusted to have survived the whole script.
+$stillStrings = @($script:profileBefore) -and
+                (@($script:profileBefore) | Where-Object { $_ -isnot [string] }).Count -eq 0
+if (-not $stillStrings) {
+  throw ('the profile snapshot was overwritten before it was compared ' +
+         "($($script:profileBefore -join ', ')). Rename whatever reassigned it.")
+}
+
+$untouched = ($script:profileBefore.Count -eq $script:profileAfter.Count) -and
+             (-not (Compare-Object $script:profileBefore $script:profileAfter))
 Write-Host ''
 Write-Host '=== the real profile ==='
 if ($untouched) {
-  Write-Host ("  [PASS]        byte-for-byte unchanged - {0} file(s), SHA-256" -f $after.Count)
+  Write-Host ("  [PASS]        byte-for-byte unchanged - {0} file(s), SHA-256" -f $script:profileAfter.Count)
 } else {
   Write-Host '  [FAIL]        THE REAL PROFILE CHANGED'
-  Compare-Object $before $after | ForEach-Object { Write-Host "    $($_.SideIndicator) $($_.InputObject)" }
+  Compare-Object $script:profileBefore $script:profileAfter | ForEach-Object { Write-Host "    $($_.SideIndicator) $($_.InputObject)" }
 }
 Add-Result -Id 'WN-ENV-003' -Wave '1' -Verdict $(if ($untouched) { 'PASS (probe)' } else { 'FAIL' }) `
   -Claim 'the real profile is byte-for-byte unchanged by this run' `
-  -Observed ("{0} file(s) compared" -f $after.Count)
+  -Observed ("{0} file(s) compared" -f $script:profileAfter.Count)
 
 Remove-OwnedProfile
 

@@ -34,7 +34,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel('dev.winnotes/shell'),
-      (call) async => null,
+      (MethodCall call) async => null,
     );
     harness = TestHarness.build();
   });
@@ -82,7 +82,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
-  testWidgets('Settings opens from the overflow menu', (tester) async {
+  testWidgets('Settings opens from the overflow menu', (WidgetTester tester) async {
     await pumpEditor(tester);
 
     // The menu opens and closes; that part always worked, which is exactly why
@@ -94,7 +94,7 @@ void main() {
     expect(find.text('Settings'), findsWidgets);
   });
 
-  testWidgets('Settings can be opened twice in a row', (tester) async {
+  testWidgets('Settings can be opened twice in a row', (WidgetTester tester) async {
     await pumpEditor(tester);
 
     await chooseFromMenu(tester, 'Settings');
@@ -112,7 +112,7 @@ void main() {
         reason: 'the re-open guard has to be released when the dialog closes');
   });
 
-  testWidgets('opening Settings throws nothing', (tester) async {
+  testWidgets('opening Settings throws nothing', (WidgetTester tester) async {
     await pumpEditor(tester);
 
     await chooseFromMenu(tester, 'Settings');
@@ -122,7 +122,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the editor is mounted and can still take input', (tester) async {
+  testWidgets('the editor is mounted and can still take input', (WidgetTester tester) async {
     await pumpEditor(tester);
 
     // Proves the editor is really built, so the tests above are failing or

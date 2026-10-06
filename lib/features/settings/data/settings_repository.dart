@@ -18,7 +18,7 @@ class SettingsRepository implements ISettingsRepository {
   @override
   Future<WinNotesSettings> load() async {
     try {
-      final json = await _file.read();
+      final Map<String, dynamic> json = await _file.read();
       if (json.isEmpty) return defaults;
       return WinNotesSettings.fromJson(json);
     } on CorruptDataFile {

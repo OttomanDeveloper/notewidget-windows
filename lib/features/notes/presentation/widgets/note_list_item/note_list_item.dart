@@ -25,9 +25,9 @@ class NoteListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final done = note.isCompleted;
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme scheme = theme.colorScheme;
+    final bool done = note.isCompleted;
 
     return Material(
       color: selected ? scheme.primary.withValues(alpha: 0.10) : Colors.transparent,
@@ -47,7 +47,7 @@ class NoteListItem extends StatelessWidget {
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: <Widget>[
               Padding(
                 padding: const EdgeInsets.only(top: 1),
                 child: CompletionToggle(
@@ -62,7 +62,7 @@ class NoteListItem extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  children: <Widget>[
                     // A Markdown title gets inline formatting like a widget card
                     // (`**`, backticks — but `#` stays literal: one line, no headings).
                     if (note.markdown)
@@ -167,7 +167,7 @@ class NoteListItem extends StatelessWidget {
   /// Falls back to the title when there is no body yet. "No text yet" is
   /// reserved for a note with nothing in it at all.
   static String _preview(Note note) {
-    final body = note.body.trim();
+    final String body = note.body.trim();
     if (body.isNotEmpty) return body.replaceAll('\n', ' ');
     if (note.title.trim().isNotEmpty) return '';
     return 'No text yet';

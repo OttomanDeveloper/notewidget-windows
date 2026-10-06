@@ -11,7 +11,7 @@ import 'package:win_notes/core/utils/app_paths.dart';
 void main() {
   group('with nothing set, it uses what the runner reported', () {
     test('the reported directory is used as-is', () {
-      final paths = AppPaths.resolve(
+      final AppPaths paths = AppPaths.resolve(
         reported: r'C:\Users\someone\AppData\Roaming\WinNotes',
         executablePath: r'C:\Program Files\WinNotes\win_notes.exe',
       );
@@ -23,11 +23,11 @@ void main() {
       // An env var set to "" is a thing that happens. Treating it as an override
       // would put the data directory at the empty string and every read would be a
       // silent miss.
-      for (final blank in ['', '   ', '\t']) {
-        final paths = AppPaths.resolve(
+      for (final String blank in <String>['', '   ', '\t']) {
+        final AppPaths paths = AppPaths.resolve(
           reported: r'C:\real\WinNotes',
           executablePath: r'C:\app\win_notes.exe',
-          environment: {AppPaths.overrideVariable: blank},
+          environment: <String, String>{AppPaths.overrideVariable: blank},
         );
         expect(
           paths.dataDirectory,
@@ -40,10 +40,10 @@ void main() {
 
   group('with an override set, it uses that', () {
     test('an absolute path wins over the reported one', () {
-      final paths = AppPaths.resolve(
+      final AppPaths paths = AppPaths.resolve(
         reported: r'C:\Users\someone\AppData\Roaming\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
-        environment: {
+        environment: <String, String>{
           AppPaths.overrideVariable: r'C:\Users\someone\AppData\Local\Temp\wn-verify',
         },
       );
@@ -65,10 +65,10 @@ void main() {
     });
 
     test('surrounding whitespace is trimmed, because a shell adds it', () {
-      final paths = AppPaths.resolve(
+      final AppPaths paths = AppPaths.resolve(
         reported: r'C:\real\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
-        environment: {AppPaths.overrideVariable: '  C:\\temp\\wn  '},
+        environment: <String, String>{AppPaths.overrideVariable: '  C:\\temp\\wn  '},
       );
 
       expect(paths.dataDirectory, r'C:\temp\wn');
@@ -78,13 +78,13 @@ void main() {
       // The assertion that would have caught the actual bug. Not "the override is
       // used" — that was true before, for every file, while the app still created
       // the real directory. What matters is that the real path is absent.
-      final paths = AppPaths.resolve(
+      final AppPaths paths = AppPaths.resolve(
         reported: r'C:\Users\someone\AppData\Roaming\WinNotes',
         executablePath: r'C:\app\win_notes.exe',
-        environment: {AppPaths.overrideVariable: r'C:\temp\wn'},
+        environment: <String, String>{AppPaths.overrideVariable: r'C:\temp\wn'},
       );
 
-      for (final file in [
+      for (final String file in <String>[
         paths.notesFile,
         paths.settingsFile,
         paths.widgetStateFile,
@@ -108,7 +108,7 @@ void main() {
         () => AppPaths.resolve(
           reported: r'C:\real\WinNotes',
           executablePath: r'C:\app\win_notes.exe',
-          environment: {AppPaths.overrideVariable: r'temp\wn'},
+          environment: <String, String>{AppPaths.overrideVariable: r'temp\wn'},
         ),
         throwsArgumentError,
       );
@@ -121,7 +121,7 @@ void main() {
         () => AppPaths.resolve(
           reported: r'C:\real\WinNotes',
           executablePath: r'C:\app\win_notes.exe',
-          environment: {
+          environment: <String, String>{
             AppPaths.overrideVariable: r'C:\Users\someone\AppData\Roaming\WinNotes\..\..',
           },
         ),
@@ -134,7 +134,7 @@ void main() {
         () => AppPaths.resolve(
           reported: r'C:\real\WinNotes',
           executablePath: r'C:\app\win_notes.exe',
-          environment: {AppPaths.overrideVariable: 'C:'},
+          environment: <String, String>{AppPaths.overrideVariable: 'C:'},
         ),
         throwsArgumentError,
       );
@@ -146,7 +146,7 @@ void main() {
         AppPaths.resolve(
           reported: r'C:\real\WinNotes',
           executablePath: r'C:\app\win_notes.exe',
-          environment: {AppPaths.overrideVariable: 'relative'},
+          environment: <String, String>{AppPaths.overrideVariable: 'relative'},
         );
       } catch (e) {
         caught = e;
@@ -164,7 +164,7 @@ void main() {
 
   group('the file names are unchanged by any of this', () {
     test('the four files and the default storage directory are what they were', () {
-      const paths = AppPaths(
+      const AppPaths paths = AppPaths(
         dataDirectory: r'C:\d',
         executablePath: r'C:\app\win_notes.exe',
       );

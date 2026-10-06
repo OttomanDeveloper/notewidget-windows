@@ -20,17 +20,17 @@ class MarkdownCodeBlock extends StatelessWidget {
     // The fence's language arrives as a class on the inner <code>, e.g.
     // `class="language-dart"`. Shown when there is room, because it is often
     // the only clue about what a snippet is.
-    final language = MarkdownNodes.languageOf(node);
-    final lines = node.textContent.trimRight().split('\n');
-    final shown = lines.take(style.metrics.maxCodeLines).toList();
-    final hidden = lines.length - shown.length;
+    final String language = MarkdownNodes.languageOf(node);
+    final List<String> lines = node.textContent.trimRight().split('\n');
+    final List<String> shown = lines.take(style.metrics.maxCodeLines).toList();
+    final int hidden = lines.length - shown.length;
 
-    final code = Text.rich(
+    final Text code = Text.rich(
       TextSpan(
         text: shown.join('\n'),
         style: style.base.copyWith(
           fontFamily: 'Consolas',
-          fontFamilyFallback: const ['monospace'],
+          fontFamilyFallback: const <String>['monospace'],
           fontSize: style.metrics.body - 1,
           height: 1.4,
         ),
@@ -48,7 +48,7 @@ class MarkdownCodeBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           if (language.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),

@@ -39,11 +39,11 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
 
     ref.onDispose(() => _undoTimer?.cancel());
 
-    final loaded = _apply(await _repository.load());
+    final NotesState loaded = _apply(await _repository.load());
     // First launch opens with a note already focused, so typing is the very first
     // thing that happens.
     if (loaded.corrupt == null) {
-      var next = loaded;
+      NotesState next = loaded;
       if (next.notes.isEmpty) {
         next = _insert(next, _blankNote(next.notes));
 
@@ -78,8 +78,8 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Whether the widget's own copy of the notes is usable. Never true on the
   /// editor surface, which does not read notes.json through this provider.
   bool get hasAnyNoteWithText =>
-      (state.value?.notes ?? const [])
-          .any((n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty);
+      (state.value?.notes ?? const <Note>[])
+          .any((Note n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty);
 
   /// Whether notes.json is currently unreadable. The import path needs this:
   /// a hand-chosen backup is the one thing allowed to replace a refused file.
@@ -91,11 +91,11 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// so nothing above this layer meets the file system face to face.
   NotesState _apply(NotesLoadResult result) {
     return switch (result) {
-      NotesLoaded(:final notes) =>
+      NotesLoaded(:final List<Note> notes) =>
         // A fresh state, so `selectedId` is null: any selection from the previous
         // load died with that object and cannot point at a note id that is gone.
         NotesState(notes: NotesRepository.sorted(notes)),
-      NotesCorrupt(:final error) => NotesState(corrupt: error),
+      NotesCorrupt(:final CorruptDataFileError error) => NotesState(corrupt: error),
     };
   }
 
@@ -114,7 +114,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// nothing from the person, and atomic writes mean it is very likely intact.
   Future<RecoveryOutcome> restoreBackup() async {
     if (_require().corrupt == null) return RecoveryOutcome.restoredBackup;
-    final recovered = await _repository.restoreBackup();
+    final int? recovered = await _repository.restoreBackup();
     if (recovered == null) return RecoveryOutcome.nothingToRecover;
     await retryLoad();
     return RecoveryOutcome.restoredBackup;
@@ -123,10 +123,10 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Moves the unreadable file aside and starts over, keeping the old one. A
   /// refusal with no way out is a trap; the damaged file is kept, timestamped.
   Future<({RecoveryOutcome outcome, String? keptAt})> startFresh() async {
-    final current = _require();
-    final keptAt = await _repository.setAsideAndStartFresh();
+    final NotesState current = _require();
+    final String? keptAt = await _repository.setAsideAndStartFresh();
     if (current.corrupt != null && keptAt == null) {
-      final stillThere = _repository.backupPath != null;
+      final bool stillThere = _repository.backupPath != null;
       return (
         outcome: RecoveryOutcome.fileIsHeld,
         keptAt: stillThere ? _repository.path : null,
@@ -136,9 +136,9 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
     _undoTimer?.cancel();
     // Creates a valid, empty document, so the next thing that happens is not
     // another refusal.
-    final blank = _blankNote(const []);
-    final next = NotesState(
-      notes: NotesRepository.sorted([blank]),
+    final Note blank = _blankNote(const <Note>[]);
+    final NotesState next = NotesState(
+      notes: NotesRepository.sorted(<Note>[blank]),
       selectedId: blank.id,
     );
     state = AsyncData(next.withVisible());
@@ -147,13 +147,13 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   }
 
   void setQuery(String value) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.query == value) return;
     state = AsyncData(current.copyWith(query: value).withVisible());
   }
 
   void select(String? id) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.selectedId == id) return;
     // `clearSelectedId`, not `selectedId: null` - see `NotesState.copyWith`.
     state = AsyncData(
@@ -164,7 +164,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// A new, empty note. Takes existing notes rather than reading `state`: `build`
   /// calls this while `state` is still `AsyncLoading`, which threw and retried silently.
   Note _blankNote(List<Note> existing) {
-    final now = _nextStampFor(existing);
+    final DateTime now = _nextStampFor(existing);
     return Note(
       id: _factory.next(),
       title: '',
@@ -177,10 +177,10 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Creates a note and returns it, already selected, so typing can start
   /// immediately. Null while unreadable: a note on screen but not on disk is worse.
   Note? createNote() {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return null;
-    final note = _blankNote(current.notes);
-    var next = _insert(current, note);
+    final Note note = _blankNote(current.notes);
+    NotesState next = _insert(current, note);
     next = next.copyWith(selectedId: note.id);
     state = AsyncData(next.withVisible());
     _repository.save(next.notes);
@@ -188,14 +188,14 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   }
 
   NotesState _insert(NotesState s, Note note) {
-    return s.copyWith(notes: NotesRepository.sorted([...s.notes, note]));
+    return s.copyWith(notes: NotesRepository.sorted(<Note>[...s.notes, note]));
   }
 
   /// A timestamp guaranteed to sort newer than every note held. Steps one
   /// millisecond past the newest, so "just touched is on top" is invariant.
   DateTime _nextStampFor(List<Note> existing) {
-    final newest = existing.isEmpty ? null : existing.first.updatedAt;
-    final now = DateTime.now();
+    final DateTime? newest = existing.isEmpty ? null : existing.first.updatedAt;
+    final DateTime now = DateTime.now();
     if (newest == null || now.isAfter(newest)) return now;
     return newest.add(const Duration(milliseconds: 1));
   }
@@ -203,40 +203,40 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Adds a note with text already in it, without changing the selection.
   /// For widget-written notes; unlike [createNote], taking no selection.
   void addNote({required String title, required String body}) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return;
     if (title.trim().isEmpty && body.trim().isEmpty) return;
 
-    final now = _nextStampFor(current.notes);
-    final note = Note(
+    final DateTime now = _nextStampFor(current.notes);
+    final Note note = Note(
       id: _factory.next(),
       title: title,
       body: body,
       createdAt: now,
       updatedAt: now,
     );
-    final next = _insert(current, note);
+    final NotesState next = _insert(current, note);
     state = AsyncData(next.withVisible());
     _repository.save(next.notes);
   }
 
   void updateNote(String id, {String? title, String? body}) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return;
-    final index = current.notes.indexWhere((n) => n.id == id);
+    final int index = current.notes.indexWhere((Note n) => n.id == id);
     if (index < 0) return;
-    final note = current.notes[index];
-    final nextTitle = title ?? note.title;
-    final nextBody = body ?? note.body;
+    final Note note = current.notes[index];
+    final String nextTitle = title ?? note.title;
+    final String nextBody = body ?? note.body;
     if (nextTitle == note.title && nextBody == note.body) return;
 
-    final updated = note.copyWith(
+    final Note updated = note.copyWith(
       title: nextTitle,
       body: nextBody,
       updatedAt: _nextStampFor(current.notes),
     );
-    final notes = [...current.notes]..[index] = updated;
-    final next = current.copyWith(
+    final List<Note> notes = <Note>[...current.notes]..[index] = updated;
+    final NotesState next = current.copyWith(
       notes: NotesRepository.sorted(notes),
     );
     // The search filter depends on the text, so it has to be reapplied.
@@ -247,17 +247,17 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Flips a note between finished and unfinished. Never touches [Note.updatedAt]:
   /// finishing is a state change, not an edit, so the list never reshuffles.
   void toggleCompleted(String id) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return;
-    final index = current.notes.indexWhere((n) => n.id == id);
+    final int index = current.notes.indexWhere((Note n) => n.id == id);
     if (index < 0) return;
-    final note = current.notes[index];
-    final updated = note.isCompleted
+    final Note note = current.notes[index];
+    final Note updated = note.isCompleted
         ? note.copyWith(clearCompletedAt: true)
         : note.copyWith(completedAt: DateTime.now());
     // A new list identity: `AnimatedBuilder` compares by identity, so reusing
     // the same list would rebuild nothing and the strike-through would not appear.
-    final notes = [...current.notes]..[index] = updated;
+    final List<Note> notes = <Note>[...current.notes]..[index] = updated;
     state = AsyncData(current.copyWith(notes: notes));
     _repository.save(state.requireValue.notes);
   }
@@ -265,18 +265,18 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Turns Markdown rendering on or off for one note. Presentation only: the
   /// source is never rewritten. Bumps `updatedAt`, unlike [toggleCompleted].
   void setMarkdown(String id, {required bool enabled}) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return;
-    final index = current.notes.indexWhere((n) => n.id == id);
+    final int index = current.notes.indexWhere((Note n) => n.id == id);
     if (index < 0) return;
-    final note = current.notes[index];
+    final Note note = current.notes[index];
     if (note.markdown == enabled) return;
-    final updated = note.copyWith(
+    final Note updated = note.copyWith(
       markdown: enabled,
       updatedAt: DateTime.now(),
     );
-    final notes = [...current.notes]..[index] = updated;
-    final next = current.copyWith(notes: notes);
+    final List<Note> notes = <Note>[...current.notes]..[index] = updated;
+    final NotesState next = current.copyWith(notes: notes);
     state = AsyncData(next.withVisible());
     _repository.save(state.requireValue.notes);
   }
@@ -285,23 +285,23 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   ///
   /// The caller confirms first; this is the removal.
   void deleteNote(String id) {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return;
-    final index = current.notes.indexWhere((n) => n.id == id);
+    final int index = current.notes.indexWhere((Note n) => n.id == id);
     if (index < 0) return;
 
-    final removed = current.notes[index];
-    final remaining = [...current.notes]..removeAt(index);
+    final Note removed = current.notes[index];
+    final List<Note> remaining = <Note>[...current.notes]..removeAt(index);
 
     // Replacing the pending undo rather than queueing it: undo applies to the most
     // recent action, and holding two would make the toast ambiguous.
     _undoTimer?.cancel();
-    final pending = PendingUndo(removed, index);
+    final PendingUndo pending = PendingUndo(removed, index);
     _undoTimer = Timer(undoWindow, clearPendingUndo);
 
-    var next = current.copyWith(notes: remaining, pendingUndo: pending);
+    NotesState next = current.copyWith(notes: remaining, pendingUndo: pending);
     if (current.selectedId == id) {
-      final replacement = remaining.isEmpty ? null : remaining.first.id;
+      final String? replacement = remaining.isEmpty ? null : remaining.first.id;
       next = next.copyWith(
         selectedId: replacement,
         clearSelectedId: replacement == null,
@@ -313,21 +313,21 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
 
   /// Brings the last deleted note back where it was.
   bool undoDelete() {
-    final current = _require();
+    final NotesState current = _require();
     if (current.corrupt != null) return false;
-    final pending = current.pendingUndo;
+    final PendingUndo? pending = current.pendingUndo;
     if (pending == null) return false;
 
     _undoTimer?.cancel();
     _undoTimer = null;
 
-    final restored = pending.note.copy();
+    final Note restored = pending.note.copy();
     // Restoring the timestamp keeps it in its original place in the
     // most-recently-edited order, which is the whole point of undo.
-    final notes = [...current.notes];
+    final List<Note> notes = <Note>[...current.notes];
     notes.insert(pending.index.clamp(0, notes.length), restored);
 
-    final next = current.copyWith(
+    final NotesState next = current.copyWith(
       notes: NotesRepository.sorted(notes),
       selectedId: restored.id,
       clearPendingUndo: true,
@@ -338,7 +338,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   }
 
   void clearPendingUndo() {
-    final current = state.value;
+    final NotesState? current = state.value;
     if (current == null || current.pendingUndo == null) return;
     _undoTimer?.cancel();
     _undoTimer = null;
@@ -347,8 +347,8 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
 
   /// Replaces every note, used by import.
   void replaceAll(List<Note> incoming) {
-    final notes = NotesRepository.sorted(incoming);
-    final next = NotesState(
+    final List<Note> notes = NotesRepository.sorted(incoming);
+    final NotesState next = NotesState(
       notes: notes,
       selectedId: notes.isEmpty ? null : notes.first.id,
     );
@@ -358,10 +358,10 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
 
   /// Adds notes alongside the existing ones, used by a restore from backup.
   void merge(List<Note> incoming) {
-    final current = _require();
+    final NotesState current = _require();
     if (incoming.isEmpty) return;
-    final notes = NotesRepository.sorted([...current.notes, ...incoming]);
-    final next = current.copyWith(
+    final List<Note> notes = NotesRepository.sorted(<Note>[...current.notes, ...incoming]);
+    final NotesState next = current.copyWith(
       notes: notes,
       selectedId: incoming.first.id,
     );
@@ -385,5 +385,5 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
 
 /// The editor surface's notes provider. The only writer of notes.json, declared
 /// here so importing notes state never drags in every provider.
-final notesProvider =
+final AsyncNotifierProvider<NotesNotifier, NotesState> notesProvider =
     AsyncNotifierProvider<NotesNotifier, NotesState>(NotesNotifier.new);
