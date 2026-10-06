@@ -8,16 +8,8 @@ import '../../../../../core/widgets/markdown_density/markdown_density.dart';
 import '../../../../../core/theme/theme.dart';
 import '../../providers/widget_providers.dart';
 
-/// One note in the widget.
-///
-/// The design answers the question the spec calls "a design problem rather than
-/// a technical one": what happens when notes are different sizes. The focused
-/// note gets the large treatment, every other note gets a compact one line at a
-/// time, and they share a single scrolling column. Mixed sizes stop being a
-/// problem because there is only one size in each state.
-///
-/// A `ConsumerWidget` watching only its own note: typing in one card rebuilds
-/// that card, not the column.
+/// One note in the widget: focused gets the large treatment, others compact, sharing one column.
+/// A `ConsumerWidget` watching only its own note, so typing rebuilds one card.
 class WidgetNoteCard extends ConsumerWidget {
   const WidgetNoteCard({
     super.key,
@@ -30,31 +22,18 @@ class WidgetNoteCard extends ConsumerWidget {
     this.dark = false,
   });
 
-  /// The note to draw, looked up by id rather than passed in whole.
-  ///
-  /// An id is a value and may cross as a parameter (`AGENTS.md` §0.8); the note
-  /// itself is state and is read with `ref`, so a card never rebuilds for
-  /// another card's edit.
+  /// The note id to draw; an id may cross as a parameter, the note is read with `ref` [`AGENTS.md` §0.8].
+  /// So a card never rebuilds for another card's edit.
   final String noteId;
   final bool focused;
   final VoidCallback onTap;
 
-  /// Marks this note finished or unfinished, without also focusing it.
-  ///
-  /// A separate target from [onTap] on purpose. Tapping a card means "I am
-  /// working on this"; tapping its tick means "this is done" and should not drag
-  /// the editor's selection along with it, because working through a list would
-  /// otherwise move the cursor every time you tick something off.
+  /// Marks finished without focusing, separate from [onTap] so ticking does not move the editor selection.
   final VoidCallback onToggleCompleted;
 
   final Color accent;
 
-  /// How much vertical room a rendered Markdown body gets on the card.
-  ///
-  /// Two lines on a compact card and seven on a large one — the same budget the
-  /// plain-text preview has always had. Both come from
-  /// [MarkdownText.budgetForLines] so the fade band is added once, in one place,
-  /// rather than each surface re-deciding how much of its last line to sacrifice.
+  /// Body height budget (2 compact, 7 large) from [MarkdownText.budgetForLines] so the fade is added once.
   static final double _compactBodyHeight = MarkdownText.budgetForLines(
     fontSize: 13,
     lineHeight: 1.35,
@@ -67,12 +46,8 @@ class WidgetNoteCard extends ConsumerWidget {
   );
   final bool dark;
 
-  /// Whether the widget is big enough for the focused card to get the large
-  /// treatment.
-  ///
-  /// Passed in by the caller from the window's own size rather than measured
-  /// here from scroll metrics: those are not readable while a sliver is being
-  /// laid out, which is exactly when this card is built.
+  /// Whether the focused card gets the large treatment, from window size not scroll metrics.
+  /// Scroll metrics are unreadable while a sliver lays out, when this builds.
   final bool roomy;
 
   @override
@@ -94,11 +69,7 @@ class WidgetNoteCard extends ConsumerWidget {
     final done = note.isCompleted;
     final toggleSize = renderLarge ? 20.0 : 16.0;
 
-    // The line through the text is the signal; this is the quiet second one, so
-    // a long finished list recedes instead of competing with the open tasks for
-    // attention. Kept subtle on purpose - the widget is already drawn at reduced
-    // opacity by the runner, and dimming much harder starts to look broken
-    // rather than finished.
+    // Finished notes recede subtly; the runner already draws the widget at reduced opacity.
     final titleColor = done
         ? mutedColor.withValues(alpha: 0.7)
         : (renderLarge ? bodyColor : mutedColor);
@@ -138,10 +109,7 @@ class WidgetNoteCard extends ConsumerWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Sits at least a card's padding in from the left edge. The outer
-                // band of the widget is the resize grab, and a tick inside that
-                // band would be swallowed by it, so the control has to start
-                // clear of it.
+                // Offset clear of the outer resize grab so the tick is not swallowed by it.
                 Padding(
                   padding: const EdgeInsets.only(top: 1),
                   child: CompletionToggle(
@@ -163,11 +131,7 @@ class WidgetNoteCard extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: note.markdown
-                                // The title is one line by definition, so a `#`
-                                // in one is a mistake rather than a heading. The
-                                // inline formatting is not: `**` and backticks
-                                // in a title are someone being emphatic, and a
-                                // card is the wrong place to argue with them.
+                                // Title is one line: `#` is not a heading here, but `**` and backticks are kept as emphasis.
                                 ? MarkdownText.inline(
                                     note.title,
                                     color: titleColor,
@@ -214,19 +178,9 @@ class WidgetNoteCard extends ConsumerWidget {
                       if (_hasBody(note)) ...[
                         SizedBox(height: renderLarge ? 8 : 3),
                         if (note.markdown)
-                          // A rendered body rather than a preview string.
-                          //
-                          // Clamped by height on the large card rather than by
-                          // line count, because block structure means six
-                          // rendered lines are not six source lines - a heading
-                          // eats three of them. Widget density is what keeps
-                          // this readable; see MarkdownDensity.
+                          // Rendered body clamped by height, not line count; see `MarkdownDensity`.
                           DefaultTextStyle(
-                            // Carries the strikethrough. A rendered note is many
-                            // spans and none of them is "the text", so the line
-                            // cannot be drawn on any one of them. RichText merges
-                            // this in instead, which is the only reason it lives
-                            // here rather than on a TextStyle nobody reads.
+                            // Carries the strikethrough via `RichText`, since no single span is "the text".
                             style: markCompleted(const TextStyle(),
                                     completed: done) ??
                                 const TextStyle(),
@@ -236,24 +190,10 @@ class WidgetNoteCard extends ConsumerWidget {
                               accent: accent,
                               mutedColor: mutedColor,
                               density: MarkdownDensity.widget,
-                              // Clamped by height, not by line count. `maxLines`
-                              // bounds the lines inside one Text, so twenty
-                              // one-line paragraphs sailed straight past it and
-                              // overflowed the card. A height bound is the only
-                              // thing that bounds a note made of blocks.
-                              //
-                              // It lands on a line boundary rather than through
-                              // the middle of one, so the cut reads as "there is
-                              // more" instead of as a rendering fault.
+                              // Clamped by height, not `maxLines`, which cannot bound multi-block notes; cut lands on a line boundary.
                               maxHeight:
                                   renderLarge ? _largeBodyHeight : _compactBodyHeight,
-                              // Only the compact card flattens headings. The
-                              // large card has seven lines and is the surface
-                              // you actually read a note on, so it keeps a real
-                              // heading scale; the compact one has two lines and
-                              // already shows the note's title directly above,
-                              // where a 1.3x `# Title` in the body is a repeat
-                              // that costs a third of the card.
+                              // Only the compact card flattens headings; it already shows the title above.
                               headingScale: renderLarge ? null : 1.0,
                             ),
                           )
@@ -272,12 +212,7 @@ class WidgetNoteCard extends ConsumerWidget {
                             ),
                           ),
                       ] else if (renderLarge && note.title.trim().isEmpty) ...[
-                        // Only for a note with nothing in it at all. A note with
-                        // a title and no body already has its content on screen
-                        // in the line above, and telling someone "No text yet"
-                        // about a note they have just written is just wrong -
-                        // which is how a note added from the widget always looks,
-                        // since one line of typing becomes the title.
+                        // Only for a fully empty note; a title-only note already shows its content above.
                         const SizedBox(height: 8),
                         Text(
                           'No text yet',
@@ -303,16 +238,8 @@ class WidgetNoteCard extends ConsumerWidget {
 
   static bool _hasBody(Note note) => note.body.trim().isNotEmpty;
 
-  /// The focused card shows more of the body, and keeps its line breaks,
-  /// because a note being read at a glance should look like the note.
-  ///
-  /// [lineBreaks] is a `static final` field rather than something built here.
-  /// `flutter_architecture_pattern.md` §7.1 puts it plainly: no heavy work in
-  /// `build()`, and a `RegExp` is not free. This one is compiled, matched and
-  /// discarded for **every compact card on every frame the list rebuilds** — a
-  /// widget showing twenty notes was doing it twenty times per rebuild, and a
-  /// regular-expression object is one of the more expensive things to allocate in a
-  /// hot path.
+  /// The focused card keeps line breaks so it reads like the note.
+  /// [lineBreaks] is `static final`: no `RegExp` in `build()` [`flutter_architecture_pattern.md` §7.1].
   static final RegExp lineBreaks = RegExp(r'\s*\n\s*');
 
   static String _preview(Note note, bool renderLarge) {

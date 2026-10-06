@@ -1,15 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-/// A global hotkey, stored as parts rather than as a string.
-///
-/// Round-tripping through text would need escaping rules for '+' and for
-/// modifier names, and the one key that makes '+' a modifier is also a key
-/// someone might want. Keeping the parts separate removes the whole question.
-///
-/// Split out of settings.dart because it has a real dependency of its own - the
-/// runner's virtual-key mapping and the Settings dialog's capture widget both
-/// need it - and it is the only part of settings that has behaviour worth
-/// testing on its own.
+/// A global hotkey as parts, not text: no escaping rules needed, and the only
+/// behaviour-bearing settings part, split out with its own tests.
 @immutable
 class HotkeyBinding {
   const HotkeyBinding({

@@ -218,7 +218,7 @@ void main() {
     });
 
     test('an empty title with an indented body is still a note', () {
-      final text = '${BackupService.separator}\n\n'
+      const text = '${BackupService.separator}\n\n'
           '    No title but has a body';
       final restored = backup.import(text);
       expect(restored.single.title, '');
@@ -226,7 +226,7 @@ void main() {
     });
 
     test('CRLF line endings are handled', () {
-      final text = '${BackupService.separator}\r\nTitle\r\n\r\n'
+      const text = '${BackupService.separator}\r\nTitle\r\n\r\n'
           '    Body line one\r\n    Body line two';
       final restored = backup.import(text);
       expect(restored.single.title, 'Title');
@@ -234,7 +234,7 @@ void main() {
     });
 
     test('trailing blank lines never become a phantom note', () {
-      final text = '${BackupService.separator}\nT\n\n    line\n\n\n\n\n';
+      const text = '${BackupService.separator}\nT\n\n    line\n\n\n\n\n';
       final restored = backup.import(text);
       expect(restored, hasLength(1),
           reason: 'the file\'s trailing spacing is not a note');

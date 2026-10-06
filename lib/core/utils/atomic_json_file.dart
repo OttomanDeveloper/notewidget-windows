@@ -2,12 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-/// Raised when a data file exists but cannot be understood.
-///
-/// The app refuses to start in this state rather than replacing the file with
-/// an empty one. Overwriting notes that were never read is the single failure
-/// this project will not risk, so this exception is load-bearing: every write
-/// path checks for it and refuses.
+/// Raised when a data file exists but cannot be understood. Refuses to start
+/// rather than overwrite unread notes; every write path checks for it.
 class CorruptDataFile implements Exception {
   CorruptDataFile({
     required this.path,
@@ -22,18 +18,8 @@ class CorruptDataFile implements Exception {
   final String reason;
   final Object? underlying;
 
-  /// Whether the file might be fine in a moment.
-  ///
-  /// The distinction that matters, and it is not a cosmetic one. A file that
-  /// opened and then failed to parse is damaged, and no amount of waiting will
-  /// change that. A file that could not be *opened* is very likely being held by
-  /// antivirus, Search Indexer or a backup tool at that instant, and it is
-  /// perfectly intact underneath - which means saying "your notes file is
-  /// broken" about it is both alarming and wrong, and offering to start fresh
-  /// would invite someone to rename a healthy file.
-  ///
-  /// Set only after the read ladder has already been walked, so this means
-  /// "still held after retrying", not "held once".
+  /// Whether the file might be fine in a moment: unopenable means held
+  /// (transient); opened-but-unparsed means damaged.
   final bool transient;
 
   @override
@@ -41,45 +27,21 @@ class CorruptDataFile implements Exception {
       'CorruptDataFile($path: $reason${transient ? ', transient' : ''})';
 }
 
-/// A JSON file on disk that both surfaces can share.
-///
-/// Two things make this more than a `File` wrapper:
-///
-/// * **Writes are atomic.** The whole file is written to a sibling temp file
-///   and then moved over the target, so a kill mid-write can never leave half
-///   a document behind. A torn write is what turns a recoverable problem into
-///   lost notes.
-/// * **Writes are coalesced.** Typing produces an edit per character; without
-///   a debounce that is one atomic rewrite per keystroke. The debounce has a
-///   ceiling as well as a trailing edge, so a long typing burst still lands on
-///   disk while it is happening rather than only once it stops.
-///
-/// Because each Flutter surface is its own isolate, this class is also how
-/// state crosses between them: whichever side owns a file writes it, and the
-/// other side picks the change up through [watch].
+/// A JSON file on disk that both surfaces can share. Writes are atomic (temp
+/// file + rename) and coalesced (debounce with ceiling); state crosses isolates
+/// through [watch].
 class AtomicJsonFile {
   AtomicJsonFile(this.path, {this.debounce = const Duration(milliseconds: 250)});
 
   final String path;
   final Duration debounce;
 
-  /// Longest a change may sit unwritten while typing continues.
-  ///
-  /// Without this ceiling, someone typing a long sentence continuously would
-  /// never write anything at all, which is the exact scenario the "killed
-  /// mid-sentence loses nothing" promise is about.
+  /// Longest a change may sit unwritten while typing continues. Without it,
+  /// continuous typing would never write anything at all.
   static const Duration _maxWriteDelay = Duration(milliseconds: 1500);
 
-  /// Backoff for a write that could not land.
-  ///
-  /// Replacing a file on Windows fails outright whenever something else holds
-  /// the destination open, and on a live desktop that is routinely Search
-  /// Indexer, antivirus or a backup tool. It clears in milliseconds. Retrying is
-  /// the difference between a slightly late write and a lost note, so a failed
-  /// write keeps its payload and walks up this ladder.
-  ///
-  /// Bounded, because a genuinely unwritable destination - a full disk, a
-  /// read-only folder - would otherwise retry for the rest of the session.
+  /// Backoff for a write that could not land. A held destination clears in
+  /// milliseconds, so the payload is kept and retried up this bounded ladder.
   static const List<Duration> _writeRetryLadder = <Duration>[
     Duration(milliseconds: 250),
     Duration(milliseconds: 500),
@@ -95,20 +57,12 @@ class AtomicJsonFile {
   Timer? _watchDebounce;
   int _writeFailures = 0;
 
-  /// The content this isolate last wrote, or last read.
-  ///
-  /// Used to ignore the file-watcher event that our own write causes, which
-  /// would otherwise bounce back in and re-parse on every keystroke.
+  /// The content this isolate last wrote, or last read. Filters the watcher echo
+  /// of our own write, which would otherwise re-parse on every keystroke.
   String? _lastKnown;
 
-  /// Backoff for a read that could not open the file.
-  ///
-  /// The write ladder's twin, and it was missing for a long time: writes retry
-  /// because antivirus holds the destination, but reads did not, so the same
-  /// antivirus that made a write late could make a *startup* fail outright. A
-  /// file that cannot be opened is nearly always held rather than damaged, so the
-  /// ladder walks about two and a half seconds before giving up - long enough for
-  /// a real-time scan, and paid for only when something is genuinely in the way.
+  /// Backoff for a read that could not open the file. Unopenable is nearly
+  /// always held rather than damaged: walks ~2.5s before giving up.
   static const List<Duration> _readRetryLadder = <Duration>[
     Duration(milliseconds: 40),
     Duration(milliseconds: 80),
@@ -155,10 +109,8 @@ class AtomicJsonFile {
             'not open it'
             '${openError == null ? '' : ' (${(openError as FileSystemException).osError?.message ?? 'unknown error'})'}.',
         underlying: openError,
-        // Having walked the whole ladder and still been unable to open it, this
-        // is very likely a lock rather than damage. The distinction decides
-        // whether the app suggests starting fresh, which would be the wrong
-        // advice for an intact file.
+        // Still held after retrying, hence transient: the app must not
+        // suggest starting fresh for an intact file.
         transient: true,
       );
     }
@@ -205,22 +157,15 @@ class AtomicJsonFile {
     await _flush();
   }
 
-  /// Set when the file could not be read. While this is non-null every write
-  /// is a no-op, which is what stops the app from "recovering" by replacing a
-  /// file nobody has read yet.
-  ///
-  /// Only a failed *read* sets this. A write that could not land does not: the
-  /// notes are perfectly readable, and blocking on a transient write failure
-  /// would be both a lie to the user and a way to lose the next edit.
+  /// Set when the file could not be read. While non-null every write is a
+  /// no-op, so the app cannot "recover" by replacing a file nobody has read.
+  /// Only a failed read sets this; a failed write does not.
   CorruptDataFile? blocked;
 
   void _scheduleWrite() {
-    // Two edges, deliberately not resettable by each other.
-    //
-    // The debounce timer slides with every keystroke. The ceiling timer does
-    // not: resetting it on each write is what turns it into a second debounce
-    // with a longer delay, and continuous typing would then never write at all.
-    // It is set only when nothing is pending.
+    // Two edges: the debounce slides with each keystroke, the ceiling does
+    // not (set only when nothing is pending). Resetting the ceiling per
+    // write would turn it into a second debounce and never write.
     _debounceTimer?.cancel();
     _debounceTimer = Timer(debounce, () {
       _maxTimer?.cancel();
@@ -254,13 +199,8 @@ class AtomicJsonFile {
       _writeFailures = 0;
       _lastKnown = payload;
     } on FileSystemException {
-      // A write that could not land is not unreadable data.
-      //
-      // Putting the payload back is the important part: it means the value on
-      // screen is still the value queued for disk, so the next write carries it
-      // to disk rather than the retry finding nothing to do. `_pending ??=`
-      // because a keystroke may have arrived while this write was in flight, and
-      // that newer value is the one that should win.
+      // Re-queue the payload (a newer keystroke wins via `??=`), so the next
+      // write carries what is on screen rather than the retry finding nothing.
       _pending ??= payload;
       _writeFailures++;
       if (_writeFailures <= _writeRetryLadder.length) {
@@ -273,11 +213,8 @@ class AtomicJsonFile {
   }
 
   Future<void> _writeAtomically(String contents) async {
-    // Order matters and is easy to get wrong: the previous version is captured
-    // *before* the replace. Taking it afterwards would copy the file we just
-    // wrote over the backup, leaving the backup a duplicate of the current
-    // content and the previous version gone for good - which is the one thing
-    // the backup exists to prevent.
+    // Backup before the replace: afterwards would copy the new file over
+    // itself and lose the previous version, the one thing the backup is for.
     await writeTextAtomically(
       path,
       contents,
@@ -285,28 +222,9 @@ class AtomicJsonFile {
     );
   }
 
-  /// Replaces [path] with [contents], or not at all.
-  ///
-  /// The whole document goes to a sibling temp file and is then renamed over the
-  /// target, so a reader sees either the old file or the new one and never a
-  /// partial write. A torn write is what turns a recoverable problem into lost
-  /// notes, which is why this is not an optimisation.
-  ///
-  /// Static, and public, because the plain-text export needs the same guarantee
-  /// and it is not JSON: an export is the file someone reaches for when
-  /// everything else has gone wrong, so a half-written one is the worst possible
-  /// outcome. Duplicating the temp-and-rename dance at the call site is how the
-  /// export ended up writing non-atomically in the first place.
-  ///
-  /// No `.bak`, deliberately. This is a caller-chosen destination, not a file
-  /// the app rewrites constantly, so a rolling previous version beside it would
-  /// be noise the user did not ask for. [AtomicJsonFile] takes one because it
-  /// replaces the same file over and over - and takes it before the replace,
-  /// which is why this takes a [beforeReplace] hook rather than doing it here.
-  ///
-  /// The rename is retried because MoveFileEx fails outright if anything else
-  /// happens to hold the destination open, and on Windows that is routinely
-  /// Search Indexer, antivirus, or a backup tool.
+  /// Replaces [path] with [contents], or not at all. Temp file + rename, so
+  /// readers see old or new, never partial. Public for the export; no `.bak`
+  /// here, and retry covers locks.
   static Future<void> writeTextAtomically(
     String path,
     String contents, {
@@ -343,32 +261,14 @@ class AtomicJsonFile {
   static String backupPathFor(String path) => '$path.bak';
 
   /// Copies the file that is about to be replaced to [backupPathFor].
-  ///
-  /// This is the recovery route for a file that has been damaged *from outside*,
-  /// and it is the only one that needs nothing from the user first. Because
-  /// writes are atomic, WinNotes can never produce a file it cannot read - so
-  /// corruption is always something else: a hand-edit, a syncing tool writing
-  /// two copies at once, a disk that dropped a sector. In every one of those
-  /// cases the thing that saves the notes is the last state this app itself put
-  /// on disk, which is exactly what this copies.
-  ///
-  /// It runs before every atomic replace, so the backup is one write behind. That
-  /// costs at most the debounce window of typing - a fraction of a second - and
-  /// buys back everything before that.
-  ///
-  /// Failures here are swallowed deliberately. A backup that could not be taken
-  /// is a reason to lose the safety net, not a reason to lose the edit that was
-  /// being written; refusing the write would turn a housekeeping problem into
-  /// lost notes.
+  /// Recovery for outside damage (own writes are atomic); one write behind,
+  /// and failures are swallowed so the edit still lands.
   Future<void> _keepPreviousVersion(String contents) async {
     try {
       final current = File(path);
       if (!await current.exists()) return;
-      // Compared against what is about to replace it, not against what this
-      // isolate last wrote. The file on disk is the *previous* version by
-      // definition at this point, and that is the thing worth keeping - so the
-      // check is only here to avoid copying a file over itself when a write
-      // happens to carry no change.
+      // Skip no-change writes: compare against the file on disk (the
+      // previous version by definition), not what this isolate last wrote.
       if (await current.readAsString() == contents) return;
       await current.copy(backupPathFor(path));
     } on FileSystemException {
@@ -377,9 +277,7 @@ class AtomicJsonFile {
   }
 
   /// Watches for changes made by the other surface.
-  ///
-  /// [onChanged] is only called when the content actually differs from what
-  /// this isolate already has, so the echo of our own write is filtered out.
+  /// [onChanged] fires only on real content change, so our own echo is out.
   void watch(void Function() onChanged) {
     if (_watchSubscription != null) return;
     try {
@@ -389,15 +287,8 @@ class AtomicJsonFile {
       // first run has no file yet to watch.
       parent.createSync(recursive: true);
 
-      // Watching the DIRECTORY, not the file.
-      //
-      // File.watch() on Windows keeps a handle open on the file itself, which
-      // blocks anyone else from replacing or deleting it: the other isolate's
-      // atomic rename fails, a backup tool fails, and a person trying to back
-      // notes up by hand gets an error. The promise that the notes file can be
-      // read and handled without this app in the way depends on not holding it.
-      // A directory watcher takes a shared handle on the folder, which stops
-      // nothing.
+      // Directory, not file: File.watch() holds the file open and blocks
+      // the other isolate's rename. A directory handle stops nothing.
       _watchSubscription = parent.watch(recursive: false).where((event) {
         return _normalise(event.path) == target;
       }).listen(
@@ -434,13 +325,9 @@ class AtomicJsonFile {
     });
   }
 
-  /// Reads the file, retrying once through a transient sharing violation.
-  ///
-  /// Replacing a file on Windows opens the destination for a moment, so a read
-  /// that lands in that window fails with ERROR_SHARING_VIOLATION rather than
-  /// returning anything. Without the retry, a change notification that arrives
-  /// at exactly the wrong millisecond is simply lost, and the other surface
-  /// stops updating until the next edit.
+  /// Reads the file, retrying through a transient sharing violation.
+  /// Replace opens the destination briefly, so a read landing in that window
+  /// fails; without the retry the other surface stops updating till next edit.
   Future<String?> _readWithRetry() async {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {

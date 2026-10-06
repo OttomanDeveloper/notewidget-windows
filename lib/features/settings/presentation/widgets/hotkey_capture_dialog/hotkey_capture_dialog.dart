@@ -3,10 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../../domain/hotkey_binding.dart';
 
-/// Captures a key combination by waiting for the next keystroke.
-///
-/// Deliberately not a TextField: typing "ctrl+alt+n" into a field is ambiguous
-/// about every character that is also a modifier.
+/// Captures a key combination by waiting for the next keystroke. Not a TextField:
+/// typing "ctrl+alt+n" is ambiguous about modifier characters.
 class HotkeyCaptureDialog extends StatefulWidget {
   const HotkeyCaptureDialog({super.key, required this.initial});
   final HotkeyBinding initial;
@@ -16,13 +14,8 @@ class HotkeyCaptureDialog extends StatefulWidget {
 }
 
 class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
-  /// The combination captured so far, held while this dialog is open.
-  ///
-  /// A `ValueNotifier` and not a provider, and not a `setState`. The dividing line
-  /// is lifetime: this exists for as long as the capture dialog does, is read by
-  /// nothing outside it, and is thrown away when it closes. That is the
-  /// `ValueNotifier` half of `AGENTS.md` §0.7 - the same rule that made
-  /// `_CorruptNotesScreenState` use one for its busy flag.
+    /// The combination captured so far. A `ValueNotifier`, not a provider or
+    /// `setState`: dialog lifetime only, read by nothing outside it (`AGENTS.md` §0.7).
   late final ValueNotifier<HotkeyBinding> _pending;
 
   @override
@@ -130,14 +123,9 @@ class _HotkeyCaptureDialogState extends State<HotkeyCaptureDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // The draft this dialog shows, read through a listener.
-    //
-    // `_pending` replaced a `setState` field, and the first version of this build
-    // read it with nothing listening - so pressing a combination updated the field
-    // and the dialog carried on showing the one it opened with, with "Use this" still
-    // disabled. `no_set_state_test`'s "every ValueNotifier is listened to" check found
-    // it, and nothing else would have: this dialog is driven by key events rather than
-    // by a control a test can find and tap.
+      // The draft, read through a listener: the first version read it bare, so the
+      // dialog kept showing the combination it opened with (`no_set_state_test` caught
+      // it; key events are not tappable by tests).
     return ListenableBuilder(
       listenable: _pending,
       builder: (context, _) {

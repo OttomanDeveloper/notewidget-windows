@@ -141,8 +141,8 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 449 tests, and the sixteen traps that cost real time. |
-| `docs/flutter_architecture_pattern.md` | A general Flutter architecture/performance/Riverpod rulebook, carried verbatim for future work. **Not** a description of this repo — its Appendix lists where it contradicts `AGENTS.md` and `PROJECT.md`. The applicable subset is enforced by `flutter_rules_guard_test`, whose decision table records applied vs declined per section. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 465 tests, and the eighteen traps that cost real time. |
+| `docs/flutter_architecture_pattern.md` | The Flutter architecture, performance and Riverpod rulebook this repo is built to. Carried verbatim with an Appendix of original contradictions; enforced by `flutter_rules_guard_test`, whose decision table records applied vs N/A per section. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
 
@@ -171,12 +171,12 @@ features/  ──>  notes | widget | settings, each with data/ + domain/ + prese
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 137 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` - 139 tests, in CI, in `flutter test`. Not prose:
 
 | Guard | What it fails on |
 |---|---|
-| `flutter_rules_guard_test` | a `Paint`, `Path`, `TextPainter` or `MaskFilter` built inside `paint()`; a `RegExp` built on the build path; sorting, filtering or decoding inside `build()`; a `Timer` or `StreamSubscription` with no cancel on a teardown path; `MediaQuery.of(context).size`; `IntrinsicWidth`/`IntrinsicHeight`; a release without `--obfuscate` + symbols; a rulebook section with no row in the decision table above it |
-| `layer_test` | any `dart:io` operation in `ui/`, `state/` or `platform/`; a `MethodChannel` built outside `platform/`; a method called from Dart that the runner does not handle |
+| `flutter_rules_guard_test` | a `Paint`, `Path`, `TextPainter` or `MaskFilter` built inside `paint()`; a `RegExp` built on the build path; sorting, filtering or decoding inside `build()`; a `Timer` or `StreamSubscription` with no cancel on a teardown path; `MediaQuery.of(context).size`; `IntrinsicWidth`/`IntrinsicHeight`; a comment running past 3 lines; a release without `--obfuscate` + symbols; a rulebook section with no row in the decision table, or a declined conflict whose authority is no longer named |
+| `layer_test` | any `dart:io` operation in presentation, theme or `core/platform`; a `MethodChannel` built outside `core/platform`; a method called from Dart that the runner does not handle |
 | `storage_guard_test` | the watcher attached to the file instead of the directory; the export not going through the atomic writer; `.bak` taken after the replace instead of before |
 | `widget_guard_test` | the runner answering `HTCAPTION`; the loop cursor seeded from `GetCursorPos` instead of the anchor; `WS_EX_NOACTIVATE` not restored; focus not returned to the window it was taken from; `WM_MOUSEACTIVATE` not deferring to compose mode; the editor created topmost; `SetAlwaysOnTop` reachable for the editor; no `WM_ACTIVATE`; the widget demoted **without** the editor being raised; no `WM_GETMINMAXINFO`; the editor's minimum size written unscaled, as `ptMinSize`, or alongside `ptMaxPosition` |
 | `docs_test` | a rule in §3 of a pattern doc with no row in its test table; a cited test that no longer exists; a cited guard that does not exist; this file claiming a fixed rule is still broken |
@@ -203,6 +203,12 @@ through `data/`, the fix is to edit the scanner where the diff shows it.
 
 **Every one of them has been broken on purpose to prove it goes red.** The list
 is in `docs/testing_pattern.md` §6. A guard that has never failed is a comment.
+
+The size and privacy rules of `docs/flutter_architecture_pattern.md` §2, §3.2 and
+§3.3 are also checked outside the test suite, by `tool/check_architecture.ps1` — the
+same caps, run in under a second with no Dart VM, because they are what a split is
+measured against and you should not have to start a test runner to find out you are
+60 lines over. It prints nothing and exits 0 when the tree is clean.
 
 ---
 
@@ -324,8 +330,9 @@ is guarded by that flag.
 ## 6. Before You Push
 
 ```
-flutter analyze          # must be clean
-flutter test             # 463 passing
+tool\check_architecture.ps1   # size and privacy caps; silent and exit 0 when clean
+flutter analyze               # must be clean
+flutter test                  # 465 passing
 ```
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying

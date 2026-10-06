@@ -4,10 +4,8 @@ import 'package:markdown/markdown.dart' as md;
 import '../markdown_inline_text/markdown_inline_text.dart';
 import '../markdown_style/markdown_style.dart';
 
-/// A heading, sized by level with a floor.
-///
-/// A step down per level, with the floor from the metrics doing the work at the
-/// bottom of the range.
+/// A heading, sized by level with a floor from the metrics, so `h6` never reads
+/// smaller than the body around it.
 class MarkdownBlockHeading extends StatelessWidget {
   const MarkdownBlockHeading({
     super.key,

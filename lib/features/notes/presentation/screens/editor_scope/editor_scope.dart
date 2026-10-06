@@ -12,12 +12,8 @@ import '../../../../settings/presentation/providers/settings_providers.dart';
 import '../editor_event_router/editor_event_router.dart';
 import '../editor_home/editor_home.dart';
 
-/// Inside the MaterialApp: the `MaterialApp` and everything under it.
-///
-/// Split from [EditorApp] purely so the `ProviderScope` sits *above* the
-/// `MaterialApp` while the widgets below it can read providers. Putting the scope
-/// inside would work for `ref.watch` but would put this widget's own context above
-/// the Navigator again, which is the bug this file used to work around.
+/// Inside the MaterialApp. Split from [EditorApp] so the `ProviderScope` sits above
+/// the `MaterialApp` while widgets below still read providers.
 class EditorScope extends ConsumerStatefulWidget {
   const EditorScope({super.key});
 
@@ -27,14 +23,8 @@ class EditorScope extends ConsumerStatefulWidget {
 
 class EditorScopeState extends ConsumerState<EditorScope>
     with WidgetsBindingObserver {
-  /// Everything teardown needs, captured while a `ref` is still readable.
-  ///
-  /// Riverpod asserts on *any* `ref` use inside `dispose` - `_assertNotDisposed` -
-  /// not merely on use after an `await`. So the notifiers are read in [initState] and
-  /// held here, and [dispose] only touches ordinary objects.
-  ///
-  /// That is the rule in one line: **a `ConsumerState` may read its `ref` in
-  /// `initState`, and may not read it in `dispose`.** Capture early.
+    /// Teardown captured while `ref` is readable: Riverpod asserts on any `ref` in
+    /// `dispose`, so notifiers are read in [initState] and only objects in [dispose].
   late final EditorTeardown _teardown;
   late final EditorBootstrap _bootstrap;
 
@@ -53,10 +43,8 @@ class EditorScopeState extends ConsumerState<EditorScope>
       settings: ref.read(settingsProvider.notifier),
       selection: ref.read(selectionRepositoryProvider),
     );
-    // Registers itself with the binding rather than putting the observation in a
-    // provider: `WidgetsBindingObserver` is an interface on a `State`, and a
-    // Notifier is not one. One observer, writing one provider, is what stopped the
-    // two surfaces disagreeing about the theme.
+    // Observes on the State (a Notifier can't): one observer writing one
+    // provider is what stopped the two surfaces disagreeing about the theme.
     WidgetsBinding.instance.addObserver(this);
     unawaited(_bootstrap.run());
   }
@@ -96,19 +84,8 @@ class EditorScopeState extends ConsumerState<EditorScope>
   }
 }
 
-/// Startup, in the order it has to happen.
-///
-/// Extracted from the old `_bootstrap` because the ordering is load-bearing and a
-/// method body is a better place to keep it than a comment:
-///
-///  1. settings first. Nothing in the editor needs them to draw, but the theme does,
-///     and reading them second would mean building the `MaterialApp` twice.
-///  2. notes, which themselves guarantee a first note exists - so by the time this
-///     resolves, the editor has something to show and typing can be the very first
-///     thing that happens.
-///  3. the saved selection, applied afterwards so it can override that default.
-///  4. `syncPlatform` last, on every launch, so the registry entry and the hotkey
-///     are corrected whether or not anyone ever opens the settings dialog.
+/// Startup in load order: settings (theme), notes (first note), selection, then
+/// `syncPlatform` to correct the registry entry and hotkey every launch.
 class EditorBootstrap {
   const EditorBootstrap({
     required this.notes,
@@ -139,12 +116,8 @@ class EditorBootstrap {
   }
 }/// Teardown: flush everything queued, then release the file handles.
 ///
-/// Called from `EditorScopeState.dispose` and nowhere else. `onDispose` would be
-/// the obvious home and cannot be: it is synchronous, and flushing is not.
-///
-/// `AGENTS.md` §4.7 records that these writes are unawaited and that the hazard
-/// predates the provider work. It is unchanged, not fixed, and claiming otherwise
-/// would be the kind of quiet improvement that hides a real one.
+/// From `EditorScopeState.dispose` only; `onDispose` can't host it (synchronous).
+/// Unawaited-write hazard recorded in `AGENTS.md` §4.7, unchanged not fixed.
 class EditorTeardown {
   const EditorTeardown({
     required this.notes,

@@ -164,7 +164,7 @@ void main() {
 
   group('the file names are unchanged by any of this', () {
     test('the four files and the default storage directory are what they were', () {
-      final paths = AppPaths(
+      const paths = AppPaths(
         dataDirectory: r'C:\d',
         executablePath: r'C:\app\win_notes.exe',
       );

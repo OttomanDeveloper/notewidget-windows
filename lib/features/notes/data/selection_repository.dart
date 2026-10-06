@@ -4,10 +4,8 @@ import 'dart:io';
 import '../../../core/utils/atomic_json_file.dart';
 import '../domain/repositories.dart';
 
-/// Which note is focused, shared by both surfaces.
-///
-/// Its own tiny file rather than a field in either surface's data, because both
-/// surfaces read and write it and neither owns it.
+/// Which note is focused, shared by both surfaces. Its own tiny file: neither
+/// surface owns it, so neither carries it as a field.
 class SelectionRepository implements ISelectionRepository {
   SelectionRepository(this._file);
 

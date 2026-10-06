@@ -4,20 +4,16 @@ import 'package:markdown/markdown.dart' as md;
 import '../markdown_style/markdown_style.dart';
 
 /// Inline spans for a node, ignoring block structure entirely.
-///
-/// Pure functions: every span builder takes the style explicitly, so rendering
-/// the same node twice cannot leak state from the first pass into the second.
+/// Pure functions taking the style explicitly, so one pass cannot leak into
+/// the next.
 class MarkdownSpans {
   const MarkdownSpans._();
 
   static List<InlineSpan> of(md.Node node, MarkdownStyle style) {
     if (node is md.Text) {
       if (node.text.isEmpty) return const [];
-      // The style is attached here rather than left to the enclosing span.
-      // Leaving it off means the run inherits from the block, which is the
-      // *body* style - so `**bold**` inside a heading rendered at body size and
-      // body weight. The two cases that actually need a style are handled in
-      // the switch below; this one handles every leaf.
+      // Attached here so `**` inside a heading keeps heading size: inheriting
+      // would render it at body size, and this arm handles every leaf.
       return [TextSpan(text: node.text, style: style.base)];
     }
     if (node is! md.Element) return const [];
@@ -25,10 +21,8 @@ class MarkdownSpans {
     final children = node.children ?? const <md.Node>[];
 
     switch (node.tag) {
-      // `strong`, `em` and `del` only. Not `b`, `i`, `s` or `strike`: the
-      // parser emits the long forms for Markdown emphasis, and raw `<b>` in a
-      // note arrives as literal text rather than as an element, so a case for
-      // those tags would be a rule nothing can reach.
+      // `strong`/`em`/`del` only: raw `<b>` arrives as literal text, so other
+      // tags would be rules nothing can reach.
       case 'strong':
         return wrap(children, style,
             style.base.copyWith(fontWeight: FontWeight.w700));

@@ -1,20 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// One complete colour choice: the accent you interact with, and the neutral
-/// family everything else is built from.
-///
-/// Three hand-picked values per palette, not ten. The accent pair is exact, so
-/// the swatch in Settings is the colour you actually get. Everything else —
-/// editor background, widget surface, dialog, dividers, switches — is derived
-/// from [neutralSeed] with `ColorScheme.fromSeed`, which guarantees the tonal
-/// relationships hold. Hand-picking ten colours per palette would put that
-/// guarantee in nine places instead of one, and the ninth would be wrong.
-///
-/// Why a palette and not a free picker: these sit over an arbitrary desktop
-/// wallpaper through an acrylic window, so an accent has to stay legible on a
-/// light surface *and* a dark one *and* against a photograph. Every swatch here
-/// has been chosen for that. A picker could produce a colour that fails, and
-/// there is no honest way to let someone pick one.
+/// One complete colour choice: accent, neutrals seed, and the rule that no
+/// free picker can satisfy - legible on light, dark and photographic surfaces.
 @immutable
 class WinNotesPalette {
   const WinNotesPalette({
@@ -40,20 +27,12 @@ class WinNotesPalette {
   /// darker, because a saturated colour on a dark background loses its edge.
   final Color accentDark;
 
-  /// Drives every neutral: editor background, widget surface, dialog, dividers,
-  /// the switches in Settings.
-  ///
-  /// Deliberately *not* the accent. The brand is a warm accent on a cool plate,
-  /// and tying the two together would flatten it into a single hue. It is also
-  /// what lets a palette be calm: the Coral default keeps the indigo-tinted
-  /// darks and warm parchment lights the app has always had.
+  /// Drives every neutral. Deliberately not the accent: the brand is a warm
+  /// accent on a cool plate, and tying them would flatten it to one hue.
   final Color neutralSeed;
 
-  /// Surfaces for [brightness], derived from [neutralSeed].
-  ///
-  /// The widget draws its own surface rather than using the theme's, because it
-  /// composites over the desktop instead of over its own window, and it needs an
-  /// alpha its theme does not know about.
+  /// Surfaces for [brightness]. The widget draws its own surface with an alpha
+  /// its theme does not know about, over the desktop rather than its window.
   WidgetSurfaces surfaces(Brightness brightness) {
     final scheme = ColorScheme.fromSeed(
       seedColor: neutralSeed,
@@ -121,21 +100,14 @@ class WidgetSurfaces {
   final Color onSurfaceVariant;
   final Color outlineVariant;
 
-  /// The widget's fill, with or without acrylic behind it.
-  ///
-  /// Acrylic blurs and slightly lightens whatever is behind the window, so the
-  /// same colour reads differently with it on and off. `plain` is a step further
-  /// from the editor background to compensate for losing that lift.
+  /// The widget's fill. `plain` compensates for losing acrylic's lift, so the
+  /// same colour reads the same with it on and off.
   Color surfaceColor({required bool acrylicAvailable}) =>
       acrylicAvailable ? surface : plain;
 }
 
-/// Every palette, in the order Settings shows them.
-///
-/// The first is the default and must stay first: `settings.json` from before
-/// this feature existed has no palette field, and a missing field resolves to
-/// index zero rather than to a name, so reordering this list changes what an
-/// existing install sees.
+/// Every palette, in the order Settings shows them. First stays first: a missing
+/// palette field resolves to index zero, so reordering changes old installs.
 const List<WinNotesPalette> winNotesPalettes = <WinNotesPalette>[
   // The app's own colours, unchanged. Warm caret on a cool plate.
   WinNotesPalette(
@@ -206,12 +178,8 @@ const List<WinNotesPalette> winNotesPalettes = <WinNotesPalette>[
   ),
 ];
 
-/// The palette for [id], or the default if it names nothing we ship.
-///
-/// Falling back silently is deliberate and is the whole backwards-compatibility
-/// story: a `settings.json` written by an older build, or by a build with a
-/// palette we have since removed, must still open. An unknown name is treated
-/// as "never chose one" rather than as an error worth refusing to start over.
+/// The palette for [id], or the default. Unknown names fall back silently:
+/// an old file must still open, so "never chose one" beats refusing to start.
 WinNotesPalette paletteById(String? id) {
   if (id == null) return winNotesPalettes.first;
   for (final palette in winNotesPalettes) {

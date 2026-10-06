@@ -53,13 +53,14 @@ List<String> _bodiesOf(String source, String marker) {
   return out;
 }
 
-/// **This guard covers a subset, and the subset is the point.** The rulebook is a
-/// general document carried in verbatim; its own Appendix lists eleven places where
-/// it contradicts this repository, and `AGENTS.md` §0.1 settles every one of them.
-/// Executing §4's `features/<feature>/{data,domain,presentation}` would break
-/// `layer_test`; executing §7.2's `cached_network_image` would put a network
-/// dependency into an app whose product authority says it does not touch the
-/// internet.
+/// **This guard covers the rulebook as migrated.** The rulebook arrived as a
+/// general document carried in verbatim, with an Appendix listing where it
+/// contradicted this repository. The migration (Waves 1–4) resolved each one:
+/// the tree is `lib/core` + `lib/features/*/…`, caps are enforced code-only,
+/// and the genuinely inapplicable items (network images, API pagination,
+/// Android bundles) stay N/A under `PROJECT.md` authority, recorded below.
+/// A network dependency or an Android bundle in this app would contradict the
+/// product, not complete the pattern.
 ///
 /// So "make the plan 100% implemented" cannot mean "make every line of it true here".
 /// What it can mean, and what the rulebook's own Appendix asks for, is: **every rule
@@ -71,27 +72,27 @@ List<String> _bodiesOf(String source, String marker) {
 ///
 /// | § | Verdict | Pins it / declined by |
 /// |---|---|---|
-/// | 1.1–1.2 size caps | provider part applied (300 code-only); screen/widget caps pending Wave 3 |
-/// | 1.3–1.4 private widgets, one-per-file | declined | `AGENTS.md` §0.8 (23 private widgets collocated on purpose) |
-/// | 1.5 rebuild only changed | applied | `provider_pattern.md` §2; `widget_surface.dart` single `watch` |
+/// | 1.1–1.2 size caps | applied | 300/500/350 code-only; `provider_guard_test` + `tool/check_architecture.ps1` |
+/// | 1.3–1.4 private widgets, one-per-file | applied | zero private widgets, one widget per file; `tool/check_architecture.ps1` |
+/// | 1.5 rebuild only changed | applied | derived providers; cards watch their own note (`widgetNoteByIdProvider.family`) |
 /// | 1.6 watch/read/select | applied | `provider_guard_test`, `no_set_state_test`; `provider_pattern.md` §§2–3 |
 /// | 1.7 logic in providers | applied | `isolate_guard_test`; `provider_pattern.md` §3.1 |
 /// | 1.8 profile on device | process | manual; `docs/testing_pattern.md` §2 (not in CI) |
-/// | 2 file & comment caps | provider 300 code-only applied (`provider_guard_test`); screens 500 / widgets 350 pending Wave 3; comment 2–3 lines declined until Wave 4 (house style) |
+/// | 2 file & comment caps | applied | sizes via `provider_guard_test` + `tool/check_architecture.ps1`; comments via this guard |
 /// | 3.1 what counts | applied | same widget types; `no_set_state_test`, `provider_guard_test` |
-/// | 3.2 no private widgets | declined | `AGENTS.md` §0.8 (23 exist, e.g. `settings_dialog.dart` 12) |
-/// | 3.3 no private builds | declined | 23 `_buildX` helpers collocated (e.g. `markdown_text.dart` 8) |
-/// | 3.4 composition | applied | `EditorView`, `WidgetSurface` compose panes/cards |
-/// | 3.5 habits | applied | this guard (RegExp, sort, MediaQuery.sizeOf, Intrinsic); lints for `const` |
+/// | 3.2 no private widgets | applied | zero found; `tool/check_architecture.ps1` |
+/// | 3.3 no private builds | applied | zero found; `tool/check_architecture.ps1` |
+/// | 3.4 composition | applied | screens compose widgets; no screen holds section UI |
+/// | 3.5 habits | applied | this guard (RegExp, sort, MediaQuery.sizeOf, Intrinsic); §9 lints for `const`/`keys` |
 /// | 4 folders | applied (Wave 1) | `lib/core` + `lib/features/*/…` per the tree; pinned by `layer_test` paths |
 /// | 5.1–5.8 riverpod | applied | `provider_pattern.md`; `provider_guard_test`, `no_set_state_test`, `isolate_guard_test` |
-/// | 6 rebuild example | applied | `provider_pattern.md` §2; `ref.select`, low `Consumer` |
-/// | 7.1 cpu | applied | this guard; `ValueKey`, debounce 250ms+ceiling, `AnimatedOpacity`, `ListenableBuilder` |
+/// | 6 rebuild example | applied | `provider_pattern.md` §2; `ref.select`, low `Consumer`, self-watching cards |
+/// | 7.1 cpu | applied | this guard; `ValueKey`, debounce 250ms+ceiling, `AnimatedOpacity`, `ListenableBuilder`, `RepaintBoundary` |
 /// | 7.2 ram | applied/N/A | `ListView.builder`/`separated`; dispose guarded; images/paginate N/A (`PROJECT.md` no network) |
 /// | 7.3 release | applied/N/A | this guard (`--obfuscate`, symbols); Android split N/A (`PROJECT.md` Windows only) |
 /// | 7.4 measure | process | DevTools manual; not CI |
-/// | 8 painter | applied | this guard (hoist `Paint`/`Path`, `shouldRepaint`); `completion_toggle.dart` |
-/// | 9 checks | applied | this guard replaces `find/grep`; lints in `analysis_options.yaml` |
+/// | 8 painter | applied | this guard (hoist `Paint`/`Path`, `shouldRepaint`); `completion_painter.dart` + `RepaintBoundary` |
+/// | 9 checks | applied | this guard; `tool/check_architecture.ps1`; §9 lints in `analysis_options.yaml` |
 /// | 10 PR list | applied | `flutter analyze` + `flutter test` (`AGENTS.md` §6) + this guard |
 ///
 /// What follows are the rules that survived that test and were true or nearly true
@@ -464,6 +465,37 @@ void main() {
         RegExp(r'flutter build [^\r\n]*--profile[^\r\n]*--obfuscate')
             .hasMatch(tree.read('tool/release/package.ps1')),
         isFalse,
+      );
+    });
+  });
+
+  group('§2 comments run at most three lines', () {
+    test('no comment block in lib/ is longer than three lines', () {
+      // Summarise against the code, not by truncation: a shortened comment
+      // that no longer says why is a worse trade than a long one.
+      final offenders = findLongComments(tree);
+
+      expect(
+        offenders,
+        isEmpty,
+        reason: 'A comment past 2–3 lines replaces reading the code. Summarise '
+            'it against what it describes; rationale that must survive belongs '
+            'in a pattern doc.\n\n  ${offenders.join('\n  ')}',
+      );
+    });
+
+    test('comments exist to check, so the rule above is not vacuous', () {
+      var count = 0;
+      for (final entry in tree.dartFilesUnder('lib').entries) {
+        for (final line in entry.value) {
+          if (line.trimLeft().startsWith('//')) count++;
+        }
+      }
+      expect(
+        count,
+        greaterThan(200),
+        reason: 'precondition: lib/ documents itself; an empty scan would pass '
+            'on nothing.',
       );
     });
   });

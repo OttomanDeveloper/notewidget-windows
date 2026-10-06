@@ -50,8 +50,6 @@ class WidgetGesture {
       );
 }
 
-/// How far the pointer must travel before a press becomes a drag.
-///
-/// Small enough that a drag feels immediate, large enough that pressing on a
-/// card and moving slightly - or a shaky click - still selects the card.
+/// Drag threshold: immediate enough to feel live, slack enough that a shaky
+/// click still selects the card.
 const double widgetDragThreshold = 8;

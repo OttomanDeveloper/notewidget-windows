@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
-/// A minimal scroll rail that appears while scrolling and fades out after.
-///
-/// Hand-rolled rather than [Scrollbar] because the built-in one either paints a
-/// permanent track that narrows the cards or needs hover to show at all, and
-/// this widget is too small for either.
+/// A minimal scroll rail, shown while scrolling. Hand-rolled: the built-in either
+/// paints a permanent track or needs hover, and this widget is too small for either.
 class FloatingScrollRail extends StatelessWidget {
   const FloatingScrollRail({
     super.key,

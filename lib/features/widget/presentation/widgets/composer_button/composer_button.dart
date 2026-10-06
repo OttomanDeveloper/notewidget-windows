@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/theme.dart';
 
-/// The key for the add-a-note button, so it can be driven without guessing at
-/// which of two same-labelled semantics nodes is meant.
-///
-/// Public because a widget test is a consumer of this widget, and a finder that
-/// has to reverse-engineer the layout to aim at a 30-pixel circle in the corner
-/// is a finder that will silently start hitting the wrong thing.
+/// The key for the add-a-note button: drivable without guessing among same-labelled
+/// semantics nodes. Public because widget tests are consumers of this widget.
 const Key addNoteButtonKey = ValueKey('winnotes.widget.addNote');
 
 /// The collapsed add-a-note circle.
@@ -37,10 +33,8 @@ class ComposerButton extends StatelessWidget {
           label: 'Add a note',
           child: Tooltip(
             message: 'Add a note',
-            // The SizedBox is outside the Material on purpose. A Material with a
-            // clip shape expands to fill whatever it is given, so the circle
-            // would silently become the full width of the widget and swallow
-            // taps meant for the cards above it.
+              // Outside the Material on purpose: it would otherwise expand to full
+              // width and swallow neighbouring taps.
             child: SizedBox(
               width: 30,
               height: 30,
@@ -49,10 +43,8 @@ class ComposerButton extends StatelessWidget {
                 shape: const CircleBorder(),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
-                  // Keyed rather than found by label: the Semantics above and
-                  // the Tooltip's own both answer to "Add a note", so a
-                  // label-based finder is ambiguous about which box it means -
-                  // and the ambiguity is invisible until the tap misses.
+                    // Keyed, not label-found: Semantics and Tooltip share the label, so a
+                    // label finder is ambiguous until the tap misses.
                   key: addNoteButtonKey,
                   onTap: onOpen,
                   customBorder: const CircleBorder(),

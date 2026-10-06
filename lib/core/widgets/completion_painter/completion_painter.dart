@@ -10,17 +10,8 @@ class CompletionPainter extends CustomPainter {
   final bool visible;
 
   /// Hoisted out of `paint()` so a repaint allocates nothing.
-  ///
-  /// `flutter_architecture_pattern.md` §8 asks for exactly this: create `Paint`,
-  /// `Path` and `TextPainter` once as fields, never inside `paint()`. `paint()` runs
-  /// on the raster thread every frame the box changes size or is repainted, so a
-  /// `Paint` and a `Path` per call is garbage per frame for a three-segment tick.
-  ///
-  /// Mutable rather than `final`, because both objects need size-dependent values —
-  /// the stroke weight and the three points are all fractions of the box, so they
-  /// cannot be set at construction. Reused-and-updated is the answer; the alternative
-  /// is either an allocation per frame or a fixed stroke weight that stops matching
-  /// the ring when the widget is resized, which is the thing the fractions are for.
+  /// Reused-and-updated `Paint`/`Path` sized in fractions of the box, per
+  /// `flutter_architecture_pattern.md` §8 (never allocate in `paint()`).
   static final Paint _paint = Paint()..style = PaintingStyle.stroke;
   static final Path _path = Path();
 

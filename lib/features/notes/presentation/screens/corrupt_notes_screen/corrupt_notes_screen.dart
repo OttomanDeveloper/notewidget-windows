@@ -7,25 +7,9 @@ import '../../../domain/note.dart';
 import '../../../domain/repositories.dart';
 import '../../widgets/detail_card/detail_card.dart';
 
-/// Shown instead of the editor when notes.json exists but cannot be read.
-///
-/// The app refuses to start rather than replacing the file with an empty one,
-/// and that refusal is only defensible if every screen has a way out. This one
-/// offers four, in the order they are worth trying:
-///
-/// 1. Put the rolling backup back. Costs the person nothing - no backup they had
-///    to remember to make, no file to go and find - and since writes are atomic,
-///    the backup is a file this app wrote itself.
-/// 2. Try again, when the file is merely being held open. Antivirus holding a
-///    file for a moment is not damage, and treating it as damage is both alarming
-///    and wrong.
-/// 3. Restore from a backup they chose.
-/// 4. Start fresh, keeping the damaged file under a new name.
-///
-/// The last one used to exist only as a sentence of small print at the bottom,
-/// telling someone to rename a file in Explorer by hand and restart. That is the
-/// right instruction for someone who reads it calmly and the wrong experience for
-/// someone whose notes have just failed them, so it is a button now.
+/// Shown instead of the editor when notes.json cannot be read. Refuses to start
+/// rather than replacing the file, with four ways out: backup, retry, chosen
+/// backup, fresh start keeping the damaged file.
 class CorruptNotesScreen extends StatefulWidget {
   const CorruptNotesScreen({
     super.key,
@@ -51,17 +35,9 @@ class CorruptNotesScreen extends StatefulWidget {
 }
 
 class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
-  /// Whether a recovery action is running, and what it last said.
-  ///
-  /// Two fields rather than one, because they answer different questions and the
-  /// screen shows them differently: `_busy` disables every button, `_message` is
-  /// read after the action finishes. Folding them into one enum would mean every
-  /// message doubled as a "still busy" state, which is wrong the moment two messages
-  /// can be showing - or none.
-  ///
-  /// A `ValueNotifier` and not a provider: this state is true for the length of one
-  /// button press and nobody outside this screen will ever ask whether it is true.
-  /// That is the `ValueNotifier` half of `AGENTS.md` §0.7.
+    /// Whether a recovery action runs, and what it last said. Two fields: `_busy`
+    /// disables buttons, `_message` is read after. A `ValueNotifier`, not a provider:
+    /// true for one button press, asked by nobody else (`AGENTS.md` §0.7).
   final ValueNotifier<bool> _busy = ValueNotifier<bool>(false);
   final ValueNotifier<String?> _message = ValueNotifier<String?>(null);
 
@@ -72,11 +48,8 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
     super.dispose();
   }
 
-  /// Runs a recovery action with the buttons disabled and the old message cleared.
-  ///
-  /// `_busy` is set before the first `await` and cleared in a `finally`, so a thrown
-  /// error cannot leave the screen permanently disabled - which is the failure a
-  /// `setState` version had available to it and could not have.
+    /// Runs a recovery action with buttons disabled and message cleared. `_busy`
+    /// is set before the first `await` and cleared in `finally`, so nothing sticks.
   Future<void> _run(Future<void> Function() action) async {
     if (_busy.value) return;
     _busy.value = true;
@@ -200,10 +173,8 @@ class _CorruptNotesScreenState extends State<CorruptNotesScreen> {
                   spacing: 10,
                   runSpacing: 10,
                   children: [
-                    // First, because it is the only route that asks nothing of the
-                    // person holding the problem. Hidden rather than disabled when
-                    // there is no backup: a greyed-out button invites the question
-                    // "of what?", and the honest answer is easier to just not ask.
+                      // First: the only route asking nothing of the person. Hidden, not
+                      // disabled: a greyed-out button asks "of what?" with no good answer.
                     if (widget.hasBackup)
                       FilledButton.icon(
                         onPressed: _busy.value ? null : _restoreBackup,

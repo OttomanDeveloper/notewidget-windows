@@ -5,33 +5,9 @@ import '../../../core/utils/app_paths.dart';
 import '../domain/settings.dart';
 import './storage_location.dart';
 
-/// Moves a library to a folder the person chose — by **copying**, never by moving.
-///
-/// Three rules, all of them about not losing notes:
-///
-///  1. **Copy, never move.** Nothing is deleted from the source. A person who has
-///     chosen a new folder and found their notes in it can delete the old copies
-///     themselves, at their own pace, having seen for themselves that the notes
-///     arrived. An app that deletes the originals has taken away the ability to check.
-///  2. **Never overwrite.** If the destination already has a `notes.json`, this
-///     refuses and says so. `storage_pattern.md` §3.7 makes a failed read block every
-///     write, and this is the same instinct: notes that were never read are the one
-///     thing that must not be replaced. It also means "point at the wrong folder"
-///     cannot destroy a library.
-///  3. **Flush first.** A keystroke may still be sitting in the debounce window. Every
-///     source file is flushed to disk *before* anything is copied, or the copy is of a
-///     file that is about to change.
-///
-/// The settings file is written to **both** places — see `storage_pattern.md`
-/// §3.0a. The copy in the default folder is the pointer that makes the chosen folder
-/// findable next time; the copy in the chosen folder is what makes that folder
-/// self-contained.
-/// The result of a transfer, spelled out rather than thrown, so the caller can say
-/// what happened in the person's own terms.
-///
-/// Top level because Dart does not allow an enum inside a class. Every value is a
-/// thing the caller has to explain to somebody — "it did not work" is not one of them
-/// — and a `switch` over this is the list of sentences the Settings screen can say.
+/// Moves a library to a chosen folder by copying, never moving or overwriting.
+/// Flush first; settings goes to both places (§3.0a). Outcomes are spelled out
+/// (top level: Dart forbids enums in classes) so callers report them plainly.
 enum StorageTransferOutcome {
   /// Copied. The app needs restarting to use the new folder.
   done,
@@ -57,11 +33,8 @@ enum StorageTransferOutcome {
 class StorageTransfer {
   const StorageTransfer._();
 
-  /// The files that make up a library, in the order they should be copied.
-  ///
-  /// Notes first and alone in the sense that matters: if it cannot be copied, nothing
-  /// else should have been written. [StorageTransferOutcome.failed] covers that, and because nothing
-  /// is deleted, retrying after fixing the cause is safe.
+    /// Library files in copy order. Notes first: if it cannot be copied, nothing
+    /// else is written, and retrying later is safe since nothing is deleted.
   static const List<String> fileNames = <String>[
     'notes.json',
     'widget_state.json',
@@ -69,13 +42,9 @@ class StorageTransfer {
     'settings.json',
   ];
 
-  /// Copies the library from [from] into [to].
-  ///
-  /// [settings] is written into the destination as well, with [WinNotesSettings]
-  /// carrying the new location. The source settings file is **not** rewritten here —
-  /// the pointer copy is the caller's job, because only it knows whether the app is
-  /// restarting, and a half-finished transfer that also moved the pointer would leave
-  /// an app pointing at a folder with no notes in it.
+    /// Copies the library. The source settings file is not rewritten: only the
+    /// caller knows whether the app is restarting, and a moved pointer plus a
+    /// half-finished transfer would strand the app.
   static Future<StorageTransferOutcome> copyLibrary({
     required AppPaths from,
     required AppPaths to,
@@ -115,16 +84,8 @@ class StorageTransfer {
       await _copyReplacing(source, File(_join(to.dataDirectory, name)));
     }
 
-    // The settings file in the destination carries the new location, so that folder is
-    // self-contained: copied on its own, or handed to somebody else, it still works.
-    // Written with the same two-space indent `AtomicJsonFile` uses, so the two copies
-    // of `settings.json` - the pointer and the one in the chosen folder - are
-    // byte-comparable rather than differing only in whitespace.
-    //
-    // Written directly rather than through the repository's atomic writer because no
-    // repository exists for that directory yet: there is nothing to debounce against
-    // and no reader to protect, the whole transfer is synchronous and has already
-    // refused to start if the folder cannot be written to.
+      // Destination carries the new location (self-contained); same indent keeps the
+      // copies byte-comparable. Written directly: no repo exists there yet to debounce.
     File(_join(to.dataDirectory, 'settings.json')).writeAsStringSync(
       const JsonEncoder.withIndent('  ').convert(settings.toJson()),
     );
@@ -132,18 +93,8 @@ class StorageTransfer {
     return StorageTransferOutcome.done;
   }
 
-  /// An empty document, or one holding no notes, is not a library.
-///
-///   Checked by reading rather than by size: `{"notes":[]}` is longer than nothing and
-///   means the same thing, and refusing on it would make a folder unusable after
-///   somebody had once opened the app there and closed it again.
-  ///
-  ///   [notesArray] is a `static final` field rather than something built here.
-  ///   `flutter_architecture_pattern.md` §7.1 puts it plainly: no heavy work on the hot
-  ///   path, and a `RegExp` is not free. This one is not in a frame loop, but it is a
-  ///   constant pattern and building it per call is an allocation for nothing — and
-  ///   `flutter_rules_guard_test` caught exactly this in this file the day the guard
-  ///   was written, which is the only reason it is stated here rather than discovered.
+    /// Empty means no library, read not sized: an empty open-close cycle must not
+    /// make a folder unusable. The `RegExp` is a `static final` field (§7.1).
   static final RegExp notesArray =
       RegExp(r'"notes"\s*:\s*\[([^\]]*)\]', dotAll: true);
 

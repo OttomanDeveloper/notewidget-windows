@@ -177,16 +177,16 @@ count).
 
 Met everywhere. The notes state model (`NotesState`, `PendingUndo`,
 `CorruptDataFileError`, `RecoveryOutcome`) lives in `notes_state.dart` beside the
-notifier rather than inside it, which is what brought `notes_controller.dart`
-from 333 code-only lines to 258:
+notifier rather than inside it, which brought `notes_controller.dart` from 333
+code-only lines to 261:
 
 | File | Code-only | Over by |
 |---|---|---|
-| `features/settings/presentation/providers/settings_controller.dart` | 146 | — |
-| `core/utils/app_providers.dart` | 57 | — |
-| `features/widget/presentation/providers/widget_controller.dart` | 234 | — |
-| `features/notes/presentation/providers/notes_controller.dart` | 258 | — |
-| `features/notes/presentation/providers/notes_state.dart` | 75 | — |
+| `features/settings/presentation/providers/settings_controller.dart` | 141 | — |
+| `core/utils/app_providers.dart` | 36 | — |
+| `features/widget/presentation/providers/widget_controller.dart` | 232 | — |
+| `features/notes/presentation/providers/notes_controller.dart` | 261 | — |
+| `features/notes/presentation/providers/notes_state.dart` | 63 | — |
 
 What *is* enforced has not changed shape, only direction. A cap nobody checks is
 a number in a document, so `provider_guard_test` fails on the *first* file over
@@ -246,9 +246,10 @@ Recorded so nobody discovers it later and thinks the migration was a mistake:
 
 - **It does not cross the isolate boundary.** Two containers, no shared instances.
   `PROJECT.md`'s one-writer-per-file rule is untouched.
-- **It does not help `markdown_text.dart` (1072 lines) or `widget_surface.dart`
-  (841 lines).** Together they are 38% of `lib/`, both are pure UI, and neither
-  moves.
+- **It does not split the big UI files.** The renderer and the surfaces were
+  split separately, file by file (`markdown_text` into block widgets,
+  `widget_surface` into composer/cards/chrome, the editor into panes) — a
+  widget split, not a state split.
 - **It does not fix the unawaited flush in `dispose()`.** `ref.onDispose` is
   synchronous and cannot await; the `unawaited(...flush())` calls are a
   pre-existing hazard with its own entry in `docs/isolate_pattern.md` §4.3 and a

@@ -8,15 +8,9 @@ import '../../../../../core/utils/app_providers.dart';
 import '../../providers/notes_controller.dart';
 import '../editor_home/editor_home.dart';
 
-/// Routes events pushed up from the runner.
-///
-/// Kept as a switch rather than a table of handlers because each case does something
-/// different, and three of them deliberately do nothing - see [ShellEventKind].
-///
-/// This is a `ConsumerState` rather than a plain function so the subscription has an
-/// owner with a lifetime. A bare `shell.events.listen` in `build` would stack a
-/// listener per rebuild, and the symptom of that is a hotkey that raises the editor
-/// six times.
+/// Routes runner events. A switch, not a handler table: cases differ, and three
+/// do nothing deliberately. A `ConsumerState` owns the subscription lifetime: a
+/// bare listen in `build` would stack one per rebuild.
 class EditorEventRouter extends ConsumerStatefulWidget {
   const EditorEventRouter({super.key, required this.child});
 
@@ -55,10 +49,8 @@ class EditorEventRouterState extends ConsumerState<EditorEventRouter> {
         unawaited(openSettings(context, ref));
         messenger?.hideCurrentSnackBar();
       case ShellEventKind.toggleCompleted:
-        // The widget surface asks rather than writing, because this is the one
-        // writer of notes.json. Answering here means the change is made in the same
-        // place every other edit is, and the widget sees it through the directory
-        // watcher it already uses.
+          // The widget asks rather than writing (one writer per file); the change
+          // lands here, and the widget sees it through its directory watcher.
         final id = event.noteId;
         if (id != null) ref.read(notesProvider.notifier).toggleCompleted(id);
       case ShellEventKind.createNote:

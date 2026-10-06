@@ -23,14 +23,9 @@ List<Note> displayNotesIn(List<Note> notes, String? selectedId) {
   return [focused, ...rest];
 }
 
-/// The widget's position, size, monitor and scroll offset.
-///
-/// [dockEdge] exists so a widget parked against a screen edge can say so
-/// explicitly. Windows applies the snap as part of the drag loop, so this is
-/// a record of what happened rather than a second, competing source of truth.
-/// Named `WidgetWindowState` rather than `WidgetWindowState` because Flutter's own
-/// `WidgetWindowState` is exported by material.dart, and a project that imports both
-/// cannot use either name unqualified.
+/// Widget position, size, monitor and scroll offset. [dockEdge] records a parked
+/// edge (the snap is the runner's doing, this is the record). Named to dodge
+/// Flutter's own `Widget` export.
 class WidgetWindowState {  const WidgetWindowState({
     this.left,
     this.top,

@@ -63,11 +63,8 @@ class NoteListItem extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // A Markdown note's title gets its inline formatting, the
-                    // same as on a widget card: a title is one line by
-                    // definition, so `#` in one is a mistake rather than a
-                    // heading, but `**` and backticks are someone being
-                    // emphatic.
+                    // A Markdown title gets inline formatting like a widget card
+                    // (`**`, backticks — but `#` stays literal: one line, no headings).
                     if (note.markdown)
                       MarkdownText.inline(
                         note.title,
@@ -110,19 +107,9 @@ class NoteListItem extends StatelessWidget {
                     // rendered as an empty line. See _preview.
                     if (note.body.trim().isNotEmpty)
                       if (note.markdown)
-                        // The same renderer as the widget card, at the row's own
-                        // type size and clamped to its own two lines.
-                        //
-                        // Clamped by height rather than by `maxLines`, for the
-                        // reason documented in markdown_text.dart: `maxLines`
-                        // bounds the lines inside one Text and says nothing
-                        // about how many blocks a note has, so a body of twenty
-                        // one-line paragraphs sailed past it.
-                        //
-                        // Headings are flattened to body size, same as a compact
-                        // card. A row is two lines in a 300px column, and a
-                        // body opening with `# Title` is already repeating the
-                        // row's own title above it.
+                        // Same renderer as the widget card, clamped by height (not
+                        // `maxLines`: that bounds one Text, not twenty one-line
+                        // paragraphs). Headings flatten to body size like a compact card.
                         DefaultTextStyle(
                           style: markCompleted(const TextStyle(),
                                   completed: done) ??
@@ -168,12 +155,8 @@ class NoteListItem extends StatelessWidget {
     );
   }
 
-  /// Vertical room a rendered Markdown preview gets in a row.
-  ///
-  /// Two lines of the row's own body size at the same 1.35 line height the
-  /// plain-text preview uses, so a Markdown row is not taller than a plain one.
-  /// The fade band comes out of the *third* line — see
-  /// [MarkdownText.budgetForLines].
+    /// Two body-size lines at 1.35 height, matching plain rows; the fade comes
+    /// out of the third (see [MarkdownText.budgetForLines]).
   static double _previewHeight(ThemeData theme) =>
       MarkdownText.budgetForLines(
         fontSize: theme.textTheme.bodySmall?.fontSize ?? 12,
@@ -181,13 +164,8 @@ class NoteListItem extends StatelessWidget {
         lines: 2,
       );
 
-  /// Falls back to the title when there is no body yet, so a note that has only
-  /// been named still shows something useful in the preview slot.
-  ///
-  /// "No text yet" is reserved for a note with nothing in it at all. A note with
-  /// a title and no body has its content right there on the line above, so
-  /// claiming otherwise is just wrong - and a note added from the widget's
-  /// composer is always in that shape.
+  /// Falls back to the title when there is no body yet. "No text yet" is
+  /// reserved for a note with nothing in it at all.
   static String _preview(Note note) {
     final body = note.body.trim();
     if (body.isNotEmpty) return body.replaceAll('\n', ' ');

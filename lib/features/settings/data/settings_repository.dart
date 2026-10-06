@@ -5,11 +5,8 @@ import '../../../core/platform/shell_channel.dart';
 import '../domain/repositories.dart';
 import '../domain/settings.dart';
 
-/// Reads and writes `settings.json`.
-///
-/// The editor surface owns this file. The widget surface reads it, which is why
-/// a change to opacity or theme reaches the widget without either side having
-/// to message the other.
+/// Reads and writes `settings.json`. The editor owns it; the widget reads it,
+/// so opacity and theme changes arrive with no messaging between surfaces.
 class SettingsRepository implements ISettingsRepository {
   SettingsRepository(this._file, this._shell);
 
@@ -38,10 +35,8 @@ class SettingsRepository implements ISettingsRepository {
   @override
   Future<void> saveNow(WinNotesSettings settings) => _file.writeNow(settings.toJson());
 
-  /// Applies a change to the registry so the widget comes back after a reboot.
-  ///
-  /// Turning autostart off removes the entry rather than leaving it disabled
-  /// somewhere, so Task Manager and the app can never disagree about the state.
+    /// Applies a registry change so the widget comes back after reboot. Off
+    /// removes the entry: Task Manager and the app cannot disagree.
   @override
   Future<bool> applyAutoStart({required bool enabled}) =>
       _shell.setAutoStart(enabled: enabled);

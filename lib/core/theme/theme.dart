@@ -2,17 +2,8 @@ import 'package:flutter/material.dart';
 
 import './palette.dart';
 
-/// WinNotes' brand colours.
-///
-/// These are the *logo* — the indigo plate and the coral caret baked into the
-/// mark, and the artwork derived from it. They are deliberately **not** the
-/// user's palette: `WinNotesPalette` changes what the app looks like, and the
-/// mark stays the mark. Tinting the logo with a chosen colour would make the
-/// thing people recognise into one of nine variations of itself.
-///
-/// The live accent comes from [WinNotesPalette] instead. The values below are
-/// the default palette's, kept here so the relationship between the two is
-/// visible from one file.
+/// WinNotes' brand colours: the logo's indigo plate and coral caret. Never the
+/// user's palette - tinting the mark would make recognition one of nine variants.
 class WinNotesColors {
   const WinNotesColors._();
 
@@ -46,11 +37,8 @@ ThemeData buildWinNotesTheme({
   final surfaces = chosen.surfaces(brightness);
   final accent = chosen.accentFor(brightness);
 
-  // Built from the accent so the switches, checkboxes and text selections in
-  // Settings belong to the palette, then the neutrals are replaced wholesale
-  // with the ones from the neutral seed. Overriding the roles actually used
-  // beats copyWith on a forty-field scheme: a field nobody reads cannot be
-  // wrong in a way anyone sees.
+  // Built from the accent, then neutrals replaced wholesale. Overriding the
+  // roles actually used beats copyWith on a forty-field scheme.
   final scheme = ColorScheme.fromSeed(
     seedColor: accent,
     brightness: brightness,
@@ -127,17 +115,9 @@ ThemeData buildWinNotesTheme({
   );
 }
 
-/// Black or white, whichever actually reads better on [background].
-///
-/// Both contrasts are computed and the higher one wins. A luminance *threshold*
-/// looks equivalent and is not: the crossover where black overtakes white sits
-/// at luminance 0.179, so a threshold anywhere near it gets mid-luminance
-/// colours wrong. Mid-luminance saturated colours are precisely what an accent
-/// is — coral's dark-mode variant measures 0.356, where white gives 2.6:1 and
-/// black gives 8.1:1, and a threshold of 0.45 would have picked white.
-///
-/// This is what the palette's tick, the checkbox mark and the selection ring are
-/// drawn in, so getting it wrong makes a finished task look unfinished.
+/// Black or white, whichever reads better on [background]. Both contrasts are
+/// computed and the higher wins: a threshold gets mid-luminance accents wrong.
+/// Drawn in: the tick, the checkbox mark, the selection ring.
 Color readableOn(Color background) {
   const dark = Color(0xFF17151C);
   final luminance = background.computeLuminance();
@@ -163,10 +143,8 @@ Color widgetSurfaceColor({
   return base.withValues(alpha: base.a * floor);
 }
 
-/// Text colour for a note body on the widget surface.
-///
-/// Chosen for contrast against the widget surface rather than inherited from
-/// the editor theme, because the widget floats over arbitrary content.
+/// Text colour for a note body on the widget surface, chosen for contrast
+/// against it rather than inherited from the editor theme.
 Color widgetBodyColor(Brightness brightness) =>
     brightness == Brightness.dark ? const Color(0xFFEDEBF5) : const Color(0xFF221E30);
 

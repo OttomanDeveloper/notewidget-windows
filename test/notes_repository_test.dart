@@ -256,7 +256,7 @@ void main() {
       // even when one of them throws and skips the dispose below.
       addTearDown(file.dispose);
 
-      final ceiling = const Duration(milliseconds: 1500);
+      const ceiling = Duration(milliseconds: 1500);
 
       for (var i = 0; i < 40; i++) {
         file.write({'i': i});

@@ -29,6 +29,13 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Architecture caps
+        # The size and privacy rules of the Flutter rulebook. Also in
+        # `flutter test`, and here as well because it needs no Dart VM and fails
+        # with the file and the count rather than with an expectation diff.
+        shell: pwsh
+        run: ./tool/check_architecture.ps1
+
       - name: Analyse
         run: flutter analyze
 

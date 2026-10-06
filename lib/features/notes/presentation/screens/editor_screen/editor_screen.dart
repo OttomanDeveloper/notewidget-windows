@@ -10,12 +10,8 @@ import '../../widgets/note_editor_pane/note_editor_pane.dart';
 import '../../widgets/note_list_pane/note_list_pane.dart';
 import '../corrupt_notes_screen/corrupt_notes_screen.dart';
 
-/// The editor window.
-///
-/// Two panes on a wide window, one at a time on a narrow one. The break is on
-/// width rather than on a device check, because the editor can be resized
-/// freely and a pane layout that breaks at 700px is worse than one that
-/// responds to it.
+/// The editor window. Two panes wide, one at a time narrow; the break is on
+/// width, since the editor resizes freely.
 class EditorView extends ConsumerStatefulWidget {
   const EditorView({
     super.key,
@@ -24,12 +20,8 @@ class EditorView extends ConsumerStatefulWidget {
     required this.importNotes,
   });
 
-  /// A callback, not a controller.
-  ///
-  /// All three of these are allowed to cross as parameters (`AGENTS.md` §0.8) because
-  /// they are behaviour, not state: a function that opens a dialog does not rebuild
-  /// when the settings change. What *is* state - the notes, the corrupt-file state,
-  /// the channel - is read with `ref`.
+    /// Callbacks, not controllers: behaviour crosses as parameters, state arrives
+    /// via `ref` (`AGENTS.md` §0.8).
   final VoidCallback onOpenSettings;
   final Future<void> Function() exportNotes;
   final Future<List<Note>?> Function() importNotes;
@@ -41,16 +33,8 @@ class EditorView extends ConsumerStatefulWidget {
 }
 
 class _EditorViewState extends ConsumerState<EditorView> {
-  /// Which pane a *narrow* editor is showing.
-  ///
-  /// A `ValueNotifier` rather than a field on this State, and that is the whole
-  /// replacement for six `setState` calls. The line is lifetime: this is true for as
-  /// long as the editor stays narrow, and nothing else in the app asks - but it is
-  /// not shared either, so it does not belong in a provider where a second reader
-  /// would find it and a test would have to seed it.
-  ///
-  /// Read through a `ValueListenableBuilder` in [build], which rebuilds only the
-  /// part of the tree that depends on it.
+    /// Which pane a narrow editor shows. A `ValueNotifier`, not provider state:
+    /// narrow lifetime only, read through a `ValueListenableBuilder` in [build].
   final ValueNotifier<bool> _showListOnNarrow = ValueNotifier<bool>(true);
 
   @override

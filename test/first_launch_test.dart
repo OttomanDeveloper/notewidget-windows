@@ -22,6 +22,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/file_io.dart';
 import 'helpers/provider_harness.dart';
 
 void main() {
@@ -54,8 +55,11 @@ void main() {
       reason: 'precondition: and it is the one selected',
     );
 
-    // Let the debounce window close. Nothing should be pending, which is the point.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
+    // Waited for, not slept on: the claim is that the debounce lands the note,
+    // and a guessed margin over it is a flake on a busy machine. This one ran
+    // 700 ms and failed roughly one full-suite run in five.
+    final id = harness.notesState().notes.single.id;
+    final written = await waitForContent(file, id);
 
     expect(
       file.existsSync(),
@@ -66,6 +70,8 @@ void main() {
           '"the first launch opens the editor with an empty note already focused, so '
           'typing is the very first thing that happens".',
     );
+    expect(written, contains(id),
+        reason: 'the note on disk is the note that is in memory');
   });
 
   test('a second launch finds the same note, so the first launch is stable', () async {
@@ -80,8 +86,8 @@ void main() {
     // presented as the right one.
     final dir = harness.path;
     await harness.notes();
-    await Future<void>.delayed(const Duration(milliseconds: 700));
     final firstId = harness.notesState().notes.first.id;
+    await waitForContent(File(harness.notesFile), firstId);
 
     // `disposeKeepingProfile`, not `dispose`: dispose deletes the directory, and a
     // rebuild pointed at a directory that no longer exists is a first launch.

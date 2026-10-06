@@ -547,6 +547,13 @@ class ProfileWavePainter extends CustomPainter {
 
 Run these from the project root (CI or pre-commit). Each command should print **nothing** when the rules are respected.
 
+> The commands below are bash and this is a Windows app. They are implemented
+> twice: `tool/check_architecture.ps1` runs the size and privacy checks outside
+> `flutter test` — fast, and the caps are what a split is measured against — and
+> `flutter_rules_guard_test` pins the same rules plus the ones that need to parse
+> Dart rather than match text. The `analysis_options.yaml` lints at the end of this
+> section are enabled.
+
 **Screens over 500 lines**
 
 ```bash
@@ -616,34 +623,58 @@ linter:
 
 ## Appendix. How this document relates to this repository
 
-**This is a general Flutter rulebook, carried in as a reference for future work. It
-is not a description of how this project is built, and it is not enforced here.**
+**This is the rulebook this repository is built to. It arrived as a general Flutter
+document, carried in verbatim so the guidance would be available unchanged, and it was
+then executed rather than paraphrased.** Sections 1–10 are untouched; what changed is
+the code underneath them, plus this Appendix.
 
-It was copied in verbatim on purpose, so that the guidance is available unchanged for
-new work. Nothing in it was rewritten to match the current tree, which means several
-of its rules actively contradict this repository. Read the conflicts before applying
-any of it:
+The Appendix is the record of that. Each row is a place where the rulebook as written
+contradicted what this repository did on the day it was copied in, and what the
+migration did about it. They are kept as contradictions rather than deleted, because
+the middle column is the only place that records what the tree looked like before
+`lib/core` + `lib/features/*/…`.
 
-| This doc says | This repository does | Authority |
+| As carried in, this doc says | The repo did | Now |
 |---|---|---|
-| §4 `features/<feature>/{data,domain,presentation}` | `ui/ → state/ → data/ → core/`, plus `platform/` | `AGENTS.md` §3 |
-| §4, §3.2 one widget per file, each in its own folder | `settings_dialog.dart` holds 12 widget classes, `widget_surface.dart` 6, `widget_app.dart` 5 | `AGENTS.md` §0.8 |
-| §3.2 no private widgets | private widget classes exist and are allowed | `AGENTS.md` §0.8 exempts `EditorBootstrap` / `EditorTeardown` |
-| §2 provider 300 lines | 200 | `docs/provider_pattern.md` §3.6 |
-| §2 comments do not count toward the cap | `provider_guard_test` counts every line, comments included (`entry.value.length`) | this is a rule to make, not one that is real |
-| §2 a comment runs at most 2–3 lines | the house style is a multi-paragraph comment explaining why, everywhere | this is a rule to make, not one that is real |
-| §2 screen 500 / widget 350 | a 200-line cap on providers, with two recorded breaches | `AGENTS.md` §4.8 |
-| §7.2 `cached_network_image`, paginate API data | there is no network code at all | `PROJECT.md`, `AGENTS.md` §1 |
-| §7.3 Android `--split-per-abi`, App Bundle | Windows desktop only | `PROJECT.md` |
-| §9 `find lib -path "*screens*"` | matches nothing; no `features/` or `screens/` directory | — |
-| §5.4 `valueOrNull` is `value` in Riverpod 3.x | **accurate** — `pubspec.yaml` pins `^3.4.3` | — |
+| §4 `features/<feature>/{data,domain,presentation}` | `ui/ → state/ → data/ → core/`, plus `platform/` | §4 as written |
+| §4, §3.2 one widget per file, each in its own folder | `settings_dialog.dart` held 12 widget classes, `widget_surface.dart` 6, `widget_app.dart` 5 | one per file, in its own folder |
+| §3.2 no private widgets | 23 private widget classes, collocated on purpose | zero |
+| §3.3 no private build methods | 23 `_buildX` helpers, `markdown_text.dart` alone had 8 | zero |
+| §2 provider cap 300 lines | 200, with two recorded breaches (`docs/provider_pattern.md` §3.6) | 300, code-only |
+| §2 screen 500 / widget 350 | no such cap; `markdown_text.dart` was 1072 lines, `widget_surface.dart` 841 | 500 / 350, code-only |
+| §2 comments do not count toward the cap | `provider_guard_test` counted every line, comments included | one definition, in `guards.dart` |
+| §2 a comment runs at most 2–3 lines | house style was a multi-paragraph comment explaining why, everywhere | enforced; the *why* moved to `docs/*_pattern.md` |
+| §5.4 `valueOrNull` is `value` in Riverpod 3.x | accurate already — `pubspec.yaml` pins `^3.4.3` | unchanged |
+| §7.2 `cached_network_image`, paginate API data | there is no network code at all | **N/A**, declined by `PROJECT.md` |
+| §7.3 Android `--split-per-abi`, App Bundle | Windows desktop only | **N/A**, declined by `PROJECT.md` |
+| §9 `find lib -path "*screens*"` | matched nothing; no `features/` or `screens/` directory | `tool/check_architecture.ps1` |
 
-**On a conflict, `AGENTS.md` §0.1 decides: `PROJECT.md` is the product authority, and
-nothing here overrides it.** To make one of these rules real for this repository it has
-to become a frozen rule in `AGENTS.md` §0 and a guard in `test/architecture/`, the same
-way every existing rule was made enforceable — see `AGENTS.md` §3.1. A guideline that is
-only written down is a comment, not a rule.
+**"100%" does not mean every line of this document is true here, and it cannot.**
+`cached_network_image` would put a network dependency into an app whose product
+authority says it does not touch the internet; an App Bundle is for a platform this
+app does not ship on. Those rows are declined by `PROJECT.md`, not by taste, and
+completing them would contradict the product rather than complete the pattern.
 
-Two of these rules *are* already real here and agree with this doc: `ref.watch` in
-`build` and `ref.read` in callbacks (`AGENTS.md` §0.8), and the dispose-everything
-discipline in §7.2, which `isolate_guard_test` partly covers.
+What "100%" does mean is checkable, and it is what
+`test/architecture/flutter_rules_guard_test.dart` enforces:
+
+1. **Every rule that applies is real** — a frozen rule or a guard, not a habit. The
+   decision table in that file carries one row per numbered section (§1–§10) reading
+   *applied*, *N/A* or *process*, with the test that pins it or the authority that
+   declined it. Its `the record` group fails if a section gains no row, or if a row
+   names a section that no longer exists.
+2. **Every rule that does not apply is written down** — the N/A rows above, with the
+   reason, rather than left as a silent omission.
+
+`AGENTS.md` §0.1 still settles any conflict, and it settles it the same way:
+`PROJECT.md` is the product authority, and nothing in this document overrides it. To
+make one more rule real here it has to become a frozen rule in `AGENTS.md` §0 and a
+guard in `test/architecture/` — see `AGENTS.md` §3.1. A guideline that is only written
+down is a comment, not a rule.
+
+§9's commands are bash and this is a Windows app, so they are implemented twice:
+`tool/check_architecture.ps1` runs the size and privacy checks in under a second
+outside `flutter test` — useful while editing, since the caps are what a split is
+measured against — and `flutter_rules_guard_test` is the same set of rules plus the
+seven that need to parse Dart rather than match text, in CI. All eight lints §9 lists
+are enabled in `analysis_options.yaml`.

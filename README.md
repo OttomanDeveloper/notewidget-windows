@@ -203,27 +203,32 @@ Patches are welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)** for the build
 setup, the design rules most mistakes break, and how releases are cut.
 
 Read **[AGENTS.md](AGENTS.md)** before changing anything. It is one page and points
-at three docs worth your time:
+at the docs worth your time:
 
 | Doc | What it covers |
 | --- | --- |
 | [storage](docs/storage_pattern.md) | One writer per file, atomic replace, recovery that never destroys |
 | [widget](docs/widget_pattern.md) | Why the widget hit-tests as `HTCLIENT` everywhere, how it borrows the keyboard, how Markdown is budgeted |
-| [testing](docs/testing_pattern.md) | What the 341 tests are allowed to claim, and the traps that have already cost time |
+| [provider](docs/provider_pattern.md) | Where state lives, `watch` vs `read` vs `select`, and why `setState` is gone |
+| [isolate](docs/isolate_pattern.md) | The two surfaces, who writes each file, and the flush-on-teardown hazard |
+| [platform](docs/platform_pattern.md) | The 28 Dart-to-runner methods and what each one does on failure |
+| [testing](docs/testing_pattern.md) | What the 465 tests are allowed to claim, and the traps that have already cost time |
+| [rulebook](docs/flutter_architecture_pattern.md) | The architecture, performance and Riverpod rules this app is built to, and where each one is checked |
 
 Each ends with a table naming the tests that pin its rules.
 
 ## Layout
 
 ```
-lib/src/core/         paths, atomic JSON file with debounce and watch
-lib/src/data/         note model, repositories, backup format
-lib/src/platform/     typed wrapper over the runner's method channel
-lib/src/state/        notes, settings and widget controllers
-lib/src/ui/           editor, widget, settings, and common widgets
+lib/core/             theme, paths, atomic files, runner channel, shared widgets
+lib/features/notes/   note model, repositories, providers, editor screens + widgets
+lib/features/widget/  widget state, provider, surface screens + widgets
+lib/features/settings/ settings model, provider, dialog screens + widgets
+lib/main.dart         both isolates' entry point, one ProviderScope each
 windows/runner/       native host: windows, tray, hotkey, autostart
 installer/            setup.exe definition
 test/architecture/    guards that check the rules rather than behaviour
+tool/check_architecture.ps1   the file-size and widget-privacy caps, standalone
 ```
 
 Two surfaces, two Flutter engines, two Dart isolates. They share files and never

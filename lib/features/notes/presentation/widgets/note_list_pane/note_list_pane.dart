@@ -8,9 +8,7 @@ import '../note_list_item/note_list_item.dart';
 
 /// The list of notes, with search on top.
 ///
-/// Search matches both title and body and filters as the user types. There is
-/// no search history and no saved query, because neither has ever been wanted
-/// by anyone who just wanted to find the thing they wrote.
+/// Search matches title and body as you type; no history, no saved query.
 class NoteListPane extends ConsumerStatefulWidget {
   const NoteListPane({
     super.key,
@@ -20,11 +18,8 @@ class NoteListPane extends ConsumerStatefulWidget {
     this.showCloseButton = false,
   });
 
-  /// Callbacks, not a controller.
-  ///
-  /// All three are allowed to cross as parameters (`AGENTS.md` §0.8) because they
-  /// are behaviour rather than state: a callback that opens a note does not rebuild
-  /// when the notes change. What *is* state is read with `ref`.
+    /// Callbacks, not a controller: behaviour crosses as parameters, state via
+    /// `ref` (`AGENTS.md` §0.8).
   final VoidCallback onOpenNote;
   final VoidCallback onNewNote;
 
@@ -43,12 +38,8 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
   @override
   void initState() {
     super.initState();
-    // Restoring the query keeps the list filter from resetting when the layout
-    // swaps between the two-pane and one-pane arrangements.
-    //
-    // `read` and not `watch`: this runs before the first frame, and watching a
-    // provider inside `initState` is the thing Riverpod warns about - there is no
-    // widget yet to rebuild.
+    // Restores the query so the filter survives layout swaps. `read`, not
+    // `watch`: `initState` has no widget yet to rebuild.
     _search.text = ref.read(notesProvider).value?.query ?? '';
   }
 

@@ -6,15 +6,8 @@ import '../markdown_inline_line/markdown_inline_line.dart';
 import '../markdown_nodes/markdown_nodes.dart';
 import '../markdown_style/markdown_style.dart';
 
-/// One list item: the gutter marker and the item's own content.
-///
-/// The checkbox the parser produced for a task item is dropped here: the
-/// glyph in the gutter already says so, and the element renders as nothing.
-///
-/// Text nodes are kept as well as elements, and they come first. A task item
-/// arrives as `[<input>, Text('open')]` with no paragraph element at all, so
-/// a version that looked only at child elements rendered the box and dropped
-/// the words next to it.
+/// One list item: gutter marker plus content. The parser's checkbox is dropped
+/// (the glyph says it); bare text nodes are kept first, or task words go missing.
 class MarkdownListItem extends StatelessWidget {
   const MarkdownListItem({
     super.key,

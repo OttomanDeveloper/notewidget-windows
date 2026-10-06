@@ -3,17 +3,8 @@ import 'package:flutter/material.dart';
 import '../completion_painter/completion_painter.dart';
 
 /// The tick that marks a note finished.
-///
-/// Shared by both surfaces on purpose. The widget and the editor are the same app
-/// showing the same notes on the same screen at the same time, and a control
-/// that looked different in each would read as two different ideas about what
-/// "done" means - or, worse, as a feature that only exists in one of them.
-///
-/// The shape is a circle rather than a square checkbox because a note is a task
-/// you finish, not a line you tick off in a form, and because the ring reads at
-/// the small size the widget has to draw it at. The check is drawn rather than
-/// taken from the icon font so it can sit on the accent colour without fighting
-/// it, and so it scales with the ring instead of drifting off-centre.
+/// Shared by both surfaces so "done" reads as one idea; a circle (drawn
+/// check, not an icon) because a note is finished, and it must read small.
 class CompletionToggle extends StatelessWidget {
   const CompletionToggle({
     super.key,
@@ -32,9 +23,7 @@ class CompletionToggle extends StatelessWidget {
   final double diameter;
 
   /// How big the thing you actually aim at is, defaults to [diameter].
-  ///
-  /// Twenty pixels is not a comfortable target, and on the widget there is only
-  /// the card's own height to spend.
+  /// 20px is not a comfortable target, and the card has only its own height.
   final double? hitTarget;
 
   /// The ring and the check take this. Falls back to the ambient outline colour.
@@ -101,15 +90,8 @@ class CompletionToggle extends StatelessWidget {
 }
 
 /// The line through finished text.
-///
-/// One place, because it is applied to the widget's cards, the editor's list and
-/// the editor's two text fields, and three hand-written copies of a strikethrough
-/// is three chances for one of them to end up a shade off or drawn in a different
-/// colour from the text it is crossing.
-///
-/// The colour follows the text. A default strikethrough is drawn in the ambient
-/// text colour at full strength, which over already-muted text reads as a smudge
-/// rather than a line through something.
+/// One place for both surfaces' lists and fields, so no copy drifts; the
+/// colour follows the text rather than smudging over muted text.
 TextStyle? markCompleted(TextStyle? style, {required bool completed}) {
   if (!completed || style == null) return style;
   return style.copyWith(

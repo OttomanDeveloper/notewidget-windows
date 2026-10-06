@@ -13,31 +13,46 @@ are Win32 or lifecycle behaviour that the suite structurally cannot see.
 
 ```
 test/
+  palette_test.dart              65   contrast per palette, the picker, the setting
+  markdown_test.dart             51   the renderer, one node and one budget each
   notes_controller_test.dart     45   state, recovery, search, undo, completion
   widget_integration_test.dart   28   the widget surface against a mock shell
   settings_test.dart             25   bindings, settings, window state
-  notes_repository_test.dart     24   load, ordering, AtomicJsonFile
   backup_service_test.dart       23   plain-text round trip, writing it
+  notes_repository_test.dart     24   load, ordering, AtomicJsonFile
+  storage_location_test.dart     23   the folder setting, resolved and moved
   note_test.dart                 17   the model, completion, id factory
+  app_paths_test.dart            10   %APPDATA% paths and the run's override
   widget_surface_test.dart        9   card rendering at a given size
-  palette_test.dart              65   contrast per palette, the picker, the setting
   editor_navigation_test.dart     4   dialog routing
+  first_launch_test.dart          2   the first launch, read the way main() does
 
-  architecture/                         rules that are not about behaviour
-    widget_guard_test.dart        9    HTCLIENT, gesture anchor, compose mode
-    docs_test.dart                7    the docs must agree with this suite
-    storage_guard_test.dart       7    watcher target, atomic export ordering
-    layer_test.dart               6    dart:io confinement, channel parity
-    guards.dart                   -    the scanners, shared by all four
+  architecture/                        139   rules that are not about behaviour
+    widget_guard_test.dart        22   HTCLIENT, gesture anchor, compose mode
+    docs_test.dart                15   the docs must agree with this suite
+    flutter_rules_guard_test.dart 16   the rulebook, section by section
+    storage_location_guard_test  14   the resolved folder is the one that is used
+    storage_guard_test.dart      10   watcher target, atomic export ordering
+    icon_guard_test.dart         11   one icon, four places it has to appear in
+    platform_guard_test.dart     12   both sides of the 28-method contract
+    changelog_guard_test.dart     8   one bullet per entry, three lines
+    provider_guard_test.dart      7   no injected dependencies; the 300 cap
+    isolate_guard_test.dart       7   two isolates, one ProviderScope each
+    dependency_guard_test.dart    7   the enumerated three packages
+    layer_test.dart               6   dart:io confinement, channel parity
+    no_set_state_test.dart        4   no setState, and no unlistened notifier
+    guards.dart                   -   the scanners, shared by all thirteen
 
 tool/screenshots/
   WN.Probe.cs                    synthetic mouse + keyboard injection
   WN.Print.cs                    PrintWindow(flag 2) capture
   WN.cs                          window find and rect helpers
   capture.ps1 / compose_hero.ps1 screenshot runs
+
+tool/check_architecture.ps1      the §9 size and privacy checks, standalone
 ```
 
-**449 tests: 326 about behaviour, 123 about the rules themselves, 65 about
+**465 tests: 326 about behaviour, 139 about the rules themselves, 65 about
 colour.** All in `flutter test`. Nothing needs a device.
 
 The 51 in `markdown_test` are the densest in the suite, because the renderer has
@@ -83,22 +98,32 @@ These are real. A regression here is caught before it ships.
 
 ### Tier B — architecture guards, in CI
 
-`test/architecture/` reads the source tree as text. These are not Tier B
-anymore — they run in `flutter test` like everything else, and they cover the
-rules whose failure is *silent*: the runner answering `HTCAPTION`, the gesture
-anchor being seeded from the live cursor, `dart:io` reappearing in a widget, a
-channel method the runner does not handle, a doc citing a test that was renamed.
+`test/architecture/` reads the source tree as text and runs in `flutter test`
+like everything else. What makes it Tier B is not *when* it runs but *what it
+can see*: it checks that the code still **looks like** the rule, not that the
+rule still **holds**. It covers the rules whose failure is silent — the runner
+answering `HTCAPTION`, the gesture anchor being seeded from the live cursor,
+`dart:io` reappearing in a widget, a channel method the runner does not handle,
+a doc citing a test that was renamed.
 
-They cannot replace Tier C, because they check that the code still *looks* like
-the rule rather than that the rule still *holds*. A drag that computes the wrong
-number looks exactly like a drag that computes the right one.
+It cannot replace Tier C, because of that distinction. A drag that computes the
+wrong number looks exactly like a drag that computes the right one.
 
 | Guard | Rule |
 |---|---|
-| `layer_test` | `dart:io` confined to `core/`+`data/`; only `platform/` builds a `MethodChannel`; every called method is handled by the runner |
-| `storage_guard_test` | the watcher is on the directory and filtered; the export goes through the atomic writer; the backup is taken **before** the replace |
+| `flutter_rules_guard_test` | `Paint`/`Path` hoisted out of `paint()`; no `RegExp` or sort on a build path; timers and subscriptions cancelled; `sizeOf`, not `MediaQuery.of().size`; no `Intrinsic*`; comments at most three lines; `--obfuscate` + symbols on a release; every rulebook section has a decision and every declined conflict names its authority |
+| `layer_test` | `dart:io` confined to `core/utils/` + `features/*/data/`; only `core/platform/` builds a `MethodChannel`; every called method is handled by the runner |
 | `widget_guard_test` | no `HTCAPTION`; the loop cursor comes from the anchor and not `GetCursorPos`; `WS_EX_NOACTIVATE` dropped and restored; focus returned to the window it was taken from; `WM_MOUSEACTIVATE` defers to compose mode |
+| `storage_guard_test` | the watcher is on the directory and filtered; the export goes through the atomic writer; the backup is taken **before** the replace |
+| `storage_location_guard_test` | the folder the setting resolves to is the folder used; an unreachable one is refused rather than recreated empty; a transfer copies before it deletes |
+| `platform_guard_test` | every registry method is sent by Dart and handled by the runner; every argument key Dart sends is read |
+| `provider_guard_test` | no widget below a scope takes a controller, the channel or settings by parameter; provider files under 300 code-only lines |
+| `no_set_state_test` | no `setState` in `lib/`, and no `ValueNotifier` written and never listened to |
+| `isolate_guard_test` | no repository or controller constructed under `presentation/`; neither root takes a parameter; no `ref` inside `dispose`; one theme resolution |
 | `docs_test` | every rule in §3 has a table row; every cited test exists; every cited guard exists; `AGENTS.md` claims no fixed rule is still broken |
+| `changelog_guard_test` | `Unreleased` entries are one bullet and at most three lines |
+| `icon_guard_test` | one icon source of truth for `setup.exe`, the exe, the shortcut and the Windows Apps list |
+| `dependency_guard_test` | the runtime dependencies are the enumerated three |
 
 ### Tier C — verified manually, with a synthetic-input probe
 
@@ -282,6 +307,36 @@ pay again.
 - **Never gate the ZIP on `WinNotes.exe`** — the executable is `win_notes.exe`.
 - **The build fails with LNK1104 if the app is running** from
   `build\...\Release\win_notes.exe`. Stop it first.
+- **Waiting for a debounced write by sleeping is a coin toss, and `errno 32`
+  from the assertion is the same bug wearing a different hat.** Three tests had
+  their own version of this. `first_launch_test.dart` slept a flat 700 ms and
+  then asserted the file existed — the debounce is 250 ms, so the margin looked
+  generous and it still failed about one full-suite run in five.
+  `palette_test.dart` polled instead, which was better, but polled with a bare
+  `readAsStringSync()`: a read that lands in the millisecond the writer renames
+  the file over it comes back as `PathAccessException`, and the test reported a
+  sharing violation as though the setting had not been saved. **`errno 32` says
+  the write is *happening*, not that it failed** — `docs/storage_pattern.md`
+  §3.5 is the product's answer to the same behaviour at runtime. The helper that
+  answers it here already existed, in `test/helpers/file_io.dart`:
+  `waitForContent` polls a deadline *and* reads through `readFileEventually`.
+  Use it rather than writing a fourth version. What is being claimed is "this
+  eventually lands", and that is the thing to wait on — not a number guessed
+  over a 250 ms debounce on a machine that is busy exactly when the guess is
+  tight.
+- **"did not complete" is a cascade, not a diagnosis.** The first thing to look
+  for is a `Failed to load …` line earlier in the same output. When it appears,
+  every suite that had not finished loading is then reported as *"did not
+  complete"* — no message, no stack, and the file named is whichever one was in
+  flight, which is why it looks like an accusation about that file. The real
+  message is `Connection closed before test suite loaded`: the runner lost its
+  connection to the `flutter_tester` isolate, and one dead connection takes
+  every suite behind it. Nothing in the repository is being tested at that
+  point, so **do not edit the file that got named.** It was measured here at
+  roughly one full-suite run in eight on a machine that had run several dozen
+  back to back, and `flutter test --concurrency=4` did not remove it, so it is
+  the runner and the machine rather than the tests. Reproduce it with a
+  reporter that emits an `error` event before believing any single file.
 
 ---
 
@@ -361,7 +416,7 @@ pay again.
 ## 6. Proof the guards are not inert
 
 Run against a release-worthy tree, breaking one rule at a time and restoring
-afterwards. All five went red; all five returned to green.
+afterwards. All of these went red; all of them returned to green.
 
 | Broken on purpose | Guard that caught it |
 |---|---|
@@ -370,10 +425,25 @@ afterwards. All five went red; all five returned to green.
 | `.bak` taken **after** the rename | `storage_guard_test` → *the backup is taken before the replace, not after* |
 | A `_fire` call with no runner handler | `layer_test` → *every method called from Dart is handled by the runner* |
 | A cited test renamed | `docs_test` → *every test name it cites actually exists* |
+| A four-line comment block planted in `lib/core/theme/` | `flutter_rules_guard_test` → *no comment block in lib/ is longer than three lines*, reporting `path:line (4 lines)` |
+| The rulebook's Appendix rewritten without naming who declined each conflict | `flutter_rules_guard_test` → *the declined rules name the authority that declined them* |
+| A 368-line private widget with a `_buildBody()`, planted in `lib/core/widgets/` | `tool/check_architecture.ps1` → all three of the size cap, the private widget and the private build method, on one file |
 
 The third one is the interesting entry: it was broken by accident while
 extracting the atomic write into a shared helper, and the guard now exists
 because of it.
+
+The sixth and seventh are the other kind of interesting: they were **not**
+planted. Rewriting the rulebook's Appendix — as prose, with every decision
+still intact — dropped a `provider_pattern.md` citation on the way, and the
+guard went red over a document that had lost nothing but a reference. A record
+of a decision that no longer says who made it reads as an unfinished argument,
+and the only reason that is visible is that a test reads the sentence rather
+than the intent.
+
+The eighth is the reason `tool/check_architecture.ps1` exists. One planted
+file broke all three §9 checks at once and named the count and the line, which
+is a faster answer than starting a test runner to be told an expectation failed.
 
 The palette tests were put through the same thing, and one break is worth
 recording because **the first attempt at it was wrong**:

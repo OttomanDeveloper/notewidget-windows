@@ -4,12 +4,8 @@ import 'package:flutter/material.dart';
 /// reverse-engineering which icon is which.
 const Key markdownToggleKey = ValueKey('editor.markdown.toggle');
 
-/// The per-note Markdown switch, beside the thing it changes.
-///
-/// Next to the title rather than in a bar above, for the same reason the
-/// completion circle is: a control that belongs to a note belongs next to that
-/// note's content, and "where do I turn this on" has to be answerable without
-/// going looking.
+/// The per-note Markdown switch, beside the thing it changes: placement answers
+/// "where do I turn this on" without going looking.
 class MarkdownToggleButton extends StatelessWidget {
   const MarkdownToggleButton({
     super.key,

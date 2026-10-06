@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// Asks before doing something that cannot be undone from within the app.
-///
-/// Used for deleting a note, which is the one action with no recovery path once
-/// the undo window closes. The destructive style is not decoration: it is the
-/// only signal that separates "Delete" from "Discard changes".
+/// Deleting a note is the one such action past the undo window; the
+/// destructive style is what separates "Delete" from "Discard".
 Future<bool> confirmDestructiveAction(
   BuildContext context, {
   required String title,

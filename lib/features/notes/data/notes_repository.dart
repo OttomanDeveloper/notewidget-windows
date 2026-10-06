@@ -11,9 +11,7 @@ export '../domain/repositories.dart'
 
 /// Owns `notes.json` and is the only writer of it.
 ///
-/// The widget surface reads this file and never writes it, so there is exactly
-/// one writer in the whole app and no possibility of two isolates racing to
-/// clobber each other's keystrokes.
+/// The widget surface only reads, so no two isolates race to clobber keystrokes.
 class NotesRepository implements INotesRepository {
   NotesRepository(this._file);
 
@@ -117,24 +115,16 @@ class NotesRepository implements INotesRepository {
     _file.blocked = null;
   }
 
-  /// Where the rolling backup lives, or null when there is not one yet.
-  ///
-  /// Checked rather than assumed, because "restore the previous version" has to
-  /// be offered only when it would actually do something. On a first run, or
-  /// after a single write, there is no previous version to restore.
+  /// Where the rolling backup lives, or null. Checked, not assumed: restore is
+  /// offered only when it would actually do something.
   @override
   String? get backupPath {
     final candidate = AtomicJsonFile.backupPathFor(_file.path);
     return File(candidate).existsSync() ? candidate : null;
   }
 
-  /// Replaces the unreadable file with the rolling backup.
-  ///
-  /// The one recovery route that asks nothing of the person holding the problem:
-  /// no backup they had to remember to make, no file to go and find. Returns the
-  /// number of notes recovered, or null if there was no backup or it could not be
-  /// used - in which case the block stays, because a half-applied recovery that
-  /// loses the notes it read would be the worst outcome available.
+  /// Replaces the unreadable file with the rolling backup: the recovery route
+  /// asking nothing of the person; null (block stays) when unusable.
   @override
   Future<int?> restoreBackup() async {
     final backup = backupPath;
@@ -144,12 +134,9 @@ class NotesRepository implements INotesRepository {
     switch (result) {
       case NotesLoaded(:final notes):
         _file.blocked = null;
-        // Copied rather than re-serialised through the normal write, and that
-        // detail matters. A normal write would first copy the file it is
-        // replacing - the corrupt one - over the backup, so recovering would
-        // destroy the only good copy you had. Copying leaves notes.json and
-        // notes.json.bak both holding the recovered version, so the net is still
-        // there if the file is damaged a second time.
+        // Copied rather than re-serialised: a normal write would first back up
+        // the corrupt file over the only good copy. Both files then hold the
+        // recovered version, so the net survives a second incident.
         try {
           await File(backup).copy(_file.path);
         } on FileSystemException {
@@ -165,17 +152,8 @@ class NotesRepository implements INotesRepository {
     }
   }
 
-  /// Moves the unreadable file aside and lets the app start over.
-  ///
-  /// Renames, never deletes. The file on disk may be recoverable by hand, or by
-  /// someone better at JSON than the person staring at the screen, and throwing
-  /// away the only copy of a damaged file to make a button feel better would be
-  /// the opposite of what this project is for. The name carries a timestamp so
-  /// a second incident cannot overwrite the first one's evidence.
-  ///
-  /// Returns where the old file went, or null if it could not be moved - most
-  /// likely because something else is holding it open, in which case the caller
-  /// should say so rather than pretend it worked.
+  /// Moves the unreadable file aside and lets the app start over. Renames, never
+  /// deletes (timestamped); returns where it went, or null when held open.
   @override
   Future<String?> setAsideAndStartFresh() async {
     final source = File(_file.path);
@@ -196,16 +174,9 @@ class NotesRepository implements INotesRepository {
     return kept;
   }
 
-  /// Size and last-changed time of a data file, or null when it cannot be read.
-  ///
-  /// Static, and behind this seam rather than a `File(...)` in the recovery
-  /// screen, for two reasons that are really one: `dart:io` in `ui/` is a layer
-  /// break, and a read performed in the UI cannot see [AtomicJsonFile.blocked]
-  /// — which is exactly the state that screen exists to explain.
-  ///
-  /// Deliberately swallows every failure. This runs on the screen shown *because*
-  /// a file could not be read, so throwing here would replace an explanation
-  /// with a crash. Absent details are better than no screen.
+  /// Size and last-changed time of a data file, or null. Behind this seam (not a
+  /// `File(...)` in the UI); swallows every failure, since this runs on the
+  /// screen shown *because* a file could not be read.
   static FileDescription? describeFile(String path) {
     try {
       final file = File(path);
@@ -258,23 +229,14 @@ class NotesRepository implements INotesRepository {
   String get path => _file.path;
 }
 
-/// Exports and imports notes as plain text.
-///
-/// The format is deliberately boring: one note per block, the title on the
-/// first line, then the body, separated by a line of dashes. A backup taken
-/// years from now has to be readable without this app.
+/// Exports and imports notes as plain text. Deliberately boring (title line,
+/// body, dash divider) so a backup stays readable without this app.
 class BackupService implements IBackupService {
   const BackupService();
 
-  /// A markdown horizontal rule, chosen because it is the one divider a person
-  /// hand-writing a backup would reach for - which makes it exactly the string
-  /// most likely to turn up inside a note body.
-  ///
-  /// The importer does not use this as a delimiter at all. It splits on any line
-  /// of three or more dashes and re-inserts the body verbatim, so a body
-  /// containing a rule of any length survives the round trip. Treating the
-  /// delimiter as "a line of dashes" rather than "this exact string" is what
-  /// makes that true.
+  /// A markdown horizontal rule: the divider a person hand-writing a backup
+  /// would most likely use inside a body, so the importer never matches it
+  /// exactly — it splits on any line of three-plus dashes and restores verbatim.
   static const String separator =
       '----------------------------------------';
 
@@ -291,17 +253,8 @@ class BackupService implements IBackupService {
     return true;
   }
 
-  /// Exports notes as plain text.
-  ///
-  /// Bodies are indented so the shape of a note survives the round trip. A body
-  /// containing a row of dashes is indistinguishable from a note boundary
-  /// otherwise, and the only honest way to stop that is to stop the body from
-  /// ever looking like one. Import strips the indent again, and tolerates
-  /// unindented bodies so a hand-written backup still reads.
-  ///
-  /// The indent is deliberately spaces rather than a tab: a tab renders as
-  /// eight columns in some editors and one in others, and a backup has to look
-  /// the same in whatever opens it.
+  /// Exports notes as plain text. Bodies are space-indented (not tabs) so a
+  /// body dash-line never looks like a boundary; import strips the indent.
   static const String bodyIndent = '    ';
 
   @override
@@ -330,17 +283,8 @@ class BackupService implements IBackupService {
     return buffer.toString();
   }
 
-  /// Writes [notes] to [path] as plain text, atomically.
-  ///
-  /// Lives here rather than as a `File(path).writeAsString` at the call site for
-  /// the reason that matters most: an export is the file someone reaches for when
-  /// everything else has failed, so a truncated one is the worst outcome
-  /// available. Written straight to the destination it could be interrupted
-  /// halfway and leave something that reads like a backup but is missing half
-  /// your notes — with nothing to tell you it was incomplete.
-  ///
-  /// Returns the text written, so a caller can report or log exactly what
-  /// landed on disk.
+  /// Writes [notes] to [path] as plain text, atomically. An export is the file
+  /// reached for when everything failed, so a truncated one is the worst outcome.
   @override
   Future<String> exportTo(String path, List<Note> notes) async {
     final text = export(notes);
@@ -348,12 +292,8 @@ class BackupService implements IBackupService {
     return text;
   }
 
-  /// Reads a backup from [path], or null if it cannot be read or holds no notes.
-  ///
-  /// Null rather than an exception, because the caller is a person who chose
-  /// this file and needs to be told "that did not work", not handed a
-  /// `FileSystemException`. A file that parses to zero notes is treated the
-  /// same way: an empty file is not a backup.
+  /// Reads a backup from [path], or null. Null, not an exception: the caller
+  /// tells the person "that did not work", and an empty file is not a backup.
   @override
   Future<List<Note>?> readFrom(String path) async {
     try {
@@ -367,11 +307,8 @@ class BackupService implements IBackupService {
     }
   }
 
-  /// Parses the plain-text backup format.
-  ///
-  /// Deliberately forgiving: a backup edited in Notepad is still a backup. A
-  /// block with no title simply becomes a note with an empty title, which is a
-  /// perfectly valid note.
+  /// Parses the plain-text backup format. Deliberately forgiving (Notepad edits
+  /// still count); a title-less block is a note with an empty title.
   @override
   List<Note> import(String text) {
     // Normalised first so a file saved or edited on Windows reads the same as
@@ -387,11 +324,9 @@ class BackupService implements IBackupService {
       index++;
     }
 
-    // Each iteration consumes exactly one divider, one title line and one body,
-    // so the loop runs once per note. The body scan below always leaves `index`
-    // on the next divider (or the end), which is what keeps the count exact:
-    // any earlier attempt to "skip blank lines to find the next block" turned
-    // the spacing the exporter writes between notes into phantom empty notes.
+    // Each iteration consumes one divider, title and body, leaving `index` on
+    // the next divider or the end — never on spacing, which is what used to
+    // mint phantom empty notes.
     while (index < lines.length) {
       while (index < lines.length && _isDivider(lines[index])) {
         index++;
@@ -400,10 +335,8 @@ class BackupService implements IBackupService {
       // A divider with nothing after it is a divider, not a note.
       if (!_hasContent(lines, index)) break;
 
-      // The title is the first line after the divider, taken verbatim rather
-      // than skipping blanks first. Skipping blanks would swallow the one
-      // legitimate empty title a block can have, turning it into the body's
-      // first line instead.
+      // The title is taken verbatim, blanks included: skipping them would eat
+      // the one legitimate empty title a block can have.
       final title = lines[index].trim();
       index++;
 
@@ -412,13 +345,8 @@ class BackupService implements IBackupService {
       // is not disturbed.
       if (index < lines.length && lines[index].isEmpty) index++;
 
-      // Only indented lines are body. Everything else after the blank line is
-      // the spacing the exporter wrote before the next divider, and treating it
-      // as content is what produced an empty phantom note between every pair.
-      // Body lines run to the next divider. Indented lines have the indent
-      // stripped. Unindented lines are accepted as body too, but only up to the
-      // first run of blank lines: that run is the spacing before the next
-      // divider, and treating it as content is what produced a phantom empty
+      // Only indented lines are body; the blank run before the next divider is
+      // exporter spacing, and treating it as content minted a phantom empty
       // note between every pair of real ones.
       final body = <String>[];
       var indentStops = false;

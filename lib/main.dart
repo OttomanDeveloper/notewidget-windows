@@ -11,13 +11,8 @@ import './features/notes/presentation/screens/editor_app/editor_app.dart';
 import 'core/widgets/shell_missing/shell_missing_app.dart';
 import './features/widget/presentation/screens/widget_app/widget_app.dart';
 
-/// Entry point for both surfaces.
-///
-/// The runner creates two Windows windows, each with its own Flutter engine and
-/// its own isolate, and both call `main()`. The `--surface` argument decides
-/// which one this is. That is why there is no second entrypoint to keep in sync
-/// with this one: the same bootstrapping runs on both sides and only the surface
-/// differs.
+/// Entry point for both surfaces: two Windows windows, two isolates, one `main()`.
+/// `--surface` picks the surface, so no second entrypoint to keep in sync.
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -32,16 +27,9 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  // Two steps, and the order is the whole point.
-  //
-  // First the *reported* paths: where the runner said to keep things. That is always
-  // where `settings.json` is looked for, because that file is how the app learns where
-  // anything else is — so it has to be readable before the answer is known.
-  //
-  // Then the real paths, which follow the folder chosen in Settings. Without this
-  // second step the Storage picker was a placebo: it saved a path, displayed it, and
-  // every file went to `%APPDATA%\WinNotes` regardless. Verified on a release build
-  // before this line existed — pointing the app at an empty folder left it empty.
+  // Two steps: reported paths first (settings.json lives there and names the
+  // real folder), then real paths. Without the second step the Storage picker
+  // saved a path while every file still went to `%APPDATA%\WinNotes`.
   final reported = AppPaths.resolve(
     reported: launch.dataDirectory,
     executablePath: launch.executablePath,
@@ -55,31 +43,14 @@ Future<void> main(List<String> args) async {
     dataDirectory: StorageLocation.resolveDataDirectory(reported),
   );
 
-  // Belt and braces: the runner also creates the directory before Dart starts,
-  // but a data directory that does not exist means every read is a silent miss.
-  //
-  // `paths.dataDirectory`, not `launch.dataDirectory`. They differ whenever
-  // `WIN_NOTES_DATA_DIR` is set, and using the reported one here created the real
-  // `%APPDATA%\WinNotes` even when the caller had asked for a different directory
-  // entirely - so the override was honoured for reading and writing while still
-  // touching the profile it exists to avoid. A directory that appears where nobody
-  // asked for one is a small thing; on a verification run it is the difference
-  // between a throwaway profile and somebody's notes.
+  // `paths.dataDirectory`, not `launch.dataDirectory`: with `WIN_NOTES_DATA_DIR`
+  // set they differ, and creating the reported one would touch the real profile
+  // the override exists to avoid.
   Directory(paths.dataDirectory).createSync(recursive: true);
 
-  // The `ProviderScope` lives here rather than inside each root widget, and that
-  // is what lets both roots take **no parameters at all** - `AGENTS.md` §0.8 with
-  // nothing carved out of it.
-  //
-  // The three things a container cannot discover for itself are the runner channel,
-  // what the runner reported at launch, and where the files are. They exist before
-  // any widget does, so they are supplied once, here, and every widget below reads
-  // them with `ref`. The roots used to take all three and pass them down.
-  //
-  // Above the branch, so it looks like one scope is shared - it is not. Each isolate
-  // runs this function separately, so each builds its own scope over its own
-  // channel. That is `docs/isolate_pattern.md` §2 and it is unchanged by where the
-  // scope is written.
+  // The `ProviderScope` lives here so both roots take no parameters (`AGENTS.md`
+  // §0.8). The three overrides are what a container can't discover: channel,
+  // launch report, and file paths. One scope per isolate (`docs/isolate_pattern.md` §2).
   runApp(
     ProviderScope(
       overrides: [

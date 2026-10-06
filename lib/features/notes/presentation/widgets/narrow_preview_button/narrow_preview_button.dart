@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// The switch between the rendered preview and the raw source.
-///
-/// Takes [showsPreview] rather than reading the notifier, so the label cannot
-/// drift from the pane above it. The first version read the flag here and went
-/// stale - see the note on the `ValueListenableBuilder` in [MarkdownBody].
+/// Source/preview switch taking [showsPreview]: the label cannot drift from the
+/// pane, unlike the first version that read the flag and went stale.
 class NarrowPreviewButton extends StatelessWidget {
   const NarrowPreviewButton({
     super.key,

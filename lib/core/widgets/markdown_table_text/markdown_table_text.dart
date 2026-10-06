@@ -4,11 +4,8 @@ import 'package:markdown/markdown.dart' as md;
 import '../markdown_inline_text/markdown_inline_text.dart';
 import '../markdown_style/markdown_style.dart';
 
-/// A table flattened to one line per row, cells separated by `|`.
-///
-/// Same content, no grid. The separator is the point: `textContent`
-/// concatenates cells with nothing, which turns `Surface | Density` into
-/// `SurfaceDensity` - and a renderer that produces less than the note said is
+/// A table flattened to one line per row, `|`-separated. Same content, no grid:
+/// `textContent` concatenates cells with nothing, and less than the note said is
 /// the one failure this file does not have.
 class MarkdownTableText extends StatelessWidget {
   const MarkdownTableText({

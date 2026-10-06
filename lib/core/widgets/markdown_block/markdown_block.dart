@@ -14,12 +14,8 @@ import '../markdown_table/markdown_table.dart';
 import '../markdown_table_text/markdown_table_text.dart';
 
 /// One block node, dispatched by tag.
-///
-/// The switch lives here rather than scattered across call sites, so there is
-/// one place that decides what a tag becomes. Empty nodes render as nothing.
-/// Recursion closes over this widget's own parameters, so no caller passes
-/// builders down: every widget below takes only the node and the style it draws
-/// with.
+/// The switch lives here alone (empty nodes render nothing); recursion closes
+/// over this widget's parameters, so nothing below takes builders.
 class MarkdownBlock extends StatelessWidget {
   const MarkdownBlock({
     super.key,
@@ -107,12 +103,8 @@ class MarkdownBlock extends StatelessWidget {
         );
 
       case 'table':
-        // A table in a 360px card is a grid of unreadable slivers, so the
-        // structure is dropped rather than shrunk. The cells must keep a
-        // separator though: `textContent` concatenates them with nothing, which
-        // turns `Surface | Density | Widget | compressed` into
-        // `SurfaceDensityWidgetcompressed` - and a renderer that produces less
-        // than the note said is the one failure this file does not have.
+        // Grids do not fit cards: structure is dropped, but cells keep a `|`
+        // separator, since `textContent` concatenates them with nothing.
         if (style.density == MarkdownDensity.widget) {
           return MarkdownTableText(
             node: element,

@@ -19,8 +19,7 @@ import '../markdown_toggle_button/markdown_toggle_button.dart';
 
 /// Title and body of the selected note, with no toolbar and no save button.
 ///
-/// Editing is plain text because the widget shows plain text too. Rich text
-/// would only be readable in one of the two places.
+/// Plain text, because the widget shows plain text too.
 class NoteEditorPane extends ConsumerStatefulWidget {
   const NoteEditorPane({
     super.key,
@@ -30,9 +29,7 @@ class NoteEditorPane extends ConsumerStatefulWidget {
 
   /// Only supplied in the narrow layout, where the editor covers the list.
   ///
-  /// A callback rather than a flag the pane reads, for the same reason the
-  /// list's `onOpenNote` is one: the narrow layout owns which pane is showing,
-  /// and this pane only needs to ask to go back.
+  /// A callback because the narrow layout owns which pane shows.
   final VoidCallback? onBack;
 
   bool get hasBack => onBack != null;
@@ -51,15 +48,11 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
 
   /// Whether the narrow layout is showing the preview rather than the source.
   ///
-  /// Reset when the note changes, because carrying "I was reading the preview"
-  /// across to a different note would drop someone into a rendered view of text
-  /// they did not write, with no caret and nothing to type into.
+  /// Reset on note change so a new note never opens in a stale preview.
   final ValueNotifier<bool> _narrowShowsPreview = ValueNotifier<bool>(false);
 
-  /// What the preview renders. Updated from the body field through a debounce
-  /// rather than on every keystroke: parsing Markdown is the most expensive
-  /// thing this pane does, and rebuilding the preview per character is paying
-  /// for the same answer repeatedly (§7.1).
+  /// What the preview renders. Debounced (250ms) from the body field: Markdown
+  /// parsing is this pane's most expensive work (§7.1).
   final ValueNotifier<String> _previewSource = ValueNotifier<String>('');
   Timer? _previewDebounce;
 
@@ -90,11 +83,8 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
     super.dispose();
   }
 
-  /// Loads a note's text into the fields when the selection changes.
-  ///
-  /// Guarded on [Note.id] rather than on a diff of the text: an incoming change
-  /// from the widget surface or an undo has to overwrite the fields even when
-  /// the text happens to match, or the caret would sit in stale content.
+    /// Loads a note's text into the fields when the selection changes. Guarded
+    /// on [Note.id]: overwrites even matching text, or the caret sits in stale content.
   void _syncToSelected(NotesState? state, NotesNotifier notifier, {bool focusBody = false}) {
     final note = state?.selectedNote;
     if (note == null) {
@@ -155,10 +145,8 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
     final state = ref.watch(notesProvider).value;
     final notifier = ref.read(notesProvider.notifier);
 
-    // `Consumer` rather than `ConsumerWidget.build` directly, because `_syncToSelected`
-    // has to run before anything is drawn - it loads the selected note's text into
-    // the fields - and a nested Consumer is the only place that can be ordered
-    // against the build below it without a post-frame callback.
+    // `Consumer` so `_syncToSelected` runs before drawing: it loads the text
+    // into the fields, ordered against the build without a post-frame callback.
     return Consumer(
       builder: (context, ref, _) {
         _syncToSelected(state, notifier);

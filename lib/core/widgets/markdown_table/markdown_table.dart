@@ -23,10 +23,8 @@ class MarkdownTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The rows are one level down, inside `thead` and `tbody`, not children of
-    // the table. Looking only at direct children finds no rows at all and
-    // renders nothing - which reads as "the parser does not do tables" rather
-    // than as a bug in here.
+      // Rows live one level down (`thead`/`tbody`), not as direct children: looking
+      // only there finds no rows, which reads as "no table support" instead of a bug.
     final rows = <List<md.Element>>[];
     void collect(md.Element parent) {
       for (final child in parent.children ?? const <md.Node>[]) {

@@ -4,19 +4,21 @@
 
 ### Added
 
-- `docs/flutter_architecture_pattern.md`: a general Flutter architecture, performance and Riverpod rulebook, copied in verbatim for future work, with an appendix listing where it contradicts this repository.
-- `flutter_rules_guard_test`: pins the applicable subset of that rulebook, with a decision table covering every section.
+- `docs/flutter_architecture_pattern.md`: a Flutter architecture, performance and Riverpod rulebook, carried in verbatim, with an appendix recording where it contradicted this repository and what the migration did about it.
+- `flutter_rules_guard_test`: pins the rules of that rulebook that apply here, with a decision table covering every section.
 - `lib/core` and `lib/features/notes|widget|settings`: the feature-first tree from rulebook §4, with `data/`, `domain/` and `presentation/` per feature.
 - Domain repository interfaces; providers and notifiers depend on them, with `@override` on every implementation.
 - Derived providers (`selectedNote`, `focusedNote`, `visibleNotes`, `noteById.family`, theme fields); screens watch slices via `ref.select`.
 - `widgetDisplayNotesProvider` + `widgetNoteByIdProvider.family`: the surface derives the list, each card watches its own note.
 - `settings_dialog.dart` is a 40-line composition; its 12 widgets live in their own folders.
+- Comments run at most 3 lines; `flutter_rules_guard_test` fails anything longer.
+- `tool/check_architecture.ps1` runs the §9 size and privacy checks outside `flutter test`, and in CI.
 - `widget_surface.dart`, `editor_screen.dart` and `note_editor_pane.dart` are compositions; composer, cards chrome, corrupt screen, app bar and editor sections live in their own folders.
 - `changelog_guard_test`: fails on an entry longer than one bullet.
 - `docs/provider_pattern.md`, `docs/isolate_pattern.md`, `docs/platform_pattern.md`.
 - `AGENTS.md` section 0.7 to 0.11: no `setState`, no injected dependencies, a `WidgetRef` lifetime rule, a declared channel contract, construction in providers.
 - `no_set_state_test`, `provider_guard_test`, `platform_guard_test`, `isolate_guard_test`.
-- `lib/src/state/providers.dart`: the dependency graph, replacing ten hand-written constructions across the two roots.
+- `lib/core/utils/app_providers.dart`: the dependency graph, replacing ten hand-written constructions across the two roots.
 - Riverpod and flutter_riverpod, as the state layer.
 - `WidgetNotifier.reloadNotes()`, so a change to `notes.json` can be applied without the directory watcher.
 - `TestHarness` in `test/helpers/`, so tests build a container rather than a controller.
@@ -33,10 +35,11 @@
 - Lints: `unawaited_futures`, `cancel_subscriptions`, `close_sinks`,
   `parameter_assignments`, `avoid_catching_errors`, `use_string_buffers`,
   `prefer_final_locals`, `require_trailing_commas`, `avoid_positional_boolean_parameters`.
+- Lints: `prefer_const_constructors`, `prefer_const_literals_to_create_immutables`, `prefer_const_declarations`, `avoid_unnecessary_containers`, `sized_box_for_whitespace`, `use_key_in_widget_constructors`.
 
 ### Changed
 
-- `AGENTS.md` §3.1 names `flutter_rules_guard_test`; architecture count is 137 and the suite is 463.
+- `AGENTS.md` §3.1 names `flutter_rules_guard_test`; architecture count is 139 and the suite is 465.
 - The provider cap is 300 lines code-only; only `notes_controller.dart` (333) is over, split separately.
 - The release packaging passes `--obfuscate --split-debug-info` and checks the symbols exist.
 - Ten positional `bool` parameters are now named, across the notes, settings and widget notifiers and `ShellChannel`.
@@ -45,6 +48,7 @@
 
 ### Fixed
 
+- `first_launch_test.dart` and `palette_test.dart` now wait for the debounced write through `test/helpers/file_io.dart` instead of sleeping 700 ms or reading unguarded.
 - **The installer and the Windows 11 Apps list now show the project logo.** The installer drew Inno Setup's own icon, and the app was blank in Settings > Apps.
 - **A first launch no longer creates its first note only when you type.** Opening the app on a fresh profile and closing it again without typing left nothing behind, and every launch gave the note a new id.
 - The widget window was never configured on launch; the call read state that did not exist yet and returned early.

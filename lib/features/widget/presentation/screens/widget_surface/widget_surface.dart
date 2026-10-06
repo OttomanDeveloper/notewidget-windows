@@ -19,22 +19,12 @@ import '../../../../../core/theme/theme.dart';
 import '../../widgets/widget_note_card/widget_note_card.dart';
 
 /// The widget surface: a frameless, always-on-top column of notes.
-///
-/// The window supplies the acrylic, the rounded corners and the shadow, all of
-/// which Windows composites natively. What is painted here is only the content,
-/// on a translucent surface, so the system backdrop shows through wherever
-/// nothing is drawn.
+/// Paints only content on a translucent surface; acrylic, corners and shadow are composited natively.
 class WidgetSurface extends ConsumerStatefulWidget {
   const WidgetSurface({super.key});
 
-  /// Everything this widget needs arrives through `ref`: the notes, the window
-  /// state, the palette, whether acrylic is available. None of it is a parameter.
-  /// `AGENTS.md` §0.8 — and this file was the worst offender at 3 injected
-  /// parameters and 9 `AnimatedBuilder` subscriptions.
-  ///
-  /// The palette could not arrive through the theme even if it were passed: this
-  /// surface deliberately replaces the app theme with a bare `ThemeData`, because it
-  /// is drawn over the desktop rather than over the app's own background.
+  /// Everything this widget needs arrives through `ref`, never as parameters [`AGENTS.md` §0.8].
+  /// The palette comes from a provider because the surface replaces the app theme with a bare `ThemeData`.
 
   @override
   ConsumerState<WidgetSurface> createState() => _WidgetSurfaceState();
@@ -43,36 +33,17 @@ class WidgetSurface extends ConsumerStatefulWidget {
 class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   final ScrollController _scroll = ScrollController();
   /// The widget surface's own controller, reached through `ref`.
-  ///
-  /// A getter rather than a field, so every call site reads `controller`
-  /// still meaning "the notifier" - but now from a provider rather than from a
-  /// constructor. `read` and not `watch`: the notifier is for *doing*, and watching
-  /// it here would rebuild the whole surface on every note edit in addition to the
-  /// `watch` further down that already does exactly that.
+  /// `read` not `watch`: the notifier is for doing, and watching would rebuild on every edit.
   WidgetNotifier get controller => _notifier;
 
-  /// Captured in [initState] because Riverpod forbids *any* `ref` use inside
-  /// `dispose`, not merely use after an await.
-  ///
-  /// `dispose` needs the notifier to tell the runner to give the keyboard back when
-  /// the surface is torn down with its composer open. Reaching for `ref` there throws
-  /// `Bad state: Using "ref" when a widget is about to or has been unmounted`, and
-  /// the failure lands during tree finalisation - after the test has already passed -
-  /// so it is reported as a separate error and is easy to miss.
-  ///
-  /// Same rule as the two roots; see `_EditorScopeState`.
+  /// Captured in [initState]: Riverpod forbids any `ref` use inside `dispose`.
+  /// Needed to return the keyboard when torn down with the composer open; see `_EditorScopeState`.
   late final WidgetNotifier _notifier;
 
-  /// The current window state, for event handlers outside `build()`.
-  ///
-  /// `read` and not `watch`: handlers cannot watch, and `build()` watches
-  /// `widgetProvider` explicitly below.
+  /// The current window state, for handlers outside `build()` (`read` not `watch`).
   WidgetSurfaceState get _state => ref.read(widgetProvider).requireValue;
 
-  /// The palette, from a provider rather than from the theme - see the class doc.
-  ///
-  /// For handlers; `build()` watches `accentPaletteProvider` explicitly so a
-  /// palette change rebuilds what it draws (`provider_pattern.md` §2).
+  /// The palette from a provider for handlers; `build()` watches `accentPaletteProvider` [`provider_pattern.md` §2].
   WinNotesPalette get palette => ref.read(accentPaletteProvider);
 
   /// For handlers; `build()` watches `widgetSurfaceThemeProvider` explicitly.
@@ -134,30 +105,9 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     return false;
   }
 
-  /// Double click opens the editor.
-  ///
-  /// Implemented with [Listener] rather than a GestureDetector overlay on top
-  /// of the list: a Listener never enters the gesture arena, so cards stay
-  /// tappable and the list stays scrollable. A translucent GestureDetector
-  /// sitting above them would compete for every pointer event.
-  /// Recognising a widget drag and handing it to the runner.
-  ///
-  /// The gesture is *detected* here and *performed* in the runner. Flutter
-  /// reports pointer positions relative to the view, so a window that follows
-  /// the cursor shrinks its own delta: computing the drag in Dart lands the
-  /// widget at a little over 40% of the distance asked for, however carefully
-  /// it is done, and no amount of care in Dart fixes it. The screen-space
-  /// cursor exists only in the runner, so the loop that moves the window lives
-  /// there.
-  ///
-  /// Deciding *what* the gesture is stays here, because it cannot move out: the
-  /// same pixels also have to select a card and scroll the list, and the
-  /// position lock is a Dart-side setting.
-  ///
-  /// The grab band is in logical pixels, so it has to follow DPI. It also has
-  /// to clear the window's own rounded corner, because the native region clips
-  /// those pixels away and a grab aimed at the literal corner arrives at
-  /// nothing at all.
+    /// Double click opens the editor via [Listener], outside the gesture arena.
+    /// Drags are recognised here (selection, scroll, lock) and performed in the
+    /// runner; the grab band follows DPI in logical pixels.
   void _syncGrabBand(BuildContext? context) {
     final scale =
         (context == null ? null : MediaQuery.maybeDevicePixelRatioOf(context)) ?? 1.0;
@@ -169,11 +119,8 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
 
   void _onPointerDown(PointerDownEvent event) {
     _syncGrabBand(_lastContext);
-    // While the composer is open, the pointer belongs to the text field. The
-    // grab band runs along the very bottom of the widget, which is exactly where
-    // the field sits, so without this a click near its edge would resize the
-    // window instead of placing the caret - and dragging the widget while
-    // halfway through typing a note is nobody's intention.
+    // While composing, the pointer belongs to the text field; otherwise a click near
+    // its edge would resize instead of placing the caret.
     if (_composing.value) return;
     final size = _surfaceSize;
     final edge = size == null
@@ -199,27 +146,13 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     _lastTapPosition = event.position;
   }
 
-  /// Whether the list should take this gesture rather than the window.
-  ///
-  /// Decided from the scroll extent, not from whether a scroll has started yet.
-  /// Ordering against the notification is a race: the first move past the
-  /// threshold often arrives before Flutter has delivered ScrollStart, and a list
-  /// that has nothing left to scroll never delivers one at all - which is
-  /// exactly the case where moving the window is the right answer.
-  ///
-  /// The rule is the one people already expect from a sidebar or a list: scroll
-  /// while there is more to read, and once the list is at its end, keep going and
-  /// the widget comes with you.
+  /// Whether the list takes this gesture, decided from scroll extent not `ScrollStart`.
+  /// Scroll while there is more to read; at the end the widget moves with the drag.
   bool _listCanScroll(double dy) {
     if (!_scroll.hasClients) return false;
     final position = _scroll.position;
-    // Half a pixel of slack, so a list already at its end does not go on
-    // claiming the gesture over a rounding error.
-    //
-    // Dragging up pushes the offset *up*, towards the end of the list, and
-    // dragging down brings it back towards the start. Getting that backwards
-    // hands every upward drag to the window, which is the direction people most
-    // often use to scroll.
+    // Half-pixel slack avoids claiming the gesture over rounding; up moves toward the end.
+    // Down moves toward the start; reversed hands scrolls to the window.
     const slack = 0.5;
     if (dy < 0) {
       return position.pixels < position.maxScrollExtent - slack;
@@ -230,11 +163,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     return false;
   }
 
-  /// Hands a recognised drag to the runner, once and only once.
-  ///
-  /// Past this point the pointer belongs to the native loop. Flutter stops
-  /// getting useful coordinates the moment the window starts following the
-  /// cursor, so there is nothing further to do here but stay out of the way.
+  /// Hands a recognised drag to the runner once; past this the native loop owns the pointer.
   void _onPointerMove(PointerMoveEvent event) {
     final gesture = _gesture;
     if (gesture == null || gesture.kind == GestureKind.handedOff) return;
@@ -270,12 +199,8 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     _gesture = null;
   }
 
-  /// Says why a drag did nothing instead of swallowing it.
-  ///
-  /// Only ever shown after someone has actually tried to drag a locked widget,
-  /// which is the only moment the answer is wanted. Naming the place to change
-  /// it matters as much as saying it is locked: "locked" alone leaves the next
-  /// question unanswered.
+  /// Says why a locked drag did nothing, shown only after an actual attempt.
+  /// Names where to change it, not just that it is locked.
   void _explainLockedDrag() {
     if (_hintTimer != null) return;
     _lockedHint.value = true;
@@ -320,13 +245,8 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
   final ValueNotifier<bool> _lockedHint = ValueNotifier<bool>(false);
   Timer? _hintTimer;
 
-  /// The add-a-note field, and whether it is open.
-  ///
-  /// Open means the widget is holding the keyboard, which is a real thing to be
-  /// responsible for: the runner drops the window's WS_EX_NOACTIVATE so the text
-  /// field can work at all, and puts it back the moment this goes false. Every
-  /// path out of here - saved, cancelled, disposed - has to close it, or the
-  /// widget keeps the caret for the rest of the session.
+  /// The add-a-note field; open means the widget holds the keyboard (`WS_EX_NOACTIVATE` dropped).
+  /// Every exit path must close it or the caret is kept with no field visible.
   final TextEditingController _compose = TextEditingController();
   final FocusNode _composeFocus = FocusNode();
   final ValueNotifier<bool> _composing = ValueNotifier<bool>(false);
@@ -384,20 +304,9 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     _hintTimer?.cancel();
     _compose.dispose();
     _composeFocus.dispose();
-    // Closing rather than disposing leaves the window as it found it. A widget
-    // that kept WS_EX_NOACTIVATE dropped would hold the caret with no field
-    // visible to type into.
-    // Read once, here, while the element is still alive.
-    //
-    // Riverpod asserts on *any* `ref` use inside `dispose`, so a call routed through
-    // the [controller] getter throws `Bad state: Using "ref" when a widget is about
-    // to or has been unmounted`. The notifier is captured instead, which is the same
-    // rule the two roots follow - see `_EditorScopeState`.
-    //
-    // Worth noting what this protects: a widget torn down while its composer is open
-    // would otherwise leave the native window holding the keyboard with no field
-    // visible to type into, and the only symptom would be a desktop widget that
-    // swallows typing.
+    // Closing returns the keyboard; read the notifier once here while the element is alive.
+    // Riverpod asserts on any `ref` in `dispose` via [controller]; see `_EditorScopeState`.
+    // A torn-down composer would otherwise leave the native window holding the keyboard.
     if (_composing.value) unawaited(_notifier.setComposeMode(active: false));
     _scroll
       ..removeListener(_onScroll)
@@ -430,15 +339,8 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     // its own note, so typing in one rebuilds one.
     final notes = ref.watch(widgetDisplayNotesProvider);
 
-    // Three `ValueNotifier`s that were `setState` fields until 2026-10-05, merged
-    // into one listener so the surface repaints when any of them changes.
-    //
-    // **This listener is not optional.** Without it the notifiers were written and
-    // nothing listened: a refused drag set `_lockedHint` and the "Locked in place"
-    // hint never appeared. `no_set_state_test` cannot catch that - it checks that
-    // `setState` is gone, not that its replacement rebuilds. Two of these three were
-    // read from inside another builder and one was not, which is the shape a
-    // mechanical rewrite leaves behind and the reason the missing one is named here.
+    // Three former `setState` fields merged into one listener so the surface repaints.
+    // Without it writes never rebuild; `no_set_state_test` cannot catch that.
     return ListenableBuilder(
       listenable: Listenable.merge([_hovering, _composing, _lockedHint]),
       builder: (context, _) {
@@ -476,10 +378,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                           );
                           _lastContext = context;
 
-                          // The one real design decision in this project, decided from the
-                          // widget's own size rather than from scroll metrics:
-                          // those are not readable during sliver layout, which
-                          // is when this list builds its children.
+                          // Decided from the widget's own size: scroll metrics are unreadable during sliver layout.
                           final roomy = constraints.maxHeight >= 240 &&
                               constraints.maxWidth >= 200;
 
@@ -490,10 +389,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                             onNotification: _onScrollNotification,
                             child: ListView.separated(
                               controller: _scroll,
-                              // Nothing to disable here. Once the drag is handed
-                              // to the runner, the runner takes the mouse capture
-                              // and the list never sees another pointer event, so
-                              // the two cannot fight over it.
+                              // Once handed to the runner it takes mouse capture, so the list sees no further events.
                               physics: const ClampingScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
                               itemCount: notes.length,

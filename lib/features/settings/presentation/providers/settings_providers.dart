@@ -17,13 +17,8 @@ final settingsRepositoryProvider = Provider<ISettingsRepository>((ref) {
   );
 });
 
-/// The `ThemeData` both surfaces draw with.
-///
-/// The editor uses it as the `MaterialApp`'s theme. The widget surface uses it for
-/// the palette and high-contrast flag and then deliberately replaces the ambient
-/// `ThemeData` with a bare one, because the widget paints its own surface colour and
-/// an ambient brightness would be wrong - see `widget_app.dart`. That is a separate
-/// decision about `Theme`, not a second answer to this question.
+/// The `ThemeData` both surfaces draw with. The widget replaces the ambient one
+/// with a bare surface (it paints its own colour); see `widget_app.dart`.
 final widgetSurfaceThemeProvider = Provider<ThemeData>((ref) {
   final selected = ref.watch(
     settingsProvider.select(
@@ -49,14 +44,9 @@ final widgetSurfaceThemeProvider = Provider<ThemeData>((ref) {
   );
 });
 
-/// The palette on its own, for the widget surface.
-///
-/// A separate provider rather than a field on [WidgetSurfaceTheme] because the
-/// widget needs the accent colour and the palette's contrast helpers, and reading
-/// them out of a `ThemeData` would mean reaching into it for fields it does not
-/// expose. `paletteById(0)` is the default rather than a named constant, because a
-/// settings file written before the setting existed resolves to index zero -
-/// `AGENTS.md` §0.5.
+/// The palette on its own, for the widget surface. Separate because `ThemeData`
+/// exposes no palette fields; index zero is the default for pre-setting files
+/// (`AGENTS.md` §0.5).
 final accentPaletteProvider = Provider<WinNotesPalette>((ref) {
   final id = ref.watch(
     settingsProvider.select((v) => v.value?.settings.accentPalette),
@@ -64,10 +54,8 @@ final accentPaletteProvider = Provider<WinNotesPalette>((ref) {
   return paletteById(id);
 });
 
-/// Where notes actually live, honouring a custom location.
-///
-/// Derived rather than concatenated in `build()`: the only input is the
-/// configured directory, so an unrelated settings change leaves this row alone.
+/// Where notes actually live: derived from the configured directory, so
+/// unrelated settings changes leave this row alone.
 final storageDirectoryProvider =
     Provider.family<String, String>((ref, defaultDirectory) {
   final configured = ref.watch(

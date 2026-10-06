@@ -6,5 +6,6 @@
 - [x] Wave 2c — settings-group selects, preview debounce, CorruptNotesScreen de-scope, listen audit (verify: analyze + test)
 - [x] Wave 3a — settings_dialog split (12 files, all <350 code-only) (verify: analyze + test)
 - [x] Wave 3b — widget_surface, editor_screen, note_editor_pane splits (all <350 code-only) (verify: analyze + test)
-- [ ] Wave 3c — splits: markdown_text (731 code-only), small extractions (NoteListItem, scopes, CheckPainter, card toggle, empty list)
-- [ ] Wave 4 — comments/lints/checks/docs + final verify (analyze + test + §9 script)
+- [x] Wave 3c — markdown_text split (16 files), scopes, painter, small extractions (verify: analyze + test)
+- [x] Wave 4a — comments ≤3 lines + comment guard (verify: analyze + test)
+- [x] Wave 4b — AGENTS/PROJECT/README/changelog final + full serial verify + §9 script

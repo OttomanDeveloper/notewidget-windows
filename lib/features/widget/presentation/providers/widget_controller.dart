@@ -15,12 +15,8 @@ import '../../../../core/platform/shell_channel.dart';
 import '../../../../core/utils/app_providers.dart';
 import '../../../settings/presentation/providers/settings_controller.dart';
 
-/// Everything the widget surface owns.
-///
-/// The widget runs in its own isolate and has its own copy of this, read from the
-/// same files the editor writes. That is not a shortcut around shared memory: it is
-/// the reason there is exactly one writer per file and therefore no lost updates,
-/// ever. `docs/isolate_pattern.md` §2.
+/// Everything the widget surface owns, in its own isolate from the same files the editor writes.
+/// One writer per file, so no lost updates [`docs/isolate_pattern.md` §2].
 class WidgetSurfaceState {
   const WidgetSurfaceState({
     this.notes = const [],
@@ -37,21 +33,11 @@ class WidgetSurfaceState {
   /// Whether the runner has been told to show the window.
   final bool visible;
 
-  /// Whether dragging is currently refused.
-  ///
-  /// Read by the surface so it can tell someone who drags a locked widget why
-  /// nothing happened, instead of leaving them to wonder. A field rather than a
-  /// `ref.read(settingsProvider)` at the point of use, because three widgets ask
-  /// and a caller that forgot to read settings would silently render an unlocked
-  /// widget.
+  /// Whether dragging is refused; read by the surface to explain a locked drag.
+  /// A field so a caller cannot forget settings and silently render unlocked.
   final bool positionLocked;
 
-  /// The note rendered large. Everything else in the widget is a compact card.
-  ///
-  /// Prefers the most recent note that is still open, so ticking off the task in
-  /// the big card reveals the next one instead of leaving a line through the
-  /// middle of the thing you look at most. See [NotesState.focusedNote] for the
-  /// same rule and the reasoning.
+  /// The note rendered large; prefers the most recent open note, see [NotesState.focusedNote].
   Note? get focusedNote => focusedNoteIn(notes, selectedId);
 
   /// Notes in display order: most recent first, with the focused note pulled to the
@@ -78,20 +64,9 @@ class WidgetSurfaceState {
   }
 }
 
-/// The widget surface's state. Never writes notes.json while an editor is open.
-///
-/// Was `WidgetController extends ChangeNotifier` until 2026-10-05.
-///
-/// The `isEditorRunning` check in [toggleCompleted] and [addNote] is the whole
-/// reason this surface is careful about writing at all: notes.json has one writer,
-/// normally the editor, and the editor holds keystrokes in memory for a quarter of
-/// a second before they reach disk. A toggle written from here inside that window
-/// would overwrite them and silently lose whatever was typed. So the runner is
-/// asked who owns the file, and the answer decides.
-///
-/// That logic is unchanged by the rewrite. What changed is that the decision is made
-/// in one place instead of two, and that `_ready` is no longer a separate field a
-/// widget has to remember to check - it is the `AsyncValue` this returns.
+/// The widget surface's state; never writes notes.json while an editor is open.
+/// [toggleCompleted] and [addNote] ask the runner who owns the file, since the editor buffers keystrokes.
+/// Decision is now made once, and readiness is the returned `AsyncValue`.
 class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   late final ShellChannel _shell;
   late final INotesRepository _notesRepo;
@@ -127,10 +102,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       positionLocked: _positionLocked,
     );
 
-    // Ask the runner where the window really is. A first run has no saved
-    // geometry, and without this the widget's idea of its own position stays empty
-    // - so the first drag of a new install would have nothing to move relative to
-    // and would silently do nothing.
+    // Ask the runner for live bounds; a first run has no saved geometry to drag from.
     final live = await _shell.widgetBounds();
     if (live != null) {
       next = next.copyWith(
@@ -147,10 +119,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     final shouldShow = next.hasAnyNoteWithText;
     final ready = next.copyWith(visible: shouldShow);
 
-    // Settings can change the palette and the opacity the runner needs, and this
-    // notifier is the only thing that talks to it about them. Narrowed to the
-    // four window fields, so a hotkey or storage change does not reconfigure
-    // the window.
+    // Applies palette/opacity to the runner, narrowed to four window fields.
     ref.listen(
       settingsProvider.select(
         (v) => (
@@ -203,17 +172,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     await Future<void>.delayed(Duration(milliseconds: delay));
   }
 
-  /// Re-reads `notes.json` and republishes whether the widget should be visible.
-  ///
-  /// This is what the directory watcher calls, and it is public because the watcher is
-  /// not the only way the file can change. The widget surface has no other way to
-  /// learn that the editor wrote something, and a test cannot rely on the watcher at
-  /// all - `AtomicJsonFile` watches with real timers that `flutter_test`'s fake clock
-  /// never advances, so under a widget test the callback simply never fires and the
-  /// surface sits on stale notes looking like it works.
-  ///
-  /// So the same operation is available on demand rather than existing only as the
-  /// body of a listener that CI cannot reach.
+  /// Re-reads `notes.json` and republishes visibility; public because tests cannot rely on the watcher.
   Future<void> reloadNotes() async {
     final current = state.value;
     if (current == null) return;
@@ -235,17 +194,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     state = AsyncData(current.copyWith(selectedId: next));
   }
 
-  /// Tells the runner what this window should look like.
-  ///
-  /// [from] is the state to describe. It exists because `build` has to configure the
-  /// window *before* `state` exists - and the first version of this notifier had no
-  /// parameter, so it read `state.value`, found null, returned early, and the window
-  /// was never configured at all on launch. Nothing threw. `widget_integration_test`
-  /// found it by asserting that the runner had been told anything.
-  ///
-  /// So `build` passes the state it is about to return, and every other caller - a
-  /// visibility change, a settings change, a re-read - passes nothing and gets the
-  /// published state.
+  /// Tells the runner what the window looks like; [from] exists because `build` configures before `state` exists.
   Future<void> _applyWindowConfiguration([WidgetSurfaceState? from]) async {
     final current = from ?? state.value;
     final settings = ref.read(settingsProvider).value?.settings;
@@ -323,13 +272,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     _notesRepo.save(state.requireValue.notes);
   }
 
-  /// Adds a note written in the widget's own composer.
-  ///
-  /// The same writer question as [toggleCompleted], and the same answer. The note
-  /// lands at the top of the list, because it is the most recent thing in it, but
-  /// it does not become the focused card - that is the editor's selection to make,
-  /// and taking it from here would move the editor's cursor every time someone added
-  /// a note from the desktop.
+  /// Adds a composer note; same writer rule as [toggleCompleted], without stealing editor selection.
   Future<bool> addNote({required String title, required String body}) async {
     if (title.trim().isEmpty && body.trim().isEmpty) return false;
 
@@ -368,14 +311,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     state = AsyncData(current.copyWith(visible: visible));
   }
 
-  /// Starts the runner-side move loop, which tracks the cursor in screen space
-  /// until the button comes up.
-  ///
-  /// The drag cannot be computed on this side of the channel. Flutter reports
-  /// pointer positions relative to the view, so as soon as the window follows the
-  /// cursor the reported delta shrinks; adding it to the start position lands the
-  /// widget at a little over 40% of the distance asked for, and the error is not a
-  /// mistake that can be corrected, it is missing information.
+  /// Starts the runner-side move loop; Dart lacks the screen-space cursor to compute it.
   Future<void> beginMove(Offset anchor) => _shell.beginWidgetMove(anchor);
 
   /// Starts the runner-side resize loop for [edge]. Same reasoning as [beginMove],
@@ -388,18 +324,8 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   Future<void> setComposeMode({required bool active}) =>
       _shell.setWidgetComposeMode(active: active);
 
-  /// Pushes everything this surface has queued to disk before the process goes away.
-  ///
-  /// Includes notes.json, not just the widget's own state and the selection. This
-  /// surface writes notes.json whenever it marks a task finished and there is no
-  /// editor to do it, and that write goes through the same debounced queue as
-  /// everything else - so quitting inside the debounce window would lose the
-  /// toggle. It is a small thing to lose, and an invisible one: the tick would come
-  /// back on screen undone.
-  ///
-  /// Called by the surface rather than from `onDispose`, because `onDispose` is
-  /// synchronous and cannot await. See `AGENTS.md` §4.7 - this hazard predates the
-  /// provider work and is not fixed by it.
+  /// Pushes queued writes to disk before exit, including notes.json toggles.
+  /// Called by the surface, not `onDispose`, which cannot await [`AGENTS.md` §4.7].
   Future<void> flush() async {
     await _notesRepo.flush();
     await _widgetRepo.flush();
@@ -409,9 +335,6 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   WidgetSurfaceState _require() => state.requireValue;
 }
 
-/// The widget surface's provider.
-///
-/// Declared here rather than collected in `providers.dart`, so that file does not
-/// have to import this one to list it - see the note at the top of `providers.dart`.
+/// The widget surface's provider, declared here so `providers.dart` need not import this.
 final widgetProvider =
     AsyncNotifierProvider<WidgetNotifier, WidgetSurfaceState>(WidgetNotifier.new);

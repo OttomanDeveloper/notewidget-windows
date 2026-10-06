@@ -252,14 +252,14 @@ void main() {
             brightness: Brightness.light,
             highContrast: false,
           ),
-          home: Scaffold(
+          home: const Scaffold(
             body: SizedBox(
               width: 400,
               child: SingleChildScrollView(
                 child: MarkdownText(
                   source: '# Release\n\ntext',
-                  color: const Color(0xFF23202E),
-                  accent: const Color(0xFFE8551D),
+                  color: Color(0xFF23202E),
+                  accent: Color(0xFFE8551D),
                   density: MarkdownDensity.widget,
                   headingScale: 1.0,
                 ),
@@ -738,7 +738,7 @@ void main() {
         lineHeight: 1.35,
         lines: 2,
       );
-      final oneLine = 13 * 1.35;
+      const oneLine = 13 * 1.35;
 
       expect(two, greaterThan(oneLine * 2));
       expect(two, lessThan(oneLine * 3));

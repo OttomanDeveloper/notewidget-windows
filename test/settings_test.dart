@@ -95,7 +95,7 @@ void main() {
         widgetPositionLocked: false,
         autoStart: true,
         autoStartDelayMs: 4000,
-        editorHotkey: HotkeyBinding(modifiers: ['ctrl', 'win'], key: 'Space'),
+        editorHotkey: const HotkeyBinding(modifiers: ['ctrl', 'win'], key: 'Space'),
         storageDirectory: r'D:\Notes',
       );
       final restored = WinNotesSettings.fromJson(original.toJson());

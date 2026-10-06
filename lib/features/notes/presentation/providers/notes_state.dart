@@ -50,15 +50,8 @@ class NotesState {
     return notes.isEmpty ? null : notes.first;
   }
 
-  /// The note the widget should render large.
-  ///
-  /// Prefers the most recent note that is still open. A big card with a line
-  /// through it is a poor thing to greet someone with every time they glance at
-  /// the desktop, and ticking off the top task should reveal the next one rather
-  /// than move a finished note into the position that says "this is what you are
-  /// working on". An explicit selection still wins, because that is a deliberate
-  /// choice rather than a default. When everything is finished, the most recent
-  /// note is used, so the card is never missing while notes exist.
+    /// The note the widget renders large: newest open note (explicit selection
+    /// wins); most recent when all are finished, so the card never goes missing.
   Note? get focusedNote {
     if (selectedId != null) return selectedNote;
     for (final note in notes) {
@@ -67,25 +60,12 @@ class NotesState {
     return notes.isEmpty ? null : notes.first;
   }
 
-  /// True while the notes file could not be read.
-  ///
-  /// Checked by every mutating method, not only by the write path. The UI puts up a
-  /// blocking screen in this state, so nothing should be able to reach here; the
-  /// guard is what makes that true rather than merely likely, because an in-memory
-  /// note added behind a refused write would still be lost.
+    /// True while the notes file could not be read. Checked by every mutator,
+    /// so no in-memory note is added behind a refused write and then lost.
   bool get isReadOnly => corrupt != null;
 
-  /// Copies this state, overriding what is given.
-  ///
-  /// The three `clear*` flags exist because `selectedId`, `corrupt` and `pendingUndo`
-  /// are nullable and `null` already means "leave it alone" to `??`. Without them,
-  /// `select(null)` silently kept the previous selection - the field was never cleared
-  /// - and deleting the last note left the editor pointing at a note that was no longer
-  /// there.
-  ///
-  /// That is the class of bug a nullable field in a `copyWith` always has, and it was
-  /// found by `notes_controller_test` rather than by reading this, which is the
-  /// argument for keeping those 45 tests rather than replacing them.
+    /// Copies this state, overriding what is given. The `clear*` flags exist
+    /// because `null` means "leave it alone" to `??`.
   NotesState copyWith({
     List<Note>? notes,
     List<Note>? visible,
@@ -107,12 +87,8 @@ class NotesState {
     );
   }
 
-  /// Recomputes [visible] from [query] and [notes].
-  ///
-  /// Done here rather than in each mutator because the filter depends on the text
-  /// of every note, so it has to be reapplied after an edit and not only after a
-  /// search - the two are easy to conflate and getting it wrong hides a note the
-  /// person can see in the file.
+    /// Recomputes [visible] from [query] and [notes]. Here, not per mutator:
+    /// edits must reapply it too, or visible notes go missing.
   NotesState withVisible() {
     if (query.trim().isEmpty) {
       return copyWith(visible: notes);

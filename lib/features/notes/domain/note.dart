@@ -1,10 +1,7 @@
 import 'dart:math';
 
-/// A stored note: a title, a body, and the timestamps nothing displays.
-///
-/// The timestamps exist because notes sort by most recently edited, because undo
-/// has to put a deleted note back where it was, and because [completedAt] is the
-/// only record of when a task was actually finished. None of them are shown.
+/// A stored note: title, body, and undisplayed timestamps for sort order, undo
+/// placement and [completedAt].
 class Note {
   Note({
     required this.id,
@@ -22,32 +19,15 @@ class Note {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  /// When the note was marked finished, or null while it is still open.
-  ///
-  /// A timestamp rather than a flag, because "when did I finish this" is the
-  /// question worth being able to answer later, and because absence is already
-  /// an unambiguous "not finished" without needing a second field.
+    /// When the note was marked finished, or null while open. A timestamp, not a
+    /// flag: absence already means "not finished", and the date answers "when".
   final DateTime? completedAt;
 
   bool get isCompleted => completedAt != null;
 
-  /// Whether this note's title and body are Markdown rather than plain text.
+  /// Whether this note renders as Markdown. Per note, off by default (`PROJECT.md`).
   ///
-  /// Per note, not per app, because the two kinds of note are genuinely
-  /// different things: a to-do list and a formatted note sit side by side in
-  /// the same library without either wanting to be the other. And off by default,
-  /// because `PROJECT.md` resolved "plain text only, or Markdown with a
-  /// preview" in favour of plain text and an existing note should not start
-  /// rendering its asterisks differently the day the app updated.
-  ///
-  /// The body is never rewritten either way. This decides how the stored source
-  /// is *presented*; the source is what gets saved, exported and searched, so a
-  /// note can be switched off again and come back exactly as typed.
-  ///
-  /// A `- [x]` inside a Markdown body is rendered as a box and is not a control.
-  /// Completion is per note — the circle and `Ctrl+D` — while a Markdown task
-  /// list is per line, and two sources of truth for "is this done" is worse than
-  /// one that only looks like the other. See `docs/storage_pattern.md`.
+  /// Source is presented, never rewritten; `- [x]` is an inert box. See `docs/storage_pattern.md`.
   final bool markdown;
 
   /// A note exists even with nothing in it. Deleting the last character of a
@@ -175,8 +155,7 @@ class Note {
 
 /// Creates note ids without pulling in a uuid package.
 ///
-/// Ids only need to be unique within one profile folder and never leave the
-/// machine, so a timestamp, a counter and a little entropy is enough.
+/// Unique within one local profile folder only: timestamp, counter, entropy.
 class NoteIdFactory {
   NoteIdFactory() : _counter = 0;
 

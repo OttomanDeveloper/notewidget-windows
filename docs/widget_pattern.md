@@ -1,6 +1,6 @@
 # Widget Pattern — Hit-Testing, Dragging, and Borrowing the Keyboard
 
-`windows/runner/win_notes_window.cpp`, `lib/src/ui/widget/widget_surface.dart`
+`windows/runner/win_notes_window.cpp`, `lib/features/widget/presentation/screens/widget_surface/widget_surface.dart`
 
 Companions: `docs/storage_pattern.md` (who may write what this widget reads) and
 `docs/testing_pattern.md` (why two bugs here shipped).
@@ -262,7 +262,7 @@ read or to find.
 
 ### 3.14 One renderer, a budget per surface
 
-`lib/src/ui/common/markdown_text.dart` renders Markdown for **every surface
+`lib/core/widgets/markdown_text/markdown_text.dart` renders Markdown for **every surface
 that shows note text**, and what differs between them is only a budget:
 
 | Surface | Density | Body | Budget | Headings |

@@ -23,11 +23,8 @@ final selectionRepositoryProvider = Provider<ISelectionRepository>((ref) {
   );
 });
 
-/// One note by id, for widgets that draw a single card or row.
-///
-/// A `.family` rather than a scan at each call site, so the lookup rule lives in
-/// one place. Notes carry value equality, so dependents rebuild only when the
-/// note's content actually changed rather than on every list edit.
+/// One note by id, for single-card widgets. A `.family`, so the lookup lives in
+/// one place; value equality rebuilds dependents only on content change.
 final noteByIdProvider = Provider.family<Note?, String>((ref, id) {
   final notes = ref.watch(notesProvider.select((v) => v.value?.notes));
   if (notes == null) return null;

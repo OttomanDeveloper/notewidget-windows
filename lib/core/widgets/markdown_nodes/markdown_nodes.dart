@@ -1,9 +1,7 @@
 import 'package:markdown/markdown.dart' as md;
 
 /// Pure predicates over the parsed tree.
-///
-/// One home for the questions every block widget asks, so the dispatcher and
-/// the quote do not each carry their own copy of "what counts as a container".
+/// One home for them, so dispatcher and quote do not each copy "container".
 class MarkdownNodes {
   const MarkdownNodes._();
 
@@ -38,11 +36,7 @@ class MarkdownNodes {
   }
 
   /// `[ ]` / `[x]` as a leading `<input type="checkbox">`, or null.
-  ///
-  /// The parser consumes the bracket syntax and replaces it with that element;
-  /// it does not leave the characters in the text. So this reads the element
-  /// rather than looking for `[`. Reading the literal would work on some inputs
-  /// and silently stop working on others, which is the worst of both.
+  /// Read the element, not the literal `[`: the parser consumes the brackets.
   static String? taskOf(md.Element item) {
     for (final child in item.children ?? const <md.Node>[]) {
       if (child is md.Element && child.tag == 'input') {

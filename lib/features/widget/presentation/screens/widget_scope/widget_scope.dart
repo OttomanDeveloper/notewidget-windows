@@ -31,11 +31,8 @@ class WidgetScopeState extends ConsumerState<WidgetScope>
     unawaited(_start());
   }
 
-  /// The startup ladder, in the order it has to happen.
-  ///
-  /// The delay comes after the load because it is the autostart delay: on an
-  /// autostart launch the widget waits before appearing, and launching by hand shows
-  /// it at once, because someone who just clicked the icon is already looking.
+    /// The startup ladder: the autostart delay waits after loading, so a hand
+    /// launch shows the widget at once while autostart waits.
   Future<void> _start() async {
     // Read before the first await; a WidgetRef held across one throws once the
     // widget is gone. See EditorBootstrap.start for the full explanation.
@@ -57,13 +54,9 @@ class WidgetScopeState extends ConsumerState<WidgetScope>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // `_notifier`, captured in `initState`, and not `ref.read(...)` here: Riverpod
-    // asserts on any `ref` use inside `dispose`, so the latter throws during tree
-    // finalisation - after the test that closed the surface has already passed.
-    //
-    // `onDispose` cannot await either, so the flush is an explicit call from a place
-    // that knows the isolate is ending. `AGENTS.md` §4.7: the hazard predates the
-    // provider work and is unchanged by it.
+      // Captured in `initState`: any `ref` in `dispose` throws during tree
+      // finalisation. `onDispose` cannot await, so the flush is explicit here.
+      // The hazard predates the provider work (`AGENTS.md` §4.7).
     unawaited(_notifier.flush());
     super.dispose();
   }

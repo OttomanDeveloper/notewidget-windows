@@ -7,13 +7,9 @@ import '../../../../../core/platform/shell_channel.dart';
 import '../../../../../core/utils/app_providers.dart';
 import '../../providers/widget_controller.dart';
 
-/// Routes events pushed up from the runner.
-///
-/// Three of the six event kinds are deliberately ignored here, and the reason is the
-/// whole design: `toggleCompleted` and `createNote` are *requests* addressed to the
-/// editor, which owns notes.json. Acting on them from this isolate would put two
-/// writers on one file - precisely what the runner's routing exists to prevent.
-/// `docs/isolate_pattern.md` §3.4.
+/// Routes runner events. A switch, not a handler table; three kinds are ignored:
+/// `toggleCompleted`/`createNote` belong to the editor (one writer per file).
+/// See `docs/isolate_pattern.md` §3.4.
 class WidgetEventRouter extends ConsumerStatefulWidget {
   const WidgetEventRouter({super.key, required this.child});
 

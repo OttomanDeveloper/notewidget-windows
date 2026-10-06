@@ -6,10 +6,8 @@ import '../domain/repositories.dart';
 export '../domain/repositories.dart';
 export '../domain/widget_state.dart';
 
-/// Where the widget was left, and which monitor it was left on.
-///
-/// Owned by the widget surface. The editor never writes it, so the two sides
-/// cannot disagree about where the widget is.
+/// Where the widget was left, and on which monitor. Widget-owned: the editor
+/// never writes it, so the two sides cannot disagree.
 class WidgetStateRepository implements IWidgetStateRepository {
   WidgetStateRepository(this._file);
 

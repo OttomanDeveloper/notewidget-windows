@@ -64,5 +64,15 @@ linter:
     # rather than the whole call.
     require_trailing_commas: true
 
-    # prefer_const_constructors and prefer_const_declarations are already on via
-    # package:flutter_lints/flutter.yaml and are not repeated here.
+    # --- Rulebook §9 ---
+
+    # `const` constructors and literals let Flutter skip subtrees entirely.
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_const_declarations: true
+    # A `Container` with only a color is a `ColoredBox`; padding-only is `Padding`.
+    avoid_unnecessary_containers: true
+    # `SizedBox(height: 8)` rather than `Container(height: 8)` for whitespace.
+    sized_box_for_whitespace: true
+    # A public widget without a key cannot be moved in the tree by a test.
+    use_key_in_widget_constructors: true

@@ -1,6 +1,6 @@
 # Storage Pattern — One Writer Per File, Atomic Replace, Recovery That Never Destroys
 
-`lib/src/core/atomic_json_file.dart`, `lib/src/data/notes_repository.dart`
+`lib/core/utils/atomic_json_file.dart`, `lib/features/notes/data/notes_repository.dart`
 
 Companions: `docs/widget_pattern.md` (what the widget does with the files it
 reads) and `docs/testing_pattern.md` (why the bugs in this file shipped).
@@ -10,16 +10,18 @@ reads) and `docs/testing_pattern.md` (why the bugs in this file shipped).
 ## 1. Architecture Overview
 
 ```
-lib/src/
-  core/
-    atomic_json_file.dart        11 file operations   the only safe way to write
-    paths.dart                                    %APPDATA% locations
-  data/
-    note.dart                    the model; completedAt is nullable
-    notes_repository.dart         8 file operations   owns notes.json
-    settings_repository.dart                        owns settings.json
-    widget_state_repository.dart                    owns widget_state.json
-    selection_repository.dart      selection.json: neither surface owns it
+lib/core/utils/
+  atomic_json_file.dart           11 file operations   the only safe way to write
+  app_paths.dart                                   %APPDATA% locations
+lib/features/notes/data/
+  note.dart                       the model; completedAt is nullable
+  notes_repository.dart           8 file operations   owns notes.json
+lib/features/settings/data/
+  settings_repository.dart                        owns settings.json
+lib/features/widget/data/
+  widget_state_repository.dart                    owns widget_state.json
+lib/features/notes/data/
+  selection_repository.dart       selection.json: neither surface owns it
 ```
 
 Every surface-shared file goes through `AtomicJsonFile`. There is no second
@@ -398,7 +400,7 @@ across 2 files** (`atomic_json_file.dart` 11, `notes_repository.dart` 8), and
 **zero** anywhere else.
 
 This was not true. `ui/` held 8 operations across 2 files, and the one that
-mattered was the export:
+mattered was the export, at the path that file has before it moved and split:
 
 ```
 lib/src/ui/editor/editor_app.dart:162   await File(path).writeAsString(text);
@@ -432,7 +434,7 @@ Changing any of these breaks files already on disk:
 - `settings.json` `accentPalette` — **omitted when unset**, and resolved at the
   edge by `paletteById`, which treats an unrecognised name as the default rather
   than as an error. The **palette ids themselves are frozen too**
-  (`lib/src/ui/palette.dart`): they are in people's `settings.json`, so
+  (`lib/core/theme/palette.dart`): they are in people's `settings.json`, so
   renaming one silently resets anyone who chose it. Add palettes, do not
   rename.
 - The default palette is index **zero**, not a named constant, because a

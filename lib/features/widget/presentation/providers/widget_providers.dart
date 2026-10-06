@@ -14,10 +14,8 @@ final widgetStateRepositoryProvider =
   );
 });
 
-/// Notes in display order, derived rather than rebuilt per build.
-///
-/// Refires only when the notes list or the selection changes: geometry, scroll
-/// and visibility changes leave the cards alone.
+/// Notes in display order, derived not rebuilt. Refires only on notes or
+/// selection change; geometry, scroll and visibility leave cards alone.
 final widgetDisplayNotesProvider = Provider<List<Note>>((ref) {
   final notes =
       ref.watch(widgetProvider.select((v) => v.value?.notes)) ?? const [];

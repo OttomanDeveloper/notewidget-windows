@@ -12,10 +12,8 @@ class NotesLoaded extends NotesLoadResult {
   final List<Note> notes;
 }
 
-/// The file exists but could not be read.
-///
-/// Carries the path so the UI can offer it as an import target later, which is
-/// how a backup gets restored by hand without this app having to parse it.
+/// The file exists but could not be read. Carries the path so the UI can offer
+/// it as an import target for hand restoration.
 class NotesCorrupt extends NotesLoadResult {
   const NotesCorrupt(this.error);
   final CorruptDataFileError error;
@@ -31,22 +29,14 @@ class CorruptDataFileError {
   final String path;
   final String reason;
 
-  /// Whether the file may simply be held open by something else right now.
-  ///
-  /// Carried through rather than derived, because the difference decides what the
-  /// screen says and offers: a file that is being scanned is intact, and telling
-  /// someone their notes are broken - then offering to start over - is the wrong
-  /// thing to do about it.
+    /// Whether the file may simply be held open right now. Carried, not derived:
+    /// it decides what the screen says and offers.
   final bool transient;
 }
 
-/// What happened when someone tried to get past an unreadable file.
-///
-/// Returned rather than thrown, because every one of these is an expected thing
-/// for a person to try and every one of them has something to say afterwards.
-/// The screen has to distinguish "there was nothing to restore" from "the file is
-/// locked, try in a moment" from "I moved it aside", because the advice is
-/// different in each case.
+/// What happened when someone tried to get past an unreadable file. Returned,
+/// not thrown: every outcome has something to say, and the screen's advice differs
+/// per outcome.
 enum RecoveryOutcome {
   /// No rolling backup existed, so there was nothing to restore from.
   nothingToRecover,

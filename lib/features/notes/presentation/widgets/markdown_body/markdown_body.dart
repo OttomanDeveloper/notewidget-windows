@@ -5,13 +5,9 @@ import '../narrow_preview_button/narrow_preview_button.dart';
 import '../preview_pane/preview_pane.dart';
 import '../source_field/source_field.dart';
 
-/// The Markdown body: the source on the left, the rendered note on the right.
-///
-/// Below [previewThreshold] there is not room for two panes of prose, so the
-/// preview becomes a switch rather than a column: someone editing a formatted
-/// note in a narrow window needs to see the result, and needs to see the
-/// source, and cannot have both at once. Asking is better than guessing, and
-/// better than silently showing neither.
+/// The Markdown body: source left, render right. Below [previewThreshold] the
+/// preview becomes a switch: a narrow window cannot show both, and asking beats
+/// guessing or silently showing neither.
 class MarkdownBody extends StatelessWidget {
   const MarkdownBody({
     super.key,
@@ -23,13 +19,9 @@ class MarkdownBody extends StatelessWidget {
     required this.onChanged,
   });
 
-  /// Width below which the editor shows the source or the preview rather than
-  /// both.
-  ///
-  /// Chosen against the editor's own minimum useful width rather than a round
-  /// number: at 1000px the pane beside a 320px list is around 620, so the side-by-
-  /// side layout is the normal one and this only bites on a deliberately narrow
-  /// window.
+    /// Width below which the editor shows source or preview, not both. Chosen
+    /// against the useful minimum, not a round number: at 1000px the side-by-side
+    /// layout is still the normal one.
   static const double previewThreshold = 460;
 
   final Note note;
@@ -50,17 +42,9 @@ class MarkdownBody extends StatelessWidget {
         final wide = constraints.maxWidth >= previewThreshold;
 
         if (!wide) {
-          // One builder over the *whole* narrow column, not just the pane.
-          //
-          // The first version wrapped only the `Expanded`, leaving the button
-          // outside it while the button still read the flag - a hidden
-          // dependency with nothing to rebuild it. Tapping "Preview" switched
-          // the pane and left the label reading "Preview", so the button
-          // offered the same action twice and `markdown_test` caught it.
-          //
-          // The flag is then *passed* to the button rather than read there, so a
-          // second reader cannot reintroduce the same shape: the only place the
-          // flag is read is inside a listener.
+            // One builder over the whole narrow column: an earlier version left the
+            // button outside while it still read the flag, so tapping "Preview" switched
+            // the pane and left the label stale (`markdown_test` caught it).
           return ValueListenableBuilder<bool>(
             valueListenable: showsPreview,
             builder: (context, shows, _) => Column(

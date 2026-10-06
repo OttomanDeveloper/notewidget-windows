@@ -9,6 +9,7 @@ import 'package:win_notes/features/settings/data/settings_repository.dart';
 import 'package:win_notes/core/platform/shell_channel.dart';
 import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
 
+import 'helpers/file_io.dart';
 import 'helpers/provider_harness.dart';
 import 'package:win_notes/core/theme/palette.dart';
 import 'package:win_notes/features/settings/presentation/screens/settings_dialog/settings_dialog.dart';
@@ -254,22 +255,15 @@ void main() {
       expect(File('${temp.path}\\settings.json').existsSync(), isFalse,
           reason: 'precondition: nothing on disk yet');
 
-      // Polled rather than slept on. A fixed delay has to guess a margin over
-      // the 250ms debounce, and this suite runs 271 tests in parallel on a
-      // machine that is busy exactly when the guess is tight - which made this
-      // fail about one run in three. What is claimed here is "the debounce
-      // lands it eventually", so that is what gets waited on.
-      final deadline = DateTime.now().add(const Duration(seconds: 10));
-      final target = File('${temp.path}\\settings.json');
-      while (DateTime.now().isBefore(deadline)) {
-        if (target.existsSync() &&
-            target.readAsStringSync().contains('"accentPalette": "amber"')) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 25));
-      }
+      // `waitForContent`, not a fixed delay: a read that lands in the
+      // millisecond the writer renames the file over it comes back as errno 32,
+      // which says the write is happening, not that it failed. This test grew
+      // its own copy of that problem before finding the helper.
+      final written = await waitForContent(
+        File('${temp.path}\\settings.json'),
+        '"accentPalette": "amber"',
+      );
 
-      final written = target.readAsStringSync();
       expect(written, contains('"accentPalette": "amber"'),
           reason: 'the debounced write should land well within 10 seconds');
       expect((await repository.load()).accentPalette, 'amber');

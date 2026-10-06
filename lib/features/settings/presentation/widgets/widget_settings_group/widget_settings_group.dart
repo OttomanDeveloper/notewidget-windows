@@ -6,13 +6,9 @@ import '../settings_group/settings_group.dart';
 import '../settings_row/settings_row.dart';
 import '../settings_separator/settings_separator.dart';
 
-/// Everything about how the widget sits on the desktop.
-///
-/// Grouped separately from Appearance because these are the three decisions
-/// about where it goes and whether it gets in the way, rather than how it
-/// looks. A lock and an always-on-top switch sitting together also make the
-/// trade-off obvious: a widget you cannot move is worth more if it is also not
-/// covering your work.
+/// How the widget sits on the desktop: position, not looks. Lock and
+/// always-on-top together make the trade-off obvious: immovable is worth
+/// more when not covering work.
 class WidgetSettingsGroup extends ConsumerWidget {
   const WidgetSettingsGroup({super.key});
 

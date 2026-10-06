@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// A short-lived bar offering to put a deleted note back.
-///
-/// Undo is deliberately time-boxed and never persisted. A Recently Deleted
-/// list would fight the plainness the app is built around, but "delete is
-/// unrecoverable" is genuinely harsh for a place people leave things without
-/// thinking, so a few seconds of grace is the middle ground.
-///
-/// The toast removes itself rather than waiting for a timeout callback, so
-/// rebuilding the tree underneath it cannot leave it stranded on screen.
+/// Undo is time-boxed, never persisted; the toast removes itself so a rebuild
+/// underneath cannot leave it stranded on screen.
 class UndoToast {
   const UndoToast._();
 

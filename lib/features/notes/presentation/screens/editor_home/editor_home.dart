@@ -8,11 +8,8 @@ import '../../providers/notes_controller.dart';
 import '../../../../settings/presentation/screens/settings_dialog/settings_dialog.dart';
 import '../editor_screen/editor_screen.dart';
 
-/// The editor surface below the `MaterialApp`.
-///
-/// Its own `ConsumerWidget` rather than a field of the scope, so that a dialog
-/// pushed from here has a context with a `Navigator` ancestor. That is the whole of
-/// what the old `GlobalKey` was working around.
+/// The editor surface below the `MaterialApp`. Own widget so pushed dialogs get
+/// a context with a `Navigator` ancestor.
 class EditorHome extends ConsumerWidget {
   const EditorHome({super.key});
 
@@ -26,11 +23,8 @@ class EditorHome extends ConsumerWidget {
   }
 }
 
-/// Opens the settings dialog.
-///
-/// `context` is the one below the `MaterialApp`, so `showDialog` has somewhere to
-/// go. The old code needed a `GlobalKey<NavigatorState>` to get this; here it is
-/// simply the caller's context.
+/// Opens the settings dialog with the context below the `MaterialApp`, where
+/// `showDialog` has somewhere to go (no `GlobalKey` needed).
 Future<void> openSettings(BuildContext context, WidgetRef ref) async {
   final paths = ref.read(appPathsProvider);
   await showDialog<void>(
@@ -43,13 +37,8 @@ Future<void> openSettings(BuildContext context, WidgetRef ref) async {
 
 /// Writes a plain-text backup of every note somewhere the person chose.
 Future<void> exportNotes(BuildContext context, WidgetRef ref) async {
-  // Captured before the first await, and never looked up again afterwards.
-  //
-  // Two reasons, both learned the hard way: there is no ScaffoldMessenger above the
-  // MaterialApp this returns, so ScaffoldMessenger.of(context) throws and the
-  // "Exported N notes" confirmation is lost while the file still writes; and
-  // reaching for a context after an await is unsafe because the widget behind it
-  // may be gone.
+    // Captured before the first await: no ScaffoldMessenger exists above this
+    // MaterialApp (so `of(context)` throws), and a post-await context may be gone.
   final messenger = ScaffoldMessenger.maybeOf(context);
   final shell = ref.read(shellProvider);
   final notes = ref.read(notesProvider).value;

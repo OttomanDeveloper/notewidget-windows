@@ -12,11 +12,8 @@ import '../settings_separator/settings_separator.dart';
 class HotkeySettingsGroup extends ConsumerWidget {
   const HotkeySettingsGroup({super.key});
 
-  /// Opens the capture dialog and stores whatever combination was pressed.
-  ///
-  /// Reads through `ref` rather than taking the settings as a field, because the
-  /// old version of this class held them and this method is the one thing in the
-  /// dialog that runs outside `build`.
+    /// Opens the capture dialog and stores the pressed combination. Reads through
+    /// `ref`: this runs outside `build`, where a settings field cannot reach.
   Future<void> _capture(BuildContext context, WidgetRef ref) async {
     final settings =
         ref.read(settingsProvider).value?.settings ?? SettingsRepository.defaults;

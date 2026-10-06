@@ -30,10 +30,8 @@ class PaletteSwatch extends StatelessWidget {
       button: true,
       selected: isSelected,
       label: palette.label,
-      // On the Semantics rather than the InkWell nested inside it, so a test can
-      // ask "which swatch claims to be selected" by key. A key on the innermost
-      // widget would make the selected state unobservable, because the
-      // Semantics that carries it sits above.
+        // On Semantics, not the inner InkWell: a key there would leave the selected
+        // state unobservable, since the carrying Semantics sits above.
       key: PaletteSwatch.keyFor(palette.id),
       child: Tooltip(
         message: palette.label,
@@ -57,10 +55,8 @@ class PaletteSwatch extends StatelessWidget {
               customBorder: const CircleBorder(),
               child: Center(
                 child: AnimatedContainer(
-                  // A plain duration rather than WinNotesMotion: that class is
-                  // fed by the launch's animation flag, which this dialog is not
-                  // plumbed to, and plumbing it for a 14px circle is not worth
-                  // the seam.
+                    // Plain duration, not WinNotesMotion: this dialog is not plumbed to
+                    // the launch animation flag, and plumbing a 14px circle is not worth it.
                   duration: const Duration(milliseconds: 140),
                   curve: Curves.easeOut,
                   width: isSelected ? 16 : 14,

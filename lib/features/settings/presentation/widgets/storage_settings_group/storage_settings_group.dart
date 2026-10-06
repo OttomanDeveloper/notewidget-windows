@@ -95,15 +95,9 @@ class StorageSettingsGroup extends ConsumerWidget {
   }
 }
 
-/// Asks before copying a library, and says the three things that matter.
-///
-/// A copy, because nothing is deleted. The old location, so the person knows their
-/// notes are still there. And a restart, because `appPathsProvider` is fixed for the
-/// life of the process and this session keeps writing where it started.
-///
-/// Returns true when the person agreed. Not a stateful confirmation: the dialog is
-/// opened and dismissed constantly, and a checkbox somebody ticked last month is not
-/// consent for today.
+/// Asks before copying: a copy (nothing deleted), the old location, and the
+/// restart (`appPathsProvider` is per-process). Consent is per occasion, never
+/// stored.
 Future<bool?> _confirmTransfer(BuildContext context, String destination) {
   return showDialog<bool>(
     context: context,
@@ -149,13 +143,9 @@ Future<bool?> _confirmTransfer(BuildContext context, String destination) {
   );
 }
 
-/// Says what actually happened, which is not always what was asked for.
-///
-/// Six outcomes and six sentences. The one that matters most is
-/// [StorageTransferOutcome.destinationNotEmpty]: the person asked to switch to a
-/// folder, and the app is declining because there are notes in there it has not read.
-/// Reporting that as a failure would be wrong — it is the app protecting them — so it
-/// is worded as a decision with a way out rather than as an error.
+/// Says what happened, which is not always what was asked for. Six outcomes, six
+/// sentences; declining a non-empty destination is protection, not failure, so it
+/// reads as a decision with a way out.
 Future<void> _reportTransfer(
   BuildContext context,
   StorageTransferOutcome outcome, {

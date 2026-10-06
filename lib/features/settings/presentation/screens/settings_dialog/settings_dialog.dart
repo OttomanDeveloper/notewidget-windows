@@ -8,23 +8,16 @@ import '../../widgets/startup_settings_group/startup_settings_group.dart';
 import '../../widgets/storage_settings_group/storage_settings_group.dart';
 import '../../widgets/widget_settings_group/widget_settings_group.dart';
 
-/// Settings, in five flat groups with no nesting.
-///
-/// Appearance, Widget, Startup, Hotkey and Storage. Each is a `Card` rather than
-/// an `ExpansionTile`, because a setting hidden behind a click is a setting
-/// nobody changes.
+/// Settings in five flat groups, each a `Card`: a setting hidden behind a click
+/// is a setting nobody changes.
 class SettingsDialog extends ConsumerWidget {
   const SettingsDialog({
     super.key,
     required this.defaultDataDirectory,
   });
 
-  /// The runner channel, and the default folder.
-  ///
-  /// Both are allowed to cross as parameters because neither is *state*: they do
-  /// not change, so nothing here rebuilds when they do. What would not be allowed
-  /// is the settings controller the old version took - that is state, and it is now
-  /// read with `ref.watch` in each group. `AGENTS.md` section 0.8.
+  /// Values, not state: nothing here rebuilds, so plain parameters are fine.
+  /// State would arrive via `ref` (`AGENTS.md` §0.8).
   final String defaultDataDirectory;
 
   @override

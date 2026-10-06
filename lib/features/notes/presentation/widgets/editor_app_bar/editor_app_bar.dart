@@ -3,11 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../domain/note.dart';
 import '../brand_glyph/brand_glyph.dart';
 
-/// The editor's bar: the mark, the overflow menu, and the list toggle.
-///
-/// Stateless, with behaviour crossing as callbacks: showing the list is a
-/// `ValueNotifier` owned by the screen, and opening settings or importing is
-/// work the app does, not state this bar holds.
+/// The editor's bar: mark, menu, list toggle. Stateless; behaviour crosses as
+/// callbacks, state arrives via `ref`.
 class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   const EditorAppBar({
     super.key,

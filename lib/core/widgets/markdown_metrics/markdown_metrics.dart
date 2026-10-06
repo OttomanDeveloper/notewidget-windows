@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import '../markdown_density/markdown_density.dart';
 
 /// Type sizes and spacing for one density.
-///
-/// Every number lives here rather than inline, because the whole difference
-/// between the two surfaces is these values and they should be comparable.
+/// Every number lives here so the two surfaces stay comparable.
 @immutable
 class MarkdownMetrics {
   const MarkdownMetrics({
@@ -34,16 +32,14 @@ class MarkdownMetrics {
   final double headingScale;
 
   /// The smallest a heading may get, relative to body text.
-  ///
-  /// Without a floor, an `h6` in a card is smaller than the body around it,
-  /// which inverts the one thing a heading is for.
+  /// Floors `h6` at body size: a smaller heading inverts what it is for.
   final double minHeadingScale;
 
   final double quoteIndent;
   final double codePadding;
 
-  /// Code blocks clamp to this many lines. A twenty-line snippet has no meaning
-  /// in a card, and truncating it says so; scrolling it does not fit.
+  /// Code blocks clamp to this many lines: a long snippet has no meaning in
+  /// a card, and truncating says so where scrolling does not fit.
   final int maxCodeLines;
 
   /// Width reserved for a bullet or number, so wrapped text lines up.
@@ -79,11 +75,7 @@ class MarkdownMetrics {
       density == MarkdownDensity.widget ? widget : editor;
 
   /// A copy with a different [headingScale], and the floor moved to match.
-  ///
-  /// The floor is not left behind on purpose: it exists so a heading is never
-  /// *smaller* than the text around it, and a caller asking for 1.0 while the
-  /// floor said 1.05 would get 1.05 and quietly get something other than what
-  /// it asked for.
+  /// Asking for 1.0 must give 1.0, not silently clamp to the old floor.
   MarkdownMetrics withHeadingScale(double scale) => MarkdownMetrics(
         body: body,
         lineHeight: lineHeight,
@@ -98,10 +90,7 @@ class MarkdownMetrics {
       );
 
   /// The same shape at a different body size.
-  ///
-  /// Ratios are kept and pixel values are scaled, so the result is the same
-  /// design at a different size rather than the same gaps crammed into a smaller
-  /// box. `maxCodeLines` is a line *count* and deliberately does not scale.
+  /// Ratios kept, pixel values scaled; `maxCodeLines` is a count, unscaled.
   MarkdownMetrics scaledTo(double size) {
     if (size == body) return this;
     final k = size / body;

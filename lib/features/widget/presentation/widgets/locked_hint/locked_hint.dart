@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Says why a drag did nothing.
-///
-/// Only ever visible after someone has dragged a locked widget, which is the
-/// only moment the answer is wanted. Naming the place to change it matters as
-/// much as saying it is locked: "locked" alone leaves the next question
-/// unanswered.
+/// Says why a drag did nothing. Shown only after a locked-widget drag: the only
+/// moment the answer is wanted, with where to change it named too.
 class LockedHint extends StatelessWidget {
   const LockedHint({super.key, required this.visible, required this.dark});
 
@@ -14,10 +10,8 @@ class LockedHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Not an AnimatedOpacity at zero. An invisible widget is still in the tree,
-    // which means a screen reader would read "Locked in place" out loud on a
-    // widget that is perfectly draggable, and it keeps a string of hidden text
-    // in every widget surface for no reason.
+      // No AnimatedOpacity-at-zero: a hidden widget is still in the tree, and a
+      // screen reader would announce it on a draggable widget.
     if (!visible) return const SizedBox.shrink();
 
     final foreground = dark ? const Color(0xFFEDEBF5) : const Color(0xFF23202E);

@@ -1121,3 +1121,48 @@ List<String> platformRegistryFaults({
 
   return faults;
 }
+
+/// Comment blocks longer than three lines under `lib/`.
+///
+/// `docs/flutter_architecture_pattern.md` §2: past 2–3 lines a comment replaces
+/// reading the code. Each entry is `path:first-line (length)`.
+List<String> findLongComments(SourceTree tree) {
+  final out = <String>[];
+  for (final entry in tree.dartFilesUnder('lib').entries) {
+    final path = _rel(tree, entry.key).replaceAll(r'\', '/');
+    final lines = entry.value;
+    var i = 0;
+    while (i < lines.length) {
+      if (!lines[i].trimLeft().startsWith('//')) {
+        i++;
+        continue;
+      }
+      var j = i;
+      while (j < lines.length && lines[j].trimLeft().startsWith('//')) {
+        j++;
+      }
+      if (j - i > 3) {
+        out.add('$path:${i + 1} (${j - i} lines)');
+      }
+      i = j;
+    }
+  }
+  return out;
+}
+
+/// Code-only line count per §2: imports, blank lines and comments do not count.
+int codeOnlyLines(List<String> lines) {
+  var n = 0;
+  for (final line in lines) {
+    final trimmed = line.trimLeft();
+    if (trimmed.isEmpty) continue;
+    if (trimmed.startsWith('//')) continue;
+    if (trimmed.startsWith('import ') ||
+        trimmed.startsWith('export ') ||
+        trimmed == 'library;') {
+      continue;
+    }
+    n++;
+  }
+  return n;
+}

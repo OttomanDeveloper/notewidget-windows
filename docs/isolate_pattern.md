@@ -58,10 +58,10 @@ sake: it means a note is written in the same place every other edit is made.
 
 ### 3.1 Construction lives in a provider, not in a root widget
 
-This used to be a divergence: ten constructions sat in `lib/src/ui/`, five in
-`EditorApp` and five in `WidgetApp`, in `StatefulWidget`s whose `initState` built
-four repositories, loaded settings, wired an event subscription, and whose
-`dispose` flushed some of them in an order that mattered. There are **none** now.
+This used to be a divergence: ten constructions sat in the two roots' `initState`,
+five in `EditorApp` and five in `WidgetApp`, building four repositories, loading
+settings and wiring an event subscription in `StatefulWidget`s whose `dispose`
+flushed some of them in an order that mattered. There are **none** now.
 
 The duplication was not stylistic. `_resolveBrightness` existed in **three** copies
 across the two files — `editor_app.dart:241`, `widget_app.dart:108` and
@@ -70,7 +70,7 @@ across the two files — `editor_app.dart:241`, `widget_app.dart:108` and
 that resolved "system" brightness differently would theme differently, and the only
 symptom would be a widget that looks wrong after a Windows theme change.
 
-That is fixed rather than recorded. `lib/src/state/providers.dart` holds the
+That is fixed rather than recorded. `lib/core/utils/app_providers.dart` holds the
 declarations, both roots read `widgetSurfaceThemeProvider`, and
 `isolate_guard_test` fails if either root grows a `_resolveBrightness` of its own —
 matching a declaration rather than a mention, because both files *name* the old
@@ -221,8 +221,8 @@ different `watchExternal` settings.
 
 - Two isolates, one `main()`, no second entrypoint to drift.
 - One writer per file, with `selection.json` the single declared exception.
-- **Zero** constructions in `lib/src/ui/`. The ten that were there are in
-  `lib/src/state/providers.dart`, and both surfaces build the same graph from them.
+- **Zero** constructions in the roots. The ten that were there are in
+  `lib/core/utils/app_providers.dart`, and both surfaces build the same graph from them.
 - **One** `_resolveBrightness` — it is `widgetSurfaceThemeProvider`, and a guard
   fails if either root grows another.
 

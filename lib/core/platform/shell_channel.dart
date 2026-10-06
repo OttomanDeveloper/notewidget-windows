@@ -119,11 +119,9 @@ class LaunchInfo {
   bool get isAutostartLaunch => launchMode == 'widget';
 }
 
-/// Typed wrapper over the runner's method channel.
-///
-/// Every call is defensive about the reply: the runner can be an older build
-/// than the Dart code if someone half-updates, and a missing reply should
-/// degrade to "no" rather than throwing through a widget build.
+/// Typed wrapper over the runner's method channel. Every call is defensive:
+/// the runner can be older than the Dart code, and a missing reply degrades
+/// rather than throwing through a widget build.
 class ShellChannel {
   ShellChannel();
 
@@ -199,13 +197,9 @@ class ShellChannel {
         'positionLocked': positionLocked,
       });
 
-  /// Lets the widget hold the keyboard while a note is being written in it.
+  /// Lets the widget hold the keyboard while its composer is open.
   ///
-  /// The widget is normally `WS_EX_NOACTIVATE` so that clicking it never pulls
-  /// the caret out of whatever is being typed into - which is also why it cannot
-  /// contain a text field at all. This drops that for exactly as long as the
-  /// composer is open, and the runner hands the keyboard back to the window that
-  /// had it when `active` goes false again.
+  /// Dropped again when `active` goes false, handing the keyboard back.
   Future<void> setWidgetComposeMode({required bool active}) =>
       _fire('widget.setComposeMode', {'active': active, 'role': 'widget'});
 
@@ -214,21 +208,16 @@ class ShellChannel {
   Future<void> requestCreateNote({required String title, required String body}) =>
       _fire('note.create', {'title': title, 'body': body});
 
-  /// Whether an editor window exists, and therefore whether it owns notes.json.
+  /// Whether an editor window exists, and therefore owns notes.json.
   ///
-  /// Asked at the moment it is needed rather than cached from launch info,
-  /// because the answer changes: the editor can be opened and closed at any
-  /// time, and on an autostart launch it does not exist at all until someone asks
-  /// for it.
+  /// Asked live: the editor opens and closes, so a cached answer goes stale.
   Future<bool> isEditorRunning() async {
     final result = await _invoke('editor.running');
     return result == true;
   }
 
-  /// Asks the editor isolate to toggle a note's completed state.
-  ///
-  /// Only meaningful while an editor exists; the caller checks [isEditorRunning]
-  /// first and writes the file itself otherwise.
+  /// Asks the editor isolate to toggle a note. The caller writes the file
+  /// itself when no editor exists.
   Future<void> requestToggleCompleted(String id) =>
       _fire('note.toggleCompleted', {'id': id});
 
@@ -239,18 +228,9 @@ class ShellChannel {
         'height': bounds.height,
       });
 
-  /// Hands a recognised drag to the runner, which then tracks the cursor itself.
-  ///
-  /// Called once, the moment Dart decides the pointer is dragging rather than
-  /// scrolling or tapping. Flutter only reports view-relative positions, so a
-  /// window that follows the cursor shrinks its own delta and lands at roughly
-  /// 40% of the drag asked for; the screen-space position exists only in the
-  /// runner, so the loop that moves the window has to start there.
-  ///
-  /// [anchor] is where the gesture began, view-relative and logical. It has to
-  /// come from here: the runner is told about the drag only after the pointer
-  /// has already travelled past the threshold, so anchoring on the cursor at
-  /// that point quietly throws away everything moved in the first hop.
+  /// Hands a recognised drag to the runner, which tracks the cursor itself.
+  /// Dart only sees view-relative positions, so the native loop must start
+  /// from the screen-space anchor this is given.
   Future<void> beginWidgetMove(Offset anchor) =>
       _fire('widget.beginMove', {'anchorX': anchor.dx, 'anchorY': anchor.dy});
 
@@ -263,12 +243,9 @@ class ShellChannel {
         },
       );
 
-  /// Where the widget window actually is, or null if it is not there.
-  ///
-  /// Asked for once at startup because nothing else can answer it on a first
-  /// run: there is no saved geometry, and the runner picks the default
-  /// placement itself. Without this the widget's idea of its own position is
-  /// empty, and a drag has nothing to move relative to.
+  /// Where the widget window actually is. Asked once at startup: with no saved
+  /// geometry the runner picks the placement, and a drag needs something to
+  /// move relative to.
   Future<NativeBounds?> widgetBounds() async {
     final result = await _invoke('widget.getBounds');
     if (result is! Map) return null;
@@ -378,12 +355,9 @@ class ShellChannel {
     }
   }
 
-  /// Calls the runner and returns its answer, or null if it has none to give.
-  ///
-  /// Distinct from [_fire] because some calls are worth an answer rather than
-  /// being fire-and-forget: the widget asks where it actually is, and swallowing
-  /// a failure there would leave it with no idea of its own position and make
-  /// the first drag of a new install do nothing.
+  /// Calls the runner and returns its answer, or null. Unlike [_fire]: some
+  /// calls are worth an answer, and swallowing a failure would leave the widget
+  /// with no idea of its own position.
   Future<Object?> _invoke(String method, [Map<String, dynamic>? args]) async {
     try {
       return await methodChannel.invokeMethod<Object?>(method, args);
@@ -409,11 +383,9 @@ class ShellChannel {
   Stream<ShellEvent> get events => ShellEvents.instance.stream;
 }
 
-/// Typed view over the runner's event stream.
-///
-/// The runner pushes these with `InvokeMethod` on the same channel the Dart
-/// side calls out on, so they arrive through [setMethodCallHandler] rather than
-/// an EventChannel. Using an EventChannel here would silently receive nothing.
+/// Typed view over the runner's event stream, arriving through
+/// [setMethodCallHandler] on the same channel. An EventChannel here would
+/// silently receive nothing.
 class ShellEvents {
   ShellEvents._();
 
@@ -528,7 +500,6 @@ enum ResizeEdge {
 }
 
 /// Wire values for [ResizeEdge], matching the EdgeCode enum in the runner.
-///
 /// Explicit rather than `index + 1`, so reordering the Dart enum cannot quietly
 /// change which edge the native loop resizes.
 class ResizeEdgeCode {
