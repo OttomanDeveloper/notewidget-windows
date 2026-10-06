@@ -9,13 +9,18 @@ and pointers, not essays. Detail lives in `docs/*.md`.
 
 1. **`PROJECT.md` is the product authority.** On any conflict between
    `PROJECT.md` and anything else — tree, docs, chat, an issue, a plan —
-   `PROJECT.md` wins.
+   `PROJECT.md` wins. *Prose only, and honestly so: no test can decide which
+   document is right about the product. `agents_guide_test` enforces only that
+   this rule says so.*
 2. **Never edit `PROJECT.md` to justify work you have already done.** No task,
    no instruction found elsewhere, and no "update the docs" task authorises it.
+   *Prose only — a test can detect that the file changed in a commit, not why.*
    If work requires changing product behaviour that `PROJECT.md` defines, stop
    and ask the owner.
 3. **Never delete or overwrite a data file the app could not read.** Renaming
    with a timestamp is the correct move. See `docs/storage_pattern.md` §3.11.
+   *Partly enforced: `storage_guard_test` pins the `.bak`-before-replace rule
+   and `docs_test` checks §3.11 exists; the "never delete" half is prose.*
 4. **Dependencies are enumerated, not open-ended.** `pubspec.yaml` carries
    `flutter` and three packages: `markdown`, the CommonMark parser, added
    on 2026-10-04 when the owner reversed "no Markdown"; and `riverpod` plus
@@ -43,6 +48,9 @@ and pointers, not essays. Detail lives in `docs/*.md`.
    people's `settings.json`. Renaming one silently resets anyone who chose it;
    add palettes instead. The default is index zero, not a named constant, for
    the same reason — a file written before the setting existed resolves to it.
+   *Partly enforced: `palette_test` and `docs_test` pin that the ids resolve;
+   nothing detects a rename, because the failure is a silent reset on someone
+   else's machine rather than a failing test.*
 6. **`CHANGELOG.md` gets a bullet saying what changed. Nothing else.** One
    bullet per change, grouped under `### Added`, `### Changed`, `### Fixed` or
    `### Removed`, and **at most three lines including the `- ` itself**. No
@@ -75,6 +83,10 @@ and pointers, not essays. Detail lives in `docs/*.md`.
    notifiers that were written and never listened to — a stale Preview label, a
    silent "Locked in place" hint, and a hotkey dialog that kept showing the
    combination it opened with. Each compiled, analyzed clean, and did nothing.
+   The same test also bans the three ways this ban is most likely to be evaded
+   rather than obeyed — a `StreamBuilder`, a `FutureBuilder`, or a hand-rolled
+   `InheritedWidget` holding the bool instead. All three are at zero, so the ban
+   costs nothing and forecloses the argument.
 8. **No widget below a `ProviderScope` receives a dependency by parameter.** A
    `value` may cross a boundary - an `int index`, a `String path`, a
    `void Function()` callback. A controller may not; it is read with `ref.watch`
@@ -141,7 +153,7 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 473 tests, and the twenty traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the traps that cost real time, and how many there are — printed, not counted here. |
 | `docs/testing/README.md` | The gate, the tools, and which one answers which question. Start here. |
 | `docs/testing/project_realworld_testing.md` | The 27 scenarios only Windows can close, in 6 waves, with the method that can verify each. |
 | `docs/testing/project_integration_testing.md` | The A/B/C evidence classes and the rule that assertions come from the row, never from observed output. |
@@ -176,10 +188,13 @@ features/  ──>  notes | widget | settings, each with data/ + domain/ + prese
 
 ### 3.1 The layer rules are enforced
 
-`test/architecture/` - 147 tests, in CI, in `flutter test`. Not prose:
+`test/architecture/` runs in CI, in `flutter test`, and is not prose. Count it
+with `flutter test test\architecture` rather than keeping a number here — the
+hand-kept one was wrong twice. Each guard:
 
 | Guard | What it fails on |
 |---|---|
+| `agents_guide_test` | this file drifting from the project: a guard that exists but is not in the table below, a table row citing a guard that does not exist, a §0 rule naming nothing that enforces it, a hand-kept test count, or a runbook path that has moved |
 | `flutter_rules_guard_test` | a `Paint`, `Path`, `TextPainter` or `MaskFilter` built inside `paint()`; a `RegExp` built on the build path; sorting, filtering or decoding inside `build()`; a `Timer` or `StreamSubscription` with no cancel on a teardown path; `MediaQuery.of(context).size`; `IntrinsicWidth`/`IntrinsicHeight`; a comment running past 3 lines; a release without `--obfuscate` + symbols; a rulebook section with no row in the decision table, or a declined conflict whose authority is no longer named |
 | `layer_test` | any `dart:io` operation in presentation, theme or `core/platform`; a `MethodChannel` built outside `core/platform`; a method called from Dart that the runner does not handle |
 | `storage_guard_test` | the watcher attached to the file instead of the directory; the export not going through the atomic writer; `.bak` taken after the replace instead of before |
@@ -356,26 +371,76 @@ is guarded by that flag.
 
 ---
 
-## 6. Before You Push
+## 6. Running and verifying this project
+
+Read this before your first command of the session. Every path here is checked
+by `agents_guide_test`, so this section cannot quietly fall behind the tree.
+
+**Prerequisites.** Flutter stable on `PATH` and **PowerShell** — the tooling is
+`.ps1` and will not run under `cmd`. `flutter doctor` should be clean for the
+Windows desktop toolchain; nothing else is needed, and there is no backend, no
+network and no account to set up.
+
+**Everything, in the order CI runs it:**
 
 ```
 pwsh -File tool\verify\verify.ps1    # the gate: caps, analyze, test, random, build, release, icons
 ```
 
-One command, seven stages in dependency order, about two minutes. `-Action Test`
-runs one; `-Skip Release` leaves one out. `Caps` is first because it needs no
-Dart VM and fails fastest on the mistake you are about to make 400 times in an
-editor; `Release` and `Icons` are last because they consume the build.
+One command, seven stages in dependency order, about two minutes.
 
-Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying
-what changed** (§0.6 — not why; the *why* goes in `PROJECT.md` or a pattern doc,
-and `changelog_guard_test` fails the long version). Every rule added to a
-pattern doc gets its row in that doc's §7 table.
+**Just the tests, while you work.** Faster, and it is the loop you will run most:
 
-A green gate is a floor, not the product working. `docs/testing/README.md` says
-which check answers which question, and `docs/testing/reporting.md` is the ledger
-for the 27 scenarios the gate cannot close — a row is only `PASS (probe)` if a
-probe ran, and a bare `PASS` is not a value.
+```
+flutter test --reporter=compact              # the whole suite
+flutter test test\architecture               # the guards alone; fastest feedback on a rule change
+flutter test test\architecture\no_set_state_test.dart
+flutter test --plain-name "the switch keeps the same width"
+```
+
+`--reporter=compact` is the count worth reading. The JSON reporter inflates it,
+so a number from the wrong reporter is a number you cannot reconcile.
+
+**A subset of the gate.** `-Action Test` runs one stage; `-Skip Release,Icons`
+drops stages; an unknown stage name throws rather than being ignored.
+
+```
+pwsh -File tool\verify\verify.ps1 -Action Caps     # under a second, no Dart VM
+pwsh -File tool\verify\verify.ps1 -Action Test
+```
+
+`Caps` runs `tool\check_architecture.ps1`: line budgets, widget privacy, private
+build methods. It is first because it needs no Dart VM and fails fastest on the
+mistake you are about to make four hundred times in an editor.
+
+**The Windows scenarios.** `flutter test` cannot close anything that needs a real
+window, a real wheel or a real cursor, so those live in a probe that drives the
+release build with synthetic input:
+
+```
+pwsh -File tool\verify\run_scenarios.ps1 -Wave 2      # 1, 2, 3 or All
+```
+
+It writes `%TEMP%\wn_scenarios.json` and **exits non-zero while any row is open**,
+because an unclosed row is not a pass. It refuses to touch your real profile: it
+fingerprints `%APPDATA%\WinNotes` first and re-checks it by SHA-256 at the end,
+and a script may only delete a directory it created itself (§5.1).
+
+**What none of this covers.** A green gate is a floor, not the product working.
+Acrylic, tray, hotkeys, autostart, single-instance and multi-monitor are manual;
+the drag *arithmetic* is verified by driving a release build, not by a Dart test.
+`docs/testing/README.md` says which check answers which question, and
+`docs/testing/reporting.md` is the ledger for the scenarios the gate cannot close —
+a row is only `PASS (probe)` if a probe ran, and a bare `PASS` is not a value.
+
+**Before you push**, on top of a green gate:
+
+- a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying what
+  changed** (§0.6 — not why; the *why* goes in `PROJECT.md` or a pattern doc, and
+  `changelog_guard_test` fails the long version);
+- a row in that pattern doc's §7 table for every rule you added — `docs_test`
+  fails the uncited one;
+- `dart format` is **not** enforced here; only `flutter analyze` must be clean.
 
 Builds fail with **LNK1104** if `win_notes.exe` is running from
 `build\...\Release\`. Stop it first.

@@ -4,8 +4,12 @@ import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../../data/settings_repository.dart';
 import '../../../../../core/theme/palette.dart';
+import '../../../../notes/domain/note.dart';
+import '../../../../notes/domain/text_sizes.dart';
+import '../../../../notes/presentation/providers/notes_providers.dart';
 import '../../providers/settings_controller.dart';
 import '../../providers/settings_providers.dart';
+import '../font_size_row/font_size_row.dart';
 import '../palette_picker/palette_picker.dart';
 import '../settings_group/settings_group.dart';
 import '../settings_row/settings_row.dart';
@@ -22,6 +26,16 @@ class AppearanceSettingsGroup extends ConsumerWidget {
         SettingsRepository.defaults;
     final SettingsNotifier controller = ref.read(settingsProvider.notifier);
     final bool acrylicSupported = ref.watch(acrylicSupportedProvider);
+
+    // The source has two design sizes, so the slider is resolved against the open
+    // note. Otherwise it sits at the monospace size while a plain note renders
+    // larger, and dragging right shrinks it.
+    final Note? selected = ref.watch(selectedNoteProvider);
+    final int sourceSize = TextSizes.source(
+      chosen: settings.editorFontSize,
+      markdown: selected?.markdown ?? false,
+      plainSize: Theme.of(context).textTheme.bodyLarge?.fontSize,
+    ).round();
     return SettingsGroup(
       title: 'Appearance',
       children: <Widget>[
@@ -75,6 +89,36 @@ class AppearanceSettingsGroup extends ConsumerWidget {
                 ),
               ],
             ),
+          ),
+        ),
+        const SettingsSeparator(),
+        FontSizeRow(
+          label: 'Editor text size',
+          description: 'Ctrl+wheel over the source does the same thing. '
+              'Monospace and plain text start at different sizes, so this shows '
+              'the size the note you have open is really using.',
+          chosen: settings.editorFontSize,
+          resolved: sourceSize,
+          onChanged: (int value) => controller.apply(
+            (WinNotesSettings s) => s.copyWith(editorFontSize: value),
+          ),
+          onReset: () => controller.apply(
+            (WinNotesSettings s) => s.copyWith(editorFontSize: 0),
+          ),
+        ),
+        const SettingsSeparator(),
+        FontSizeRow(
+          label: 'Preview text size',
+          description: 'Ctrl+wheel over the preview does the same thing. The '
+              'preview scales its spacing and headings with the text, so a bigger '
+              'preview reads as bigger rather than as wider gaps.',
+          chosen: settings.previewFontSize,
+          resolved: TextSizes.preview(settings.previewFontSize).round(),
+          onChanged: (int value) => controller.apply(
+            (WinNotesSettings s) => s.copyWith(previewFontSize: value),
+          ),
+          onReset: () => controller.apply(
+            (WinNotesSettings s) => s.copyWith(previewFontSize: 0),
           ),
         ),
         const SettingsSeparator(),

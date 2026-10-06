@@ -874,13 +874,47 @@ void main() {
       await pumpPane(tester, 380);
       expect(find.byType(MarkdownText), findsNothing,
           reason: 'no room for both, so it asks rather than guessing');
-      expect(find.text('Preview'), findsOneWidget);
+      expect(find.text('Show preview'), findsOneWidget);
 
-      await tester.tap(find.text('Preview'));
+      await tester.tap(find.text('Show preview'));
       await tester.pump();
 
       expect(find.byType(MarkdownText), findsWidgets);
       expect(find.text('Edit source'), findsOneWidget);
+    });
+
+    testWidgets('the switch says what turning it on gets you',
+        (WidgetTester tester) async {
+      await pumpPane(tester, 800);
+      // It used to be an 18px circle next to the completion circle, which read as
+      // a second checkbox. The word is the whole fix, so it is asserted: a
+      // designer tidying the row back to a bare icon fails this test.
+      expect(
+        find.descendant(
+          of: find.byKey(markdownToggleKey),
+          matching: find.text('Preview'),
+        ),
+        findsOneWidget,
+        reason: 'an unlabelled circle beside the completion circle is a checkbox',
+      );
+    });
+
+    testWidgets('the switch keeps the same width in both states',
+        (WidgetTester tester) async {
+      await pumpPane(tester, 800);
+      final double off = tester.getSize(find.byKey(markdownToggleKey)).width;
+
+      await tester.tap(find.byKey(markdownToggleKey));
+      await tester.pump();
+      await tester.pump();
+
+      // The state is carried by fill and colour, not by the word appearing and
+      // disappearing - a label that changes length shunts the title sideways.
+      expect(tester.getSize(find.byKey(markdownToggleKey)).width, off);
+
+      // Same trap as the toggle test below: the state change schedules a debounced
+      // write, and under a widget test that timer is fake and never elapses.
+      harness.cancelPendingWrites();
     });
 
     testWidgets('tapping the switch turns Markdown off for that note',

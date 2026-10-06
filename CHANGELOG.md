@@ -42,8 +42,17 @@
   `prefer_final_locals`, `require_trailing_commas`, `avoid_positional_boolean_parameters`.
 - Lints: `prefer_const_constructors`, `prefer_const_literals_to_create_immutables`, `prefer_const_declarations`, `avoid_unnecessary_containers`, `sized_box_for_whitespace`, `use_key_in_widget_constructors`.
 
+### Added
+
+- `agents_guide_test`: fails when AGENTS.md drifts from the tree — an undocumented guard, a cited guard that is gone, a §0 rule with nothing enforcing it, a hand-kept test count, or a runbook path that moved.
+- AGENTS.md §6: prerequisites, the test loops, the gate subsets, the scenario probe, and what none of it covers.
+
 ### Changed
 
+- `no_set_state_test` also rejects `StreamBuilder`, `FutureBuilder` and a hand-rolled `InheritedWidget` as ways around §0.7. All three are at zero.
+- Settings: `Editor text size` and `Preview text size` sliders, 11–24px, saved and applied to the source and the rendered preview.
+- Ctrl+wheel over the editor resizes the pane under the pointer. Not yet verified — see `docs/widget_pattern.md` §3.21.
+- The Markdown switch is a labelled `Preview` pill, and the narrow-layout switch reads `Show preview`.
 - `AGENTS.md` §3.1 names `flutter_rules_guard_test`; architecture count is 147 and the suite is 473.
 - The provider cap is 300 lines code-only; only `notes_controller.dart` (333) is over, split separately.
 - The release packaging passes `--obfuscate --split-debug-info` and checks the symbols exist.

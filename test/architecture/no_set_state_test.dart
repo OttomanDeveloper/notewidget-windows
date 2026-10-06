@@ -76,6 +76,57 @@ void main() {
       expect(providers, isNotEmpty, reason: 'the provider half is in use');
     });
 
+    test('the ban is not evaded through a third widget that rebuilds', () {
+      // A ban with an obvious way round it gets routed round it. These are the
+      // three: each holds a value and rebuilds on its own, so each can stand in
+      // for a `setState` while every other guard in this folder stays green -
+      // nothing else here knows what a `StreamBuilder` is for.
+      //
+      // All three are at zero in `lib/`, so this costs nothing to hold and closes
+      // the argument before it is had.
+      final Map<String, int> notifiers = countPerFile(tree, 'lib', r'\bValueNotifier<');
+      expect(notifiers, isNotEmpty, reason: 'precondition: the pattern is in use');
+
+      const Map<String, String> routes = <String, String>{
+        r'\bStreamBuilder\s*[<(]': 'a StreamBuilder holding the bool',
+        r'\bFutureBuilder\s*[<(]': 'a FutureBuilder holding the bool',
+        r'extends\s+InheritedWidget': 'a hand-rolled InheritedWidget',
+      };
+
+      final Map<String, String> found = <String, String>{};
+      for (final MapEntry<String, String> route in routes.entries) {
+        for (final MapEntry<String, int> entry in countPerFile(tree, 'lib', route.key).entries) {
+          found[entry.key] = route.value;
+        }
+      }
+
+      expect(
+        found,
+        isEmpty,
+        reason: '§0.7 names two replacements and these are three more ways to hold '
+            'a value and rebuild without one. Use a provider for state that outlives '
+            'the widget, or a ValueNotifier read by a listener.\n\n'
+            '${found.entries.map((MapEntry<String, String> e) => '  ${e.key}: ${e.value}').join('\n')}',
+      );
+    });
+
+    test('the escape-route scanner still bites', () {
+      // The three patterns above, against text that must match and text that
+      // must not. Without this the check is satisfied by a regex that matches
+      // nothing, which is the same vacuous pass as an empty map.
+      expect(RegExp(r'\bStreamBuilder\s*[<(]').hasMatch('StreamBuilder('), isTrue);
+      expect(RegExp(r'\bStreamBuilder\s*[<(]').hasMatch('child: StreamBuilder<double>('), isTrue);
+      expect(RegExp(r'\bFutureBuilder\s*[<(]').hasMatch('FutureBuilder(builder:'), isTrue);
+      expect(RegExp(r'extends\s+InheritedWidget').hasMatch('class _Foo extends InheritedWidget {'), isTrue);
+      // A comment naming one is not a use; the scan sees source, not prose.
+      expect(
+        RegExp(r'\bStreamBuilder\s*[<(]').hasMatch('// do not reach for a StreamBuilder here'),
+        isFalse,
+        reason: 'a word in a comment is not a widget',
+      );
+      expect(RegExp(r'extends\s+InheritedWidget').hasMatch('InheritedWidget is banned'), isFalse);
+    });
+
     test('every ValueNotifier is listened to, or nothing rebuilds', () {
       // The one rule this migration could not enforce by deleting the thing it bans.
       //

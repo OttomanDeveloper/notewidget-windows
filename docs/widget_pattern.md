@@ -482,6 +482,64 @@ which package is installed, which is why it has teeth before Riverpod is in
 each root — see `docs/isolate_pattern.md` §3.2 for why putting it above the branch
 is the trap.
 
+### 3.20 The Markdown switch is labelled, and names what it gets you
+
+The per-note Markdown switch used to be an 18 px circle. It sat in the title row
+beside `CompletionToggle`, which is also a circle, and **two bare circles in one
+row read as two checkboxes** — which is what it was taken for. The only way to
+find out what it did was to hover for a tooltip.
+
+So it is now a pill that says `Preview`: the word names what turning it on gets
+you, which is the only reason anyone turns it on. A preview is the thing the user
+wants; "Markdown" is the mechanism, and a person who does not know the word
+cannot act on it.
+
+Two constraints shaped it, and both are in other documents:
+
+- **No formatting toolbar.** `PROJECT.md` §76 rules one out, because a toolbar is
+  the fastest way to stop the source being what was typed. This is one existing
+  per-note switch, made legible. Nothing was added.
+- **The word does not change with the state.** Fill, border and icon carry it, so
+  toggling does not shunt the title sideways as the label grows and shrinks. That
+  is a test, not a preference.
+
+**The narrow-layout button is now `Show preview`, not `Preview`.** It is a
+different question — show the preview *or* the source, in a pane too narrow for
+both — and at 380 px wide both controls are on screen at once. Two controls
+answering to one word is one question too many.
+
+### 3.21 The editor's two panes are sized separately, and 0 means "as designed"
+
+The source and the rendered preview are different things — one is what you typed,
+monospace, the other is what it means — so they take a size each
+(`editorFontSize`, `previewFontSize`). One shared number suits neither.
+
+**A stored 0 is not a size; it means "as designed".** `TextSizes` resolves it, and
+resolves it in exactly one place, because "as designed" has two answers for the
+source alone: 13.5px monospace in a Markdown note, the theme's `bodyLarge` in a
+plain one. A `settings.json` that never mentions the setting therefore needs no
+key to keep working — the same reason `accentPalette` is omitted when empty.
+
+Out-of-range values are clamped to 11–24 on load, not trusted: a hand-edited file
+should not be able to render a note invisible or fill a pane.
+
+**Ctrl+wheel writes through to the setting**, so the gesture and the slider cannot
+disagree and the size survives a restart. The base for a step is the size *on
+screen*, not the stored 0, so the first notch starts from what is visible.
+
+The Settings slider is positioned at the resolved size, not the stored one. A
+slider parked at the wrong value is worse than none: with nothing chosen it would
+sit at the monospace size while a plain note rendered larger, and dragging right
+would *shrink* that note.
+
+**Open: the gesture is not yet verified.** The wiring is in `MarkdownBody` — one
+`Listener` over both panes, choosing the pane by the pointer's x when wide and by
+the flag when narrow. One thing was settled by measurement rather than assumed: an
+ancestor `Listener` *does* receive the wheel, even over a `TextField` and over a
+scrollable, so nothing downstream is eating the signal. But a widget test driving
+Ctrl+wheel through that pane records no step, and the cause is not yet known. The
+rules with tests are the stored-value rules below; this one is open.
+
 ---
 
 ## 4. The traps
@@ -577,6 +635,8 @@ not in CI (`docs/testing_pattern.md` §2).
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |
 | 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` * lib/ has no setState calls at all*, *the scanner still finds them, or the rule above is vacuous*, *the two replacements are the only two*, *every ValueNotifier is listened to, or nothing rebuilds*; **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*, *the scanner still matches the names it claims to*, *a value is not a dependency*, *a load result is not an injected dependency*, *callbacks are allowed, and are what the roots pass* |
+| 3.20 | The Markdown switch is labelled, and says what it gets you | `markdown_test` → *the switch says what turning it on gets you*, *the switch keeps the same width in both states*, *a narrow pane offers a switch instead of two cramped columns* |
+| 3.21 | Editor and preview are sized separately; 0 means as designed | `settings_test` → *an unset font size is zero, and a file without one still reads back*, *an unset font size is left out of the file entirely*, *both font sizes round trip, separately*, *a hand-edited font size is bounded to what the slider offers*, *the font sizes participate in equality* |
 
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,

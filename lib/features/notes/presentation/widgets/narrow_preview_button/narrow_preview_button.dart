@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// Source/preview switch taking [showsPreview]: the label cannot drift from the
-/// pane, unlike the first version that read the flag and went stale.
+/// pane. "Show preview" rather than "Preview", because the per-note Markdown
+/// switch beside the title already says `Preview` and both are on screen at once.
 class NarrowPreviewButton extends StatelessWidget {
   const NarrowPreviewButton({
     super.key,
@@ -21,7 +22,7 @@ class NarrowPreviewButton extends StatelessWidget {
         showsPreview ? Icons.edit_outlined : Icons.visibility_outlined,
         size: 15,
       ),
-      label: Text(showsPreview ? 'Edit source' : 'Preview'),
+      label: Text(showsPreview ? 'Edit source' : 'Show preview'),
       style: TextButton.styleFrom(
         visualDensity: VisualDensity.compact,
         padding: const EdgeInsets.symmetric(horizontal: 8),

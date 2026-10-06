@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../domain/note.dart';
+import '../../../domain/text_sizes.dart';
 
 class SourceField extends StatelessWidget {
   const SourceField({
@@ -9,6 +10,7 @@ class SourceField extends StatelessWidget {
     required this.focusNode,
     required this.note,
     required this.onChanged,
+    this.fontSize = 0,
   });
 
   final TextEditingController field;
@@ -16,9 +18,19 @@ class SourceField extends StatelessWidget {
   final Note note;
   final VoidCallback onChanged;
 
+  /// The user's chosen size, or 0 for "as designed". Resolved against the note
+  /// and the theme here rather than by the caller, so the monospace case and
+  /// the plain case cannot disagree about what "as designed" means.
+  final int fontSize;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final double size = TextSizes.source(
+      chosen: fontSize,
+      markdown: note.markdown,
+      plainSize: theme.textTheme.bodyLarge?.fontSize,
+    );
     return TextField(
       controller: field,
       focusNode: focusNode,
@@ -34,7 +46,7 @@ class SourceField extends StatelessWidget {
         // asterisks and hashes hard to line up by eye.
         fontFamily: note.markdown ? 'Consolas' : null,
         fontFamilyFallback: note.markdown ? const <String>['monospace'] : null,
-        fontSize: note.markdown ? 13.5 : null,
+        fontSize: size,
         decoration: note.isCompleted ? TextDecoration.lineThrough : null,
       ),
       decoration: InputDecoration(

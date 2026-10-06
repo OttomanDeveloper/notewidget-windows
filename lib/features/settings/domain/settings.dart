@@ -19,6 +19,8 @@ class WinNotesSettings {
     String storageDirectory = '',
     this.widgetDockedToEdge = true,
     String dockEdge = 'right',
+    this.editorFontSize = 0,
+    this.previewFontSize = 0,
   })  : editorHotkey = editorHotkey ?? HotkeyBinding.defaultBinding,
         storageDirectory = storageDirectory,
         dockEdge = dockEdge;
@@ -59,6 +61,29 @@ class WinNotesSettings {
   /// Which screen edge the widget parks against when docking is on.
   String dockEdge;
 
+  /// Type size for the note source, in logical pixels. 0 is not a size: it means
+  /// "as designed", so a file written before this setting existed needs no key
+  /// to keep working and the editor looks exactly as it did.
+  int editorFontSize;
+
+  /// Type size for the rendered preview, same units and same 0.
+  int previewFontSize;
+
+  /// The sizes the sliders offer. 11 is still readable at 96 dpi; 24 is large
+  /// without breaking the editor's two-pane layout on a short window.
+  static const int minFontSize = 11;
+  static const int maxFontSize = 24;
+
+  /// A stored size outside the range is clamped rather than trusted, the same as
+  /// [widgetOpacity]: a hand-edited file should not be able to render a note
+  /// invisible or fill a pane.
+  static int normaliseFontSize(int value) {
+    if (value == 0) return 0;
+    if (value < minFontSize) return minFontSize;
+    if (value > maxFontSize) return maxFontSize;
+    return value;
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -74,7 +99,9 @@ class WinNotesSettings {
           other.editorHotkey == editorHotkey &&
           other.storageDirectory == storageDirectory &&
           other.widgetDockedToEdge == widgetDockedToEdge &&
-          other.dockEdge == dockEdge;
+          other.dockEdge == dockEdge &&
+          other.editorFontSize == editorFontSize &&
+          other.previewFontSize == previewFontSize;
 
   @override
   int get hashCode => Object.hash(
@@ -90,6 +117,8 @@ class WinNotesSettings {
         storageDirectory,
         widgetDockedToEdge,
         dockEdge,
+        editorFontSize,
+        previewFontSize,
       );
 
   WinNotesSettings copyWith({
@@ -105,6 +134,8 @@ class WinNotesSettings {
     String? storageDirectory,
     bool? widgetDockedToEdge,
     String? dockEdge,
+    int? editorFontSize,
+    int? previewFontSize,
   }) =>
       WinNotesSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -119,6 +150,8 @@ class WinNotesSettings {
         storageDirectory: storageDirectory ?? this.storageDirectory,
         widgetDockedToEdge: widgetDockedToEdge ?? this.widgetDockedToEdge,
         dockEdge: dockEdge ?? this.dockEdge,
+        editorFontSize: editorFontSize ?? this.editorFontSize,
+        previewFontSize: previewFontSize ?? this.previewFontSize,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -138,6 +171,11 @@ class WinNotesSettings {
         'storageDirectory': storageDirectory,
         'widgetDockedToEdge': widgetDockedToEdge,
         'dockEdge': dockEdge,
+        // Omitted when 0, for the same reason as accentPalette: 0 means
+        // "as designed", and writing it would put a key in files that had
+        // never heard of the setting.
+        if (editorFontSize != 0) 'editorFontSize': editorFontSize,
+        if (previewFontSize != 0) 'previewFontSize': previewFontSize,
       };
 
   static WinNotesSettings fromJson(Map<String, dynamic> json) {
@@ -177,6 +215,12 @@ class WinNotesSettings {
       widgetDockedToEdge:
           pick<bool>('widgetDockedToEdge', fallback.widgetDockedToEdge),
       dockEdge: pick<String>('dockEdge', fallback.dockEdge),
+      editorFontSize: normaliseFontSize(
+        pick<int>('editorFontSize', fallback.editorFontSize),
+      ),
+      previewFontSize: normaliseFontSize(
+        pick<int>('previewFontSize', fallback.previewFontSize),
+      ),
     );
   }
 }

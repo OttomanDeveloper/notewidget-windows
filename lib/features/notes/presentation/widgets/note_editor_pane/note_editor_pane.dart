@@ -5,8 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../../domain/note.dart';
+import '../../../domain/text_sizes.dart';
 import '../../providers/notes_controller.dart';
 import '../../providers/notes_providers.dart';
+import '../../../../settings/data/settings_repository.dart';
+import '../../../../settings/domain/settings.dart';
+import '../../../../settings/presentation/providers/settings_controller.dart';
 import '../../../../../core/widgets/completion_toggle/completion_toggle.dart';
 import '../../../../../core/widgets/confirm_dialog/confirm_dialog.dart';
 import '../../../../../core/widgets/undo_toast_body/undo_toast_body.dart';
@@ -118,6 +122,31 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
     notifier.updateNote(id, title: _title.text, body: _body.text);
   }
 
+  /// Ctrl+wheel, written straight through to the setting so the gesture and the
+  /// slider cannot disagree and the size survives a restart. The base is the size
+  /// on screen, not the stored 0, so the first notch starts from what is shown.
+  void _stepFontSize({required bool preview, required int delta}) {
+    final Note? note = ref.read(selectedNoteProvider);
+    final WinNotesSettings settings =
+        ref.read(settingsProvider).value?.settings ?? SettingsRepository.defaults;
+    final int chosen = preview ? settings.previewFontSize : settings.editorFontSize;
+
+    final double rendered = preview
+        ? TextSizes.preview(chosen)
+        : TextSizes.source(
+            chosen: chosen,
+            markdown: note?.markdown ?? false,
+            plainSize: Theme.of(context).textTheme.bodyLarge?.fontSize,
+          );
+
+    final int next = WinNotesSettings.normaliseFontSize((rendered + delta).round());
+    ref.read(settingsProvider.notifier).apply(
+          (WinNotesSettings s) => preview
+              ? s.copyWith(previewFontSize: next)
+              : s.copyWith(editorFontSize: next),
+        );
+  }
+
   Future<void> _deleteCurrent(NotesNotifier notifier) async {
     final Note? note = ref.read(selectedNoteProvider);
     if (note == null) return;
@@ -151,6 +180,17 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
       builder: (BuildContext context, WidgetRef ref, _) {
         _syncToSelected(state, notifier);
         final Note? note = state?.selectedNote;
+
+        // Two numbers, watched as a slice so a palette change does not rebuild
+        // the editor's text. 0 here means "as designed" - see `TextSizes`.
+        final (int, int) sizes = ref.watch(
+          settingsProvider.select(
+            (AsyncValue<SettingsState> v) => (
+              v.value?.settings.editorFontSize ?? 0,
+              v.value?.settings.previewFontSize ?? 0,
+            ),
+          ),
+        );
 
         if (note == null) {
           return Stack(
@@ -283,6 +323,12 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                                   focusNode: _bodyFocus,
                                   previewSource: _previewSource,
                                   showsPreview: _narrowShowsPreview,
+                                  editorFontSize: sizes.$1,
+                                  previewFontSize: sizes.$2,
+                                  onEditorFontStep: (int delta) =>
+                                      _stepFontSize(preview: false, delta: delta),
+                                  onPreviewFontStep: (int delta) =>
+                                      _stepFontSize(preview: true, delta: delta),
                                   onChanged: () => _pushToModel(notifier),
                                 )
                               : TextField(

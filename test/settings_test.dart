@@ -157,6 +157,63 @@ void main() {
       );
     });
 
+    test('an unset font size is zero, and a file without one still reads back', () {
+      // 0 is not a size: it means "as designed", so a settings file written
+      // before the setting existed needs no key to keep working.
+      expect(WinNotesSettings.defaults.editorFontSize, 0);
+      expect(WinNotesSettings.defaults.previewFontSize, 0);
+      expect(WinNotesSettings.fromJson(<String, dynamic>{}).editorFontSize, 0);
+    });
+
+    test('an unset font size is left out of the file entirely', () {
+      // The same reason accentPalette is omitted when empty: a file that never
+      // mentioned the setting stays byte-identical to one written before it.
+      final Map<String, dynamic> json = WinNotesSettings.defaults.toJson();
+      expect(json.containsKey('editorFontSize'), isFalse);
+      expect(json.containsKey('previewFontSize'), isFalse);
+      expect(
+        WinNotesSettings().copyWith(editorFontSize: 18).toJson()['editorFontSize'],
+        18,
+      );
+    });
+
+    test('both font sizes round trip, separately', () {
+      // Separately, not one number: the source is monospace and the preview is
+      // rendered prose, so a shared size suits neither.
+      final WinNotesSettings set = WinNotesSettings().copyWith(
+        editorFontSize: 19,
+        previewFontSize: 12,
+      );
+      final WinNotesSettings back = WinNotesSettings.fromJson(set.toJson());
+      expect(back.editorFontSize, 19);
+      expect(back.previewFontSize, 12);
+    });
+
+    test('a hand-edited font size is bounded to what the slider offers', () {
+      expect(
+        WinNotesSettings.fromJson(<String, dynamic>{'editorFontSize': 2}).editorFontSize,
+        WinNotesSettings.minFontSize,
+      );
+      expect(
+        WinNotesSettings.fromJson(<String, dynamic>{'editorFontSize': 900}).editorFontSize,
+        WinNotesSettings.maxFontSize,
+      );
+      // Zero survives, because it means "as designed" rather than "off the end".
+      expect(
+        WinNotesSettings.fromJson(<String, dynamic>{'editorFontSize': 0}).editorFontSize,
+        0,
+      );
+    });
+
+    test('the font sizes participate in equality', () {
+      final WinNotesSettings base = WinNotesSettings();
+      expect(base.copyWith(editorFontSize: 15), isNot(base));
+      expect(base.copyWith(previewFontSize: 15), isNot(base));
+      expect(base.copyWith(editorFontSize: 15).hashCode,
+          isNot(base.copyWith(previewFontSize: 15).hashCode),
+          reason: 'and the two are not the same number, so they must not collide');
+    });
+
     test('an unknown theme name falls back to System', () {
       expect(WinNotesSettings.fromJson(<String, dynamic>{'themeMode': 'neon'}).themeMode, ThemeMode.system);
     });

@@ -76,6 +76,90 @@ first time *and found failing*.
 
 **5 of 27 rows closed. 22 open.** One of the five is a failure.
 
+### Batch 2 - 2026-10-06, waves 1 to 3, probe
+
+Same probe, same machine. Wave 2 is newly instrumented and its six rows all ran;
+wave 1 re-ran unchanged; wave 3 is where it stopped. **9 of 17 rows the probe can
+reach are PASS. 8 remain open.** The one FAIL is the same `WN-ENV-004` as batch 1 —
+still failing, still unrooted.
+
+| Row | Batch 1 | Batch 2 | Evidence |
+|---|---|---|---|
+| WN-ENV-001 | PASS | PASS | commit + os captured before anything else |
+| WN-ENV-002 | PASS | PASS | editor 1000x660 at 160,120; `notes.json` under `%TEMP%` |
+| WN-ENV-003 | PASS | PASS | real profile byte-identical, 1 file by SHA-256 |
+| **WN-ENV-004** | **FAIL** | **FAIL** | **widget visible at t=2.66 s with `title:"" body:""` — unchanged** |
+| WN-ENV-005 | PASS | PASS | 0 `win_notes` processes after close |
+| WN-DRAG-001 | NOT RUN | **PASS** | five drags of exactly −60 px: `-60, -60, -60, -60, -60` |
+| WN-DRAG-002 | NOT RUN | **PASS** | `210x270 -> 200x140` then six further hauls all `200x140` |
+| WN-DRAG-003 | NOT RUN | **PASS** | `200x140->300x140->300x240->400x240->400x258` |
+| WN-DRAG-006 | NOT RUN | **PASS** | locked: left 1548 -> 1548; unlocked control in the same run did move |
+| WN-DRAG-007 | NOT RUN | **PASS** | 2 px press moves nothing; the 60 px control at the same point does |
+| WN-DRAG-004 | NOT RUN | BLOCKED | window stayed put, but see "two rows that cannot fail" |
+| WN-DRAG-005 | NOT RUN | BLOCKED | window did not move; not yet evidence of a bug, see below |
+| WN-KEY-001…005 | BLOCKED | BLOCKED | the click meant to open the composer still does not open it |
+| WN-SYS-001…005 | NOT RUN | NOT RUN | Class C, by hand — no instrument |
+| WN-DPI-001…003 | NOT RUN | NOT RUN | Class C, by hand |
+| WN-SCALE-001…002 | NOT RUN | NOT RUN | Class C, measurement |
+
+#### Four probe faults that each looked like an app bug
+
+Worth more than the rows they unblocked. Every one of these produced a **FAIL with
+a real-looking number**, and every one was the probe.
+
+1. **`SendInput` was never sending a button.** `$input.u.mi.dwFlags = $flags` in
+   PowerShell does not write through a boxed struct — `$input.u` yields a *copy* of
+   the union, `.mi` a copy of the `MOUSEINPUT`, and the assignment lands on the
+   copy. `$input` kept `dwFlags = 0`, which Win32 reads as `MOUSEEVENTF_MOVE` by
+   (0, 0): a legal, queueable, entirely empty event. `SendInput` returned **1** every
+   time and reported success. Four rows said "the window did not move".
+2. **The cursor maths normalised against the wrong rectangle.**
+   `MOUSEEVENTF_ABSOLUTE` normalises to the primary monitor *unless*
+   `MOUSEEVENTF_VIRTUALDESK` is set, and with it set, to the whole virtual desktop
+   — wider than `GetSystemMetrics(0)` whenever a second monitor exists. Positions
+   now go through `SetCursorPos`, which gets multi-monitor right on its own.
+3. **The drag origin was computed once.** Five consecutive drags reused the first
+   aim point; the first drag moved the window 60 px left and drags two through five
+   were aimed at empty desktop. Measuring where a window *is* means measuring it
+   from where it is *now*.
+4. **The corners were never grabbed, because they are not there.** The widget
+   carries a **rounded region**: `GetWindowRgn` returns non-zero and the first
+   pixel along a corner diagonal that belongs to the window is **4 px in**. The
+   grab was `Right - 3, Bottom - 3` — inside the window's bounding rectangle and
+   on the desktop. `WindowFromPoint` cannot catch this: it returns the rectangular
+   `FLUTTERVIEW` child, which is not clipped by the parent's region.
+
+#### The grab band is narrower than documented
+
+`docs/widget_pattern.md` §3.5 states a 14 logical px band. Measured on a release
+build, from the bottom-right corner: a grab **12 px** in is inside the window
+region *and* inside a 14 px band, and does not resize — inward or outward. A grab
+**6 px** in resizes. So the effective band is under 12 px at 96 dpi, not 14. The
+probe now grabs 6 px in and searches inward until `PtInRegion` agrees.
+
+**This is a divergence worth recording, not a bug claim.** The formula is
+`_grabBand = (14 / scale).clamp(8, 24)`; this run does not measure `scale`, so
+whether 96 dpi is being read as something above 1 is unconfirmed. What is confirmed
+is that the reachable band is narrower than the doc says at this DPI.
+
+#### Two rows that cannot fail, and so were not claimed
+
+`WN-DRAG-004` and `WN-DRAG-005` are the two halves of `_listCanScroll`, which
+branches on the list's **scroll offset** — and that offset is not observable from
+outside the process. The widget may also open already scrolled to the selection,
+so a fresh process does not prove offset 0.
+
+- **004** observed the window staying put. That is equally consistent with the
+  list scrolling and with the list sitting at its end absorbing the gesture.
+  Marking it PASS would be a green row that cannot fail.
+- **005** observed the window not moving, from a freshly started process. That is
+  **not** yet evidence the top-of-list branch is broken, because offset 0 was
+  never established.
+
+`WN-DRAG-007` is the exception and it is claimed: 2 px moves nothing while a 60 px
+drag *from the same point* moves the window exactly −60 px (`WN-DRAG-001`), so it
+is a threshold result rather than a dead probe.
+
 ### WN-ENV-004 — the failure, and what it turned up
 
 The row claims: *no widget window before text exists; one small frameless window
