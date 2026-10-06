@@ -115,11 +115,19 @@ void main() {
 
     test('AGENTS.md points at docs that exist', () {
       final agents = tree.read('AGENTS.md');
-      final referenced =
-          RegExp(r'`((?:docs/)?[\w_]+\.md)`').allMatches(agents).map((m) => m.group(1)!);
+      // Any path ending in `.md`, at any depth. The character class used to be
+      // `[\w_]+`, which cannot match a `/` — so a citation like
+      // `docs/testing/README.md` was invisible here rather than checked. Five
+      // such paths were added to the docs index before anyone noticed, and the
+      // guard was the thing that was supposed to notice.
+      final referenced = RegExp(r'`([\w./-]+\.md)`')
+          .allMatches(agents)
+          .map((m) => m.group(1)!)
+          .where((r) => r.contains('/') || r.endsWith('.md'))
+          .toSet();
 
       final missing = referenced
-          .where((r) => r != 'PROJECT.md' && !tree.exists(r) && !r.contains('/'))
+          .where((r) => r != 'PROJECT.md' && !tree.exists(r))
           .toSet()
           .toList();
 
@@ -128,6 +136,19 @@ void main() {
         isEmpty,
         reason: 'AGENTS.md is the entry point. A link to a doc that is not there '
             'is worse than no index, because it looks checked.\n\n  $missing',
+      );
+    });
+
+    test('the AGENTS.md citation check is not vacuous', () {
+      // A regex that matches nothing reports a clean index. Fed a citation with
+      // a subdirectory in it — the shape five real entries have — it must find
+      // it, or the test above is decoration.
+      final cited = RegExp(r'`([\w./-]+\.md)`').allMatches('`docs/testing/x.md`');
+      expect(
+        cited.map((m) => m.group(1)).toList(),
+        contains('docs/testing/x.md'),
+        reason: 'a path with a directory in it is the case the old character '
+            'class could not match',
       );
     });
 

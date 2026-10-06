@@ -141,7 +141,12 @@ Verified against Flutter 3.47.6 stable, Dart SDK `^3.13.4`.
 | `docs/provider_pattern.md` | Riverpod: construction in providers, `ref.watch` vs `ref.read`, why `setState` is gone, and the per-file countdown the migration runs against. |
 | `docs/isolate_pattern.md` | The two surfaces, who writes each file, one `ProviderScope` per isolate, and the flush-on-teardown hazard. |
 | `docs/platform_pattern.md` | The 28 Dart-to-runner methods, their argument shapes, failure policies, and the scan blind spot that hid five of them. |
-| `docs/testing_pattern.md` | What each kind of test here may claim, the 473 tests, and the eighteen traps that cost real time. |
+| `docs/testing_pattern.md` | What each kind of test here may claim, the 473 tests, and the nineteen traps that cost real time. |
+| `docs/testing/README.md` | The gate, the tools, and which one answers which question. Start here. |
+| `docs/testing/project_realworld_testing.md` | The 27 scenarios only Windows can close, in 6 waves, with the method that can verify each. |
+| `docs/testing/project_integration_testing.md` | The A/B/C evidence classes and the rule that assertions come from the row, never from observed output. |
+| `docs/testing/feature_test_matrix.md` | Which test modules a *kind* of feature needs. The rule that survives renumbering. |
+| `docs/testing/reporting.md` | The results ledger. One row per scenario, machine recorded once per batch. |
 | `docs/flutter_architecture_pattern.md` | The Flutter architecture, performance and Riverpod rulebook this repo is built to. Carried verbatim with an Appendix of original contradictions; enforced by `flutter_rules_guard_test`, whose decision table records applied vs N/A per section. |
 | `README.md` | Users. Install, build, screenshots, bugs. |
 | `CHANGELOG.md` | `## Unreleased` holds work not yet tagged, as one bullet per change and nothing else (§0.6). |
@@ -330,15 +335,23 @@ is guarded by that flag.
 ## 6. Before You Push
 
 ```
-tool\check_architecture.ps1   # size and privacy caps; silent and exit 0 when clean
-flutter analyze               # must be clean
-flutter test                  # 473 passing
+pwsh -File tool\verify\verify.ps1    # the gate: caps, analyze, test, random, build, release, icons
 ```
+
+One command, seven stages in dependency order, about two minutes. `-Action Test`
+runs one; `-Skip Release` leaves one out. `Caps` is first because it needs no
+Dart VM and fails fastest on the mistake you are about to make 400 times in an
+editor; `Release` and `Icons` are last because they consume the build.
 
 Then: a `## Unreleased` entry in `CHANGELOG.md`, **one bullet per change saying
 what changed** (§0.6 — not why; the *why* goes in `PROJECT.md` or a pattern doc,
 and `changelog_guard_test` fails the long version). Every rule added to a
 pattern doc gets its row in that doc's §7 table.
+
+A green gate is a floor, not the product working. `docs/testing/README.md` says
+which check answers which question, and `docs/testing/reporting.md` is the ledger
+for the 27 scenarios the gate cannot close — a row is only `PASS (probe)` if a
+probe ran, and a bare `PASS` is not a value.
 
 Builds fail with **LNK1104** if `win_notes.exe` is running from
 `build\...\Release\`. Stop it first.

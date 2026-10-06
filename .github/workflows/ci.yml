@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   check:
-    name: Analyse and test
+    name: The gate
     runs-on: windows-latest
 
     steps:
@@ -29,20 +29,15 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Architecture caps
-        # The size and privacy rules of the Flutter rulebook. Also in
-        # `flutter test`, and here as well because it needs no Dart VM and fails
-        # with the file and the count rather than with an expectation diff.
+      - name: The gate
+        # One command, the same one a person runs before pushing, so "green
+        # locally" and "green here" mean the same thing. The stage order is a
+        # dependency order and lives in the script, not here.
+        #
+        # `Icons` is skipped because it needs the built installer, and Inno Setup
+        # is not installed on this runner. Its source-side checks still run in
+        # `icon_guard_test`, and the release workflow builds the installer for
+        # real. `Random` is skipped because it is a second pass over the same
+        # tests to hunt flakes - useful before a push, noise in CI.
         shell: pwsh
-        run: ./tool/check_architecture.ps1
-
-      - name: Analyse
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test
-
-      - name: Build
-        # Compiles the native runner too, which is where most Windows-specific
-        # breakage shows up. The Dart tests never link C++.
-        run: flutter build windows --release
+        run: ./tool/verify/verify.ps1 -Skip Icons,Random

@@ -40,7 +40,7 @@ void main() {
         updatedAt: DateTime(2026, 1, 1, 12, minute),
       );
 
-  /// Waits for a queued write to reach disk, up to a few seconds.
+  /// Waits for a queued write to reach disk.
   ///
   /// Polling rather than asserting on the first millisecond is deliberate.
   /// Replacing a file on Windows is itself allowed to fail transiently - Search
@@ -48,8 +48,17 @@ void main() {
   /// retries that, so asserting immediately would be testing the filesystem
   /// instead of the thing under test. Never calls flushPending, because the
   /// tests that use this exist to prove the debounce ceiling alone is enough.
+  ///
+  /// **The deadline is longer than the product's worst case, on purpose.** A
+  /// write that cannot land retries inside `writeTextAtomically` five times
+  /// (40+80+120+160ms) and then again up `AtomicJsonFile`'s ladder
+  /// (250+500+1000+2000ms) - about 5.75 seconds before it gives up. A six-second
+  /// deadline sits inside that budget, so the test can fail while the app is
+  /// still behaving correctly. It did, under randomised ordering with the rest
+  /// of the suite competing for the same temp directory. A long deadline costs
+  /// nothing: a passing run returns the moment the file appears.
   Future<bool> landed() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
     while (DateTime.now().isBefore(deadline)) {
       if (File(notesPath()).existsSync()) return true;
       await Future<void>.delayed(const Duration(milliseconds: 40));

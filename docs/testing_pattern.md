@@ -125,7 +125,14 @@ wrong number looks exactly like a drag that computes the right one.
 | `icon_guard_test` | one icon source of truth for `setup.exe`, the exe, the shortcut and the Windows Apps list |
 | `dependency_guard_test` | the runtime dependencies are the enumerated three |
 
-### Tier C — verified manually, with a synthetic-input probe
+### Tier C - verified manually, with a synthetic-input probe
+
+**The rows here have IDs and a ledger.** `docs/testing/project_realworld_testing.md`
+carries them as `WN-*` scenarios in 6 dependency-ordered waves, and
+`docs/testing/reporting.md` records what has actually run. This section explains
+the tiers; that folder is where the evidence lives. **Every row marked verified
+below predates the ledger and carries no date — treat it as a claim, not a
+result**, until it appears in `reporting.md` with a verdict and a machine.
 
 Everything Win32 that Dart cannot observe. This is why the 40% drag bug and the
 `HTCAPTION` failure were found — **by driving the real release build**, not by
@@ -201,7 +208,12 @@ ladder instead — which window exists, and what is on disk — which is exactly
 The keystroke path is the Dart suite's job. It found the first-launch regression in
 `AGENTS.md` §5.2.
 
-### Tier D — not verified at all
+### Tier D - not verified at all
+
+These are the Class C rows in `docs/testing/project_realworld_testing.md` (waves
+4 and 5) plus one unrooted bug. None has an ID yet except by description; the
+catalog names them `WN-SYS-001` through `WN-DPI-003` and
+`AGENTS.md` §5.1 for the bug.
 
 - **The first-launch bug.** Reproduced 4/4 on a genuinely fresh profile with
   valid JSON: the widget paints "No notes" while visible when it should hide.
@@ -324,6 +336,18 @@ pay again.
   eventually lands", and that is the thing to wait on — not a number guessed
   over a 250 ms debounce on a machine that is busy exactly when the guess is
   tight.
+- **A wait shorter than the code's own worst case fails while the code is
+  right.** `notes_repository_test.dart`'s `landed()` waited six seconds. A write
+  that cannot land retries inside `writeTextAtomically` five times
+  (40+80+120+160 ms) and again up `AtomicJsonFile`'s ladder
+  (250+500+1000+2000 ms) - **about 5.75 seconds of legitimate retrying**. The
+  deadline sat *inside* that budget, so under randomised ordering, with the rest
+  of the suite competing for the same temp directory, the test failed while the
+  app was still retrying correctly. The general form: **a test's patience must
+  exceed the worst case it is waiting on, and the worst case is arithmetic, not
+  an estimate.** Read it off the retry ladders rather than picking a round
+  number. A long deadline costs nothing - a passing wait returns the moment the
+  file appears.
 - **"did not complete" is a cascade, not a diagnosis.** The first thing to look
   for is a `Failed to load …` line earlier in the same output. When it appears,
   every suite that had not finished loading is then reported as *"did not
