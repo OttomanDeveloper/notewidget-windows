@@ -103,17 +103,30 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       positionLocked: _positionLocked,
     );
 
-    // Ask the runner for live bounds; a first run has no saved geometry to drag from.
-    final NativeBounds? live = await _shell.widgetBounds();
-    if (live != null) {
-      next = next.copyWith(
-        window: window.copyWith(
-          left: live.left,
-          top: live.top,
-          width: live.width,
-          height: live.height,
-        ),
-      );
+    // A saved position is restored by *telling the runner* to move there, not
+    // by reading its bounds back. No read-back after it: `widget.setGeometry`
+    // only queues the move. `docs/widget_pattern.md` §3.22 has the rest.
+    if (window.left != null && window.top != null) {
+      await _shell.setWidgetGeometry(NativeBounds(
+        left: window.left!,
+        top: window.top!,
+        width: window.width ?? 0,
+        height: window.height ?? 0,
+      ));
+    } else {
+      // A first run has no saved geometry and nothing to drag from, so the
+      // runner's own placement is the only position there is.
+      final NativeBounds? live = await _shell.widgetBounds();
+      if (live != null) {
+        next = next.copyWith(
+          window: window.copyWith(
+            left: live.left,
+            top: live.top,
+            width: live.width,
+            height: live.height,
+          ),
+        );
+      }
     }
 
     // An empty widget is never shown, since there would be nothing to look at.

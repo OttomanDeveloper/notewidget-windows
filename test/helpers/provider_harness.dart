@@ -27,6 +27,7 @@ import 'package:win_notes/features/notes/presentation/providers/notes_providers.
 import 'package:win_notes/core/utils/app_providers.dart';
 import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
 import 'package:win_notes/features/widget/presentation/providers/widget_controller.dart';
+import 'package:win_notes/features/widget/domain/widget_state.dart';
 
 /// A container over a temporary profile directory, plus the plumbing to shut it down
 /// in the right order.
@@ -316,6 +317,12 @@ class WidgetNotes {
   bool get widgetVisible => _s.visible;
   bool get hasAnyNoteWithText => _s.hasAnyNoteWithText;
   String? get selectedId => _s.selectedId;
+
+  /// Where the surface believes the window is.
+  ///
+  /// Exposed as a whole record rather than as `left`/`top` getters because the
+  /// questions are about the pair: a restore bug moves both or neither.
+  WidgetWindowState get window => _s.window;
 
   // --- actions, on the notifier ---
   Future<void> toggleCompleted(String id) => _n.toggleCompleted(id);

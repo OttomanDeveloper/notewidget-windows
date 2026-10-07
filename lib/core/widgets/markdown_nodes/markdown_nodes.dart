@@ -15,7 +15,33 @@ class MarkdownNodes {
   static bool isContainer(md.Element node) =>
       (node.children?.isNotEmpty ?? false);
 
-  static bool isBlank(md.Node node) => node.textContent.trim().isEmpty;
+  /// Whether [node] would draw nothing at all. `alt` on an `<img>` is an
+  /// attribute rather than a text child, so a paragraph holding only an image
+  /// has empty `textContent` and is not blank. widget_pattern.md §3.15.
+  static bool isBlank(md.Node node) {
+    if (hasImage(node)) return false;
+    return visibleText(node).trim().isEmpty;
+  }
+
+  /// The text a node actually draws. Same comment rule as `MarkdownSpans`:
+  /// `<!-- note -->` is markup for the reader and nothing for the author, so a
+  /// paragraph holding only a comment is blank rather than a gap on screen.
+  static String visibleText(md.Node node) =>
+      node.textContent.replaceAll(_comment, '');
+
+  static final RegExp _comment = RegExp(r'<!--[\s\S]*?-->');
+
+  /// Whether [node] holds an `<img>` anywhere inside it. Recurses, because in a
+  /// table cell or a list item the image is deeper than a `<p>` wrapper.
+  static bool hasImage(md.Node node) {
+    if (node is md.Element) {
+      if (node.tag == 'img') return true;
+      for (final md.Node child in node.children ?? const <md.Node>[]) {
+        if (hasImage(child)) return true;
+      }
+    }
+    return false;
+  }
 
   /// A quote's children. A quote holding one paragraph is that paragraph rather
   /// than a nested column with a gap in it.

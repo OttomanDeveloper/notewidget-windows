@@ -60,8 +60,22 @@
 - The three controllers are Riverpod `AsyncNotifier`s with immutable state, replacing `ChangeNotifier`s.
 - `main()` builds one `ProviderScope`, so `EditorApp` and `WidgetApp` take no parameters.
 
+### Added
+
+- `:tada:`-style emoji shortcodes render as the character, and `> [!NOTE]` and its four siblings render as a labelled callout; both were already in the parser but out of its default set.
+
 ### Fixed
 
+- The widget's saved position was written on every drag and never restored; it now comes back where you left it, clamped to a screen that still exists.
+- A table with more columns than the pane could show was squeezed into unreadable slivers; it now scrolls sideways and each column keeps a legible width.
+- `crash.log`: uncaught Dart errors and native faults are appended to `%APPDATA%\WinNotes`, because a release build launched at login has nowhere to print.
+- `win_notes.exe --diagnose <path>` writes one snapshot of the profile, monitors, window position and autostart entry, then exits.
+- `ISSUE_REPORTING.md` now says how to collect that evidence before filing an issue.
+- A list item lost everything after its first bold, italic, link or code run; `- **(x)** words` rendered as `(x)` alone.
+- A paragraph holding only an image rendered as nothing; `alt` is an attribute, so the blank check now looks for the image itself.
+- `<br>` printed itself on screen instead of breaking the line.
+- A footnote printed its number twice, as `11.1.`, from the list marker and the reference.
+- An HTML comment was shown on screen; it is now invisible, as a comment should be.
 - `platform_guard_test` read zero argument keys once the maps became `<String, dynamic>{...}`; the scanner now tolerates an explicit type argument.
 - Four `package:riverpod/src/` imports went, by dropping the `ProviderFamily` and `Override` annotations that needed them.
 - The "an empty library shows no widget" check counted one window per process, so it could not fail; it now enumerates by window class and reports a real bug.

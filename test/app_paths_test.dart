@@ -163,7 +163,7 @@ void main() {
   });
 
   group('the file names are unchanged by any of this', () {
-    test('the four files and the default storage directory are what they were', () {
+    test('the five files are named, and the default storage directory is what it was', () {
       const AppPaths paths = AppPaths(
         dataDirectory: r'C:\d',
         executablePath: r'C:\app\win_notes.exe',
@@ -173,6 +173,10 @@ void main() {
       expect(paths.settingsFile, r'C:\d\settings.json');
       expect(paths.widgetStateFile, r'C:\d\widget_state.json');
       expect(paths.selectionFile, r'C:\d\selection.json');
+      // The fifth is the crash log, and it is the only one nothing reads back:
+      // `docs/storage_pattern.md` §3.13a. It shares the `.log` suffix with the
+      // C++ handler, which derives the same path from `AppDataDirectory()`.
+      expect(paths.crashLogFile, r'C:\d\crash.log');
       expect(paths.defaultStorageDirectory, r'C:\d');
     });
   });

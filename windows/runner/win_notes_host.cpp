@@ -190,7 +190,8 @@ RECT DefaultWidgetBounds() {
 
 }  // namespace
 
-Host::Host(LaunchMode mode) : mode_(mode) {}
+Host::Host(LaunchMode mode, std::wstring diagnose_path)
+    : mode_(mode), diagnose_path_(std::move(diagnose_path)) {}
 
 Host::~Host() {
   Shutdown();
@@ -544,6 +545,7 @@ void Host::HandleMethodCall(
         {flutter::EncodableValue("autostartEnabled"), flutter::EncodableValue(AutostartEnabled())},
         {flutter::EncodableValue("autostartCommand"), flutter::EncodableValue(WideToUtf8(AutostartCommand()))},
         {flutter::EncodableValue("defaultWidgetBounds"), EncodeRect(DefaultWidgetBounds())},
+        {flutter::EncodableValue("diagnosePath"), flutter::EncodableValue(WideToUtf8(diagnose_path_))},
     }));
     return;
   }

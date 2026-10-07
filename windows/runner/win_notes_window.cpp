@@ -493,6 +493,13 @@ void Window::SetBounds(const RECT& bounds) {
                               ScaleForWindow(window_, kMinWidgetHeight));
   SetWindowPos(window_, nullptr, bounds.left, bounds.top, width, height,
                SWP_NOZORDER | SWP_NOACTIVATE);
+  // This is the restore path: Dart hands back a left/top that was saved on a
+  // previous boot, possibly on a monitor that is no longer plugged in. A drag
+  // gets clamped by EndLoop when the pointer comes up, but nothing clamps a
+  // programmatic move, so without this a saved position can put the widget
+  // somewhere it can never be clicked again - which is the same unreachable
+  // state the drag path exists to prevent.
+  ClampToReachableScreen();
   RefreshRoundedRegion();
 }
 

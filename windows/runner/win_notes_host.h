@@ -18,7 +18,7 @@ namespace winnotes {
 // single-instance handshake, and the method channel the Dart side talks to.
 class Host : public WindowHostDelegate {
  public:
-  explicit Host(LaunchMode mode);
+  explicit Host(LaunchMode mode, std::wstring diagnose_path = std::wstring());
   ~Host() override;
 
   Host(const Host&) = delete;
@@ -72,6 +72,11 @@ class Host : public WindowHostDelegate {
                         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
   LaunchMode mode_;
+
+  // Non-empty only for `win_notes.exe --diagnose <path>`. Handed to Dart in the
+  // bootstrap payload rather than as a Dart argument, because the runner owns
+  // the entrypoint arguments and the process command line never reaches them.
+  std::wstring diagnose_path_;
   std::unique_ptr<Window> shell_;
   std::unique_ptr<Window> editor_;
   TrayIcon tray_;

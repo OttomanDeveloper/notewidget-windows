@@ -321,6 +321,85 @@ candidate backup* — skips individual unreadable notes instead of condemning th
 file. Refusing the whole backup would throw away notes that are perfectly fine,
 which is the opposite of what someone recovering from corruption needs.
 
+### 3.13a `crash.log` is not a data file, and it is not NDJSON
+
+**The gap this closes is real and it was measured.** `main.cpp` creates a console
+only when a debugger is attached, so a build launched at login has nowhere to
+print. A Dart exception in a widget build, or a native access violation, died
+silently and the evidence went nowhere. There is no telemetry and no upload
+(`PROJECT.md`), so the only way a failure is ever reported is a file the person
+pastes into an issue.
+
+**It is not a data file, and that is the whole reason it is allowed to exist.**
+Four files are notes, settings, widget state and selection; all four are read
+back, all four are worth protecting, and `app_paths_test` pins their names. This
+is a fifth, and the difference is that *nothing reads it*. Losing `crash.log`
+costs nothing, which is why §3.11's "renames, never deletes" applies to its
+*rotation* but not its existence — the rotation renames, and a crash loop that
+filled a disk would be its own outage.
+
+**Rotation renames, and only when there is something to keep.** Above 256 KB the
+live file becomes `crash.log.1`. The incident that filled the file is the one
+most worth reading, so deleting it to make room for the next would throw away the
+better evidence. `notes.json.bak` is the same convention with the same reasoning,
+so the profile has one rotation convention rather than two.
+
+**Never note content, and that is enforced, not remembered.** A crash log gets
+pasted into a public issue; `ISSUE_REPORTING.md` says a report is public the
+moment it is submitted. A note title in a stack trace is a published note.
+Sizes and lengths only — `notesBytes` is enough to tell "the notes failed to
+parse" from "there were no notes", and nothing more is worth the risk.
+
+**It is a sequence of indented JSON objects, not NDJSON.** A newline is not valid
+between two JSON values, so `crash.log` is not parseable by a line reader and
+`jsonDecode` over the whole file fails. A test asserts entries by counting their
+closing braces for that reason, and the comment at the call site says so.
+
+**It must never throw.** A handler that raises while reporting a crash replaces a
+useful stack trace with a useless one, so `record` swallows every failure:
+disk full, read-only profile, missing permission. `PlatformDispatcher.onError`
+returns `true`, which marks the error handled — the process otherwise keeps
+running in a state nobody asked for, with the file as the only evidence.
+
+**The native half is compiled but not fault-tested.** `SetUnhandledExceptionFilter`
+in `main.cpp` writes the exception code and both addresses to the same file, and
+the release build compiles it, but no access violation has been provoked. The
+`§3.13a` row therefore cites no `**manual**` step for it, because a row that
+claimed one would be asserting a check that was never made. Provoking it means
+faulting the real process on purpose, which is a decision for the owner rather
+than something to do inside a working session.
+
+### 3.13b A diagnostic dump is written on request, never on a schedule
+
+`win_notes.exe --diagnose <path>` writes one snapshot and exits. It exists
+because §3.13a covers *crashes*, and most reports are not crashes: "the widget
+does not come back", "it will not start at login", "it moved itself". Nothing
+throws in any of those, so `crash.log` stays absent — measured, on a real
+profile where the widget position was being silently discarded every launch.
+
+**Nothing is written unless someone asks.** Logging this much state on every
+launch writes metadata about someone's machine to disk to fix a problem that
+occurs rarely, which is the reasoning `ISSUE_REPORTING.md` applies to crash
+reporting too. A dump is read by a person; a dump nobody reads is litter.
+
+**It adds no platform method, which was the plan and is not what shipped.** The
+plan put a `widget.diagnostics` method in the registry, taking it from 28 to 29.
+It should not have: `LaunchInfo` already carries the monitors, the autostart
+entry and both paths from `bootstrap`, and `widget.getBounds` gives live
+geometry. §0.10's risk — a one-sided addition that is a silent no-op — buys
+nothing here, so the registry is unchanged at 28.
+
+**The flag arrives through `bootstrap`, not through `main`'s arguments.** The
+runner owns `dart_entrypoint_arguments` and sets them to `--surface` and
+`--launch`, so the process command line never reaches Dart. Parsing it in
+`main.dart` looks right and silently never fires; `ResolveDiagnosePath` in
+`main.cpp` is the route the existing flags already take.
+
+**Every value in it is plain JSON, and that is load-bearing.** The first version
+put a `NativeBounds` in the map, which `jsonEncode` cannot encode, so the encode
+threw and `writeTo`'s catch swallowed it — leaving no file and no error, which
+is the same silent failure as a bug in the thing being diagnosed.
+
 ### 3.14 `markdown` decides presentation and touches nothing else
 
 `Note.markdown` is a boolean, defaulting to false, **omitted from `toJson` when
@@ -472,6 +551,8 @@ cited test stops existing.
 | 3.11 | Start fresh renames | `notes_controller_test` → *starting fresh keeps the unreadable file*, *a second incident does not overwrite the first one*, *starting fresh writes a valid file, so it does not refuse again* |
 | 3.12 | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list*, *undo brings a finished note back finished* |
 | 3.13 | `loadFrom` is forgiving | `notes_repository_test` → *loadFrom keeps the notes it can read when one entry is broken*, *loadFrom returns empty rather than claiming damage on a non-backup* |
+| 3.13a | The crash log is not a data file | `crash_log_test` *a crash is written with its stack, not just its message*, *each crash is its own entry, so a second one does not overwrite the first*, *a crash log carries no note text*, *rotation renames rather than deletes, so the previous crash survives*, *an unwritable path does not raise*, *an installed handler catches an uncaught framework error*; `app_paths_test` *the five files are named, and the default storage directory is what it was* |
+| 3.13b | A dump is written on request, never on a schedule | `diagnostics_test` *it says a corrupt notes file is corrupt, not what was in it*, *a dump carries no note text*, *a missing file is reported as missing rather than omitted*, *an entry pointing at nothing is reported as pointing at nothing*, *the app's own intent is reported separately from the registry*, *a real target is recognised through the quotes and the flag*, *no entry at all is not a failure*, *the dump is valid JSON a person can paste*, *an unwritable destination does not raise, and writes nothing*, *it adds no platform method*; **manual** - run `win_notes.exe --diagnose %TEMP%\d.json` on a release build: no window stays up, and the file carries the live widget bounds |
 | 3.14 | `markdown` is presentation only | `markdown_test` → *is omitted from the file when off, so old notes stay untouched*, *absent means off*, *only a literal true turns it on*, *copy carries it, because undo restores a note wholesale*, *the body is never rewritten by turning it on or off*, *the source keeps the syntax while it is being typed* |
 | 3.15 | …but switching it on does reorder | `markdown_test` → *turning it on bumps updatedAt, unlike finishing a task*, *setting it to what it already is does nothing*, *turning it on changes the note and persists*, *a note that is not there is ignored* |
 | — | A missing file is a first run | `notes_repository_test` → *a missing file is a first run, not an error*, *a file with only whitespace is treated as empty* |

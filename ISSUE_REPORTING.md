@@ -1,8 +1,38 @@
 # Reporting an issue
 
 Bug reports are welcome and genuinely useful here. This project has no telemetry
-and no crash reporting, so a report is the only way I find out something is
+and nothing is uploaded, so a report is the only way I find out something is
 broken — and the more precisely it is written, the sooner it gets fixed.
+
+Two things are written to disk so you are not asked to reconstruct them from
+memory. Both are local, both are yours, and neither ever leaves your machine
+except by you pasting it.
+
+## Collecting evidence first
+
+### `crash.log` — only if the app crashed
+
+`%APPDATA%\WinNotes\crash.log` holds uncaught Dart errors and native faults, and
+it is written only when there is one. If it is there, **attach it**. It is
+indented JSON, one entry per crash, rotated to `crash.log.1` above 256 KB.
+
+It deliberately carries no note text and no user names — sizes and stack traces
+only — so it is safe to paste as-is.
+
+### `win_notes.exe --diagnose <path>` — for "nothing happens"
+
+There is no crash to log when the app runs and does the wrong thing, so nothing
+is written automatically. Ask for a snapshot instead:
+
+```
+win_notes.exe --diagnose "%TEMP%\winnotes.json"
+```
+
+It writes one file and exits. That file contains the resolved profile path, the
+size and parse verdict of each of the four profile files, the monitors, where the
+window actually is, and whether the autostart entry points at a file that still
+exists. It reads no note content. **Attach it for any "it doesn't come back",
+"the widget won't move" or "it won't start at login" report.**
 
 ## Before you report
 
@@ -52,6 +82,9 @@ readable and often just as telling.
 
 Never paste anything you did not mean to publish. This project has no account
 system and no server, so an issue is public the moment you press submit.
+
+Both files above are safe to paste without editing: neither contains note text
+or your Windows user name. `crash.log` in particular is written to be pasted.
 
 ### What not to include
 

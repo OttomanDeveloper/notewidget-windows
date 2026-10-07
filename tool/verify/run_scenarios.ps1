@@ -160,6 +160,7 @@ namespace WN {
     //
     // It is worth being precise about why this hid for so long: `WindowFromPoint`
     // at that same pixel returns the FLUTTERVIEW child, which is a plain rectangle
+    // and is not clipped by the parent's region. So the obvious "is there a window
     // under the cursor" probe says yes. Only `PtInRegion` against the HRGN from
     // `GetWindowRgn` gives the truth, which is what GrabCorner below uses.
     [DllImport("user32.dll")]

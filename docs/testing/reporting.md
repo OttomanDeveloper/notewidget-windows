@@ -13,8 +13,8 @@ assertion.
 | Class | Rows | Method | Cost per row |
 |---|--:|---|---|
 | **A** | tracked in `project_integration_testing.md` | Host test — `flutter test` | seconds, batched |
-| **B** | 12 of the 27 below | Probe against a release build | seconds |
-| **C** | 15 of the 27 below | By hand on a desktop | minutes |
+| **B** | 12 of the 33 below | Probe against a release build | seconds |
+| **C** | 15 of the 33 below | By hand on a desktop | minutes |
 
 **Class A is the whole game.** A single `flutter test` run closes dozens of rows
 at once. **No row goes to a probe while a host test could close it.**
@@ -74,7 +74,7 @@ first time *and found failing*.
 | WN-DPI-001…003 | NOT RUN | Class C, by hand; DISPLAY2 is at 96 dpi so 001 has nothing to vary |
 | WN-SCALE-001…002 | NOT RUN | Class C, measurement |
 
-**5 of 27 rows closed. 22 open.** One of the five is a failure.
+**8 of 33 rows closed. 25 open.** One of the eight is a failure.
 
 ### Batch 2 - 2026-10-06, waves 1 to 3, probe
 
@@ -184,6 +184,73 @@ directions".
 
 It now enumerates by window class. It fails. The gate is red for this reason and
 should stay red until §5.1 is fixed.
+
+### WN-ENV-004 — what the 2026-10-07 diagnostics work did and did not settle
+
+**Still open. No root cause, and no fix.** What changed is that the rule is now
+pinned from both sides that can run, and the reproduction is written down.
+
+`widget_integration_test` asserts the runner is told `visible: true` with a note
+that has text and `visible: false` without one, at the **wire** rather than in
+Dart state — a state field the runner cannot read is not evidence. Both pass,
+because `makeController` resolves settings *before* the surface, which is the
+ordering that works.
+
+The ordering §5.1 names is the one that does not: the surface builds first,
+`_applyWindowConfiguration` finds no settings and returns early, and the
+`ref.listen` that would correct it fires only on a *change*. Driving that
+ordering in a test **hangs rather than fails** — `settingsProvider` stays
+unresolved under `runAsync` — so the test is present and skipped with that
+reason rather than deleted, and a fix has to bring its own evidence.
+
+**The wrong lesson to draw.** A crash reporter would not have caught this: the
+app never crashed, and `crash.log` stays absent for a run like this. What a run
+like this produces instead is a diagnostic dump — `--diagnose`, added in this
+batch — whose `runner.liveWidgetBounds` alongside `profile.files` is the
+evidence. That is why Wave 7 exists even though it is the wave most likely to be
+cut.
+
+### Batch 2 — 2026-10-07, wave 7, by hand on a release build
+
+Not a probe run: the diagnostics rows were exercised by invoking the built exe
+directly, because `--diagnose` *is* the instrument and a probe driving it would
+prove the probe works. Machine as recorded above; build flags as recorded above.
+
+| Row | Result | Evidence |
+|---|---|---|
+| WN-DIAG-001 | PASS | exit code 0; no `win_notes` process and no window left; file written at the named `%TEMP%` path |
+| WN-DIAG-002 | PASS | saved `1086,366`; `runner.liveWidgetBounds` = `1548,12`, i.e. the runner's own placement on a diagnostic launch, **not** the saved file — the two fields are distinguishable, which is the row |
+| WN-DIAG-003 | FAIL → **PASS (re-test)** | **first run reported `autostartTargetExists: true` for a path that does not exist.** Cause below. After the fix: `autostartRegistryEntry` = `"C:\definitely\not\here\win_notes.exe" --widget`, `autostartCommand` = the app's own path, `autostartTargetExists` = `false`. Registry restored to its prior value in a `finally` |
+| WN-DIAG-004 | PASS (U) | `diagnostics_test` *a dump carries no note text* and `crash_log_test` *a crash log carries no note text*; the dump of a real profile carries `notesBytes` and no title or body |
+| WN-DIAG-005 | BLOCKED | the Dart handler is covered by `crash_log_test` *an installed handler catches an uncaught framework error*, but no release build has been made to throw, and the app has no fault-injection switch. Adding one is a product change, not a test |
+| WN-DIAG-006 | BLOCKED | never attempted. Faulting the real process on purpose needs the owner's agreement; the `§3.13a` row cites no `**manual**` step for it for the same reason |
+
+**Three of six ran. One of them found a bug, which is the point of the wave.**
+
+**WN-DIAG-003's first run failed, and it was the dump's own fault.**
+`autostartTargetExists` was checking `_launch.autostartCommand`, which the runner
+computes from `ExecutablePath()` — it is what the app **would write**, not what
+the registry **holds**. So a Run value pointing at an uninstalled build read as
+`true`, which is the exact failure the field was added to catch: it agreed with
+itself. The fix reads the entry back with `reg query` and reports
+`autostartRegistryEntry` beside the intent, so the two can be seen disagreeing.
+
+**A unit test could not have found this**, which is the argument for the wave
+being `P`. The first version of `diagnostics_test` injected a fake command and
+passed. It only failed once the code was pointed at the real registry and asked
+to be wrong.
+
+**Two rows are BLOCKED, and neither is blocked by difficulty.** `WN-DIAG-005`
+needs a build that throws on request and there is no such switch; `WN-DIAG-006`
+needs permission to fault the process deliberately. Both are decisions rather
+than work, and both are recorded open rather than quietly dropped.
+
+**The other thing this batch caught was not a bug in the code.** The first
+`--diagnose` invocation wrote no file and exited nothing, because
+`main(List<String> args)` never sees the process command line — the runner owns
+`dart_entrypoint_arguments`. Parsing the flag in `main.dart` compiled, analysed
+clean, and never once ran. Without actually launching the exe, every row here
+would have stayed `NOT RUN` for ever, green or not.
 
 ### What was not run, and why
 

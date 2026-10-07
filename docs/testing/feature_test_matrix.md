@@ -29,7 +29,8 @@ most features. Do not split by layer out of habit.
 | Colour and contrast — palette legibility, `readableOn` | unit | — | **1** |
 | Business rule over stored data — search, undo window, completion | `notes_controller_test` | — | **1** |
 | Screen copy, empty state, error state | widget | — | **1** |
-| Anything touching a file — export, import, storage move, backup | real temp dir | a probe for the file dialog | **1 + probe** |
+| Anything touching a file - export, import, storage move, backup | real temp dir | a probe for the file dialog | **1 + probe** |
+| Diagnostics - a crash log, a dump | unit against a temp dir | a **manual** run of the real exe | **1 + manual** |
 | A new `ShellChannel` method | `platform_guard_test` for both sides | a probe if it changes what a person sees | **1–2** |
 | A shape or size rule — caps, private widgets, comments | guard or `check_architecture.ps1` | — | **1** |
 | Drag, resize, focus or keyboard handling | **probe** | a guard for the rule that must not drift | **1 + probe** |
@@ -41,8 +42,16 @@ Read the last two rows as boundaries, not as excuses. Scale and compositing are
 not Dart problems — they are Windows problems, and no module on this list closes
 them.
 
-## Three worked examples from this repo
+**The diagnostics row is not fully closed by its unit test, and cannot be.** A
+`crash.log` and a `--diagnose` dump are both written from a release build with no
+console, so the parts a Dart test cannot reach are the ones that matter: that the
+`SetUnhandledExceptionFilter` actually fires, and that the flag reaches Dart at
+all. The second one had already failed silently once — the runner owns
+`dart_entrypoint_arguments`, so parsing `--diagnose` in `main.dart` compiled,
+analysed clean, and never once ran. Both were verified by running the built exe,
+and a test cannot replace that.
 
+## Three worked examples from this repo
 **Markdown rendering → 5 files, all unit.** `markdown_test.dart` plus the
 per-concern files it drives. It crosses no boundary, so it never needs a probe or
 a real directory. That is what "one type" looks like when a feature is worth

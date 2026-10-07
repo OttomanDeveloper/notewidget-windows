@@ -34,7 +34,7 @@ out of a person's `%APPDATA%\WinNotes`.
 | Gate | **green** — `verify.ps1`, all 7 stages, 473 tests |
 | Release drive | **13/13** — first launch, no widget when empty, a note on disk, the widget window, no orphan, real profile byte-identical |
 | Icon audit | **13/13** — all four places Windows reads an icon from |
-| Row coverage | **5 of 27 closed, and one of the five is a failure** — `reporting.md`, batch 1 |
+| Row coverage | **8 of 33 closed, and one of the eight is a failure** — `reporting.md`, batches 1–2 |
 | Probe | **`tool\verify\run_scenarios.ps1`** drives waves 1–3. Wave 1 ran; wave 2 is written but not exercised; wave 3 is blocked on locating the composer's add-note control |
 | Open blocker | **`AGENTS.md` §5.1** — the first-launch widget bug, reproduced and measured for the first time. `verify_release.ps1` fails on it, so the gate is red, and it should stay red |
 | Open blocker | **A person** — waves 4 and 5 (acrylic, tray, global hotkey, autostart, single-instance, multi-monitor) have no automated instrument at all |
@@ -85,6 +85,7 @@ meaningful once every other row has finished.
 | 4 | Compositing, tray, and the shell | 5 | wave 1 |
 | 5 | Multi-monitor and DPI | 3 | waves 2–4 |
 | 6 | Scale and responsiveness | 2 | a seeded library |
+| 7 | Diagnostics | 6 | a release build |
 
 Wave 0 has no scenarios of its own. It is the set of rows a host test can close
 outright, and [`project_integration_testing.md`](project_integration_testing.md)
@@ -174,6 +175,30 @@ because they are not obvious and the failure is silent.
 |---|---|---|---|---|---|---|
 | WN-SCALE-001 | W M | A large library stays responsive | 2,000 notes, search as you type | No frame over 16 ms while scrolling; typing stays ahead of the keystroke | NOT RUN | - |
 | WN-SCALE-002 | W M | The widget with a long card list | 200 notes with text | Scrolling stays within budget and memory does not climb per rebuild | NOT RUN | - |
+
+## Wave 7 — Diagnostics
+
+Added 2026-10-07 for `crash.log` and `--diagnose`. Both are local files, neither
+is uploaded, and the row that matters is the one that says so — the rest is
+checking that a file lands where `ISSUE_REPORTING.md` tells a person to look.
+
+Every row here is `P`, not `U`. A `flutter test` proves the writer writes; it
+cannot prove a release build with no console has anywhere to put the result,
+which is the entire reason the feature exists.
+
+| ID | Method | Overview | Required states | Expected behavior | End result | Fix |
+|---|---|---|---|---|---|---|
+| WN-DIAG-001 | P | `--diagnose` writes and exits | a release build, `WIN_NOTES_DATA_DIR` pointed at `%TEMP%` | One file at the named path; the process exits 0; **no window is left up** and no `win_notes` survives | NOT RUN | - |
+| WN-DIAG-002 | P | The dump carries the live widget position | the widget dragged somewhere unusual, then `--diagnose` | `runner.liveWidgetBounds` equals the window's real rect, not `defaultWidgetBounds` and not the saved file | NOT RUN | - |
+| WN-DIAG-003 | P | The dump names a broken autostart entry | the Run key pointing at a path that does not exist | `autostartTargetExists` is `false` while `autostartEnabled` is `true` — the pair is the whole point | NOT RUN | - |
+| WN-DIAG-004 | P U | No note text reaches either file | a note titled `Dentist Tuesday` | Neither the dump nor `crash.log` contains the title or the body; both carry `notesBytes` instead | NOT RUN | - |
+| WN-DIAG-005 | P | An uncaught Dart error is recorded | a release build launched from a shell with no console | `crash.log` gains one indented JSON entry with the stack, and the Run key and `%TEMP%` are untouched | NOT RUN | - |
+| WN-DIAG-006 | D | A native fault is recorded | a deliberate access violation in a **throwaway build** | `crash.log` gains an entry with `source: win32`, the exception code and both addresses | NOT RUN | - |
+
+**WN-DIAG-006 is `D` and last because it requires the owner's agreement.** It
+faults the app on purpose. The handler compiles and the Dart half is
+`WN-DIAG-005`, but nobody has provoked a real Win32 fault, so nothing in this
+repository claims that row is verified.
 
 **No Class C device matrix here, deliberately.** There is no low-RAM phone and
 no OEM ROM. The equivalent risk on Windows — a compositor that drops frames, a

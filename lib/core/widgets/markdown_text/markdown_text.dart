@@ -192,10 +192,17 @@ class _ParseCache {
     return nodes;
   }
 
-  /// `gitHubFlavored` for task lists and pipe tables (CommonMark has neither).
-  /// `encodeHtml: false` so raw HTML stays text (see the class comment).
+  /// `gitHubFlavored`, plus emoji and alerts — which the parser implements and
+  /// that set omits, so they are named here. `encodeHtml: false`, §3.15.
+  static final md.ExtensionSet _extensions = md.ExtensionSet(
+        md.ExtensionSet.gitHubFlavored.blockSyntaxes +
+            <md.BlockSyntax>[const md.AlertBlockSyntax()],
+        md.ExtensionSet.gitHubFlavored.inlineSyntaxes +
+            <md.InlineSyntax>[md.EmojiSyntax()],
+      );
+
   static List<md.Node> _parse(String source) => md.Document(
-        extensionSet: md.ExtensionSet.gitHubFlavored,
+        extensionSet: _extensions,
         encodeHtml: false,
       ).parseLines(_lines(source));
 

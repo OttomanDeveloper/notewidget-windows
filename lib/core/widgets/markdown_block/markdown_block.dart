@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../markdown_alert/markdown_alert.dart';
 import '../markdown_block_heading/markdown_block_heading.dart';
 import '../markdown_block_list/markdown_block_list.dart';
 import '../markdown_block_paragraph/markdown_block_paragraph.dart';
@@ -36,7 +37,7 @@ class MarkdownBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final md.Node textNode = node;
     if (textNode is md.Text) {
-      if (textNode.text.trim().isEmpty) return const SizedBox.shrink();
+      if (MarkdownNodes.isBlank(textNode)) return const SizedBox.shrink();
       return MarkdownBlockParagraph(
         node: textNode,
         style: style,
@@ -82,6 +83,26 @@ class MarkdownBlock extends StatelessWidget {
       case 'pre':
         return MarkdownCodeBlock(node: element, style: style);
 
+      case 'div':
+        // Only the alert `<div>` reaches here; a raw `<div>` is literal text
+        // because `encodeHtml: false`, so this cannot catch anything else.
+        if ((element.attributes['class'] ?? '').contains('markdown-alert')) {
+          return MarkdownAlert(
+            node: element,
+            style: style,
+            depth: depth,
+            maxLines: maxLines,
+            selectable: selectable,
+          );
+        }
+        return MarkdownBlockList(
+          nodes: MarkdownNodes.childBlocks(element),
+          style: style,
+          depth: depth,
+          maxLines: maxLines,
+          selectable: selectable,
+        );
+
       case 'blockquote':
         return MarkdownQuote(
           node: element,
@@ -98,6 +119,18 @@ class MarkdownBlock extends StatelessWidget {
           style: style,
           depth: depth,
           ordered: element.tag == 'ol',
+          maxLines: maxLines,
+          selectable: selectable,
+        );
+
+      case 'section':
+        // The footnote block. Rendering its `<ol>` as a list printed the number
+        // twice - as the glyph and again from the `<sup>` reference - so the
+        // `<ol>` is skipped. See widget_pattern.md §3.15.
+        return MarkdownBlockList(
+          nodes: _footnoteItems(element),
+          style: style,
+          depth: depth,
           maxLines: maxLines,
           selectable: selectable,
         );
@@ -131,8 +164,9 @@ class MarkdownBlock extends StatelessWidget {
             selectable: selectable,
           );
         }
-        final String text = element.textContent.trim();
-        if (text.isEmpty) return const SizedBox.shrink();
+        // `isBlank`, not `textContent`: an image-only block is not blank. See
+        // `MarkdownNodes.isBlank` and widget_pattern.md §3.15.
+        if (MarkdownNodes.isBlank(element)) return const SizedBox.shrink();
         return MarkdownBlockParagraph(
           node: element,
           style: style,
@@ -140,5 +174,17 @@ class MarkdownBlock extends StatelessWidget {
           selectable: selectable,
         );
     }
+  }
+
+  /// The `<li>` items inside a footnote `<section>`'s `<ol>`. The `<ol>` carries
+  /// the parser's numbering and the `<li>` wraps the footnote in a `<p>`; a
+  /// section with no `<ol>` falls back to its own children.
+  static List<md.Node> _footnoteItems(md.Element section) {
+    final List<md.Node> children = section.children ?? const <md.Node>[];
+    final md.Element? ordered = children
+        .whereType<md.Element>()
+        .cast<md.Element?>()
+        .firstWhere((md.Element? e) => e?.tag == 'ol', orElse: () => null);
+    return ordered?.children ?? children;
   }
 }

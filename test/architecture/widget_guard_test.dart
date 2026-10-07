@@ -333,6 +333,69 @@ void main() {
     });
   });
 
+  group('a saved position is restored, and clamped on the way', () {
+    // §3.22. Dart sends `widget.setGeometry` the left/top it saved on the last
+    // boot, which is the only move path with no pointer-up to clamp it.
+    late String source;
+
+    setUpAll(() => source = tree.runnerSource);
+
+    String setBoundsBody() => RegExp(r'void Window::SetBounds\(.*?\n\}', dotAll: true)
+        .firstMatch(source)
+        ?.group(0) ??
+        '';
+
+    test('SetBounds clamps to a reachable screen', () {
+      expect(setBoundsBody(), isNotEmpty, reason: 'SetBounds should still exist');
+      expect(
+        setBoundsBody(),
+        contains('ClampToReachableScreen'),
+        reason: 'this is the restore path: the saved monitor may be gone, and an '
+            'unclamped programmatic move is the one way to leave the widget '
+            'where it can never be clicked again',
+      );
+    });
+
+    test('the guard bites: a SetBounds without the clamp is rejected', () {
+      final String faulty = source.replaceFirst(
+        RegExp(r'(void Window::SetBounds\(.*?\n\})(.*?)\n\}', dotAll: true),
+        r'$1$2\n}',
+      );
+      expect(faulty, isNot(equals(source)), reason: 'the mutation must apply');
+      expect(
+        RegExp(r'void Window::SetBounds\(.*?\n\}', dotAll: true)
+            .firstMatch(faulty)
+            ?.group(0) ??
+            '',
+        isNot(contains('ClampToReachableScreen')),
+        reason: 'otherwise the guard is not looking at anything',
+      );
+    });
+
+    test('Dart pushes the saved position rather than reading the default back', () {
+      final String dart = SourceTree().read(
+        'lib/features/widget/presentation/providers/widget_controller.dart',
+      );
+
+      expect(dart, contains('setWidgetGeometry'));
+      // The old order was: ask where the window is, then believe it. Read the
+      // bounds *and* push them and the push wins only by accident.
+      final int push = dart.indexOf('setWidgetGeometry');
+      final int read = dart.indexOf('widgetBounds()');
+      expect(push, greaterThan(0), reason: 'the position has to be pushed');
+      expect(read, greaterThan(push), reason: 'a read-back must not precede it');
+    });
+
+    test('the method is declared on both sides, not just the registry', () {
+      // The registry is checked three ways by `platform_guard_test`; this is the
+      // Dart call site, which is the fourth thing that can be missing.
+      expect(
+        SourceTree().read('lib/core/platform/shell_channel.dart'),
+        contains("'widget.setGeometry'"),
+      );
+    });
+  });
+
   group('compose mode returns the keyboard', () {
     test('the runner restores WS_EX_NOACTIVATE when compose mode ends', () {
       final String source = tree.runnerSource;

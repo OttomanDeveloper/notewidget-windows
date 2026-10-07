@@ -26,11 +26,8 @@ class PreviewPane extends StatefulWidget {
 
 class _PreviewPaneState extends State<PreviewPane> {
   /// Owned here so the [Scrollbar] and the [SingleChildScrollView] share one
-  /// controller. Without it the scrollbar falls back to the
-  /// [PrimaryScrollController], which has no [ScrollPosition] from this view
-  /// attached — and the first mouse-wheel scroll throws while the scrollbar's
-  /// fade animation starts ("The Scrollbar's ScrollController has no
-  /// ScrollPosition attached"). State is the disposal shell only; no setState.
+  /// controller; on [PrimaryScrollController] the first wheel scroll throws.
+  /// State is the disposal shell only; no setState.
   final ScrollController _scroll = ScrollController();
 
   @override

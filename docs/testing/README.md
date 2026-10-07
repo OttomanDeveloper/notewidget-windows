@@ -7,7 +7,7 @@ and which check answers which question.
 
 | File | What it is |
 |---|---|
-| **`project_realworld_testing.md`** | The Windows program: **27 scenarios** in 6 dependency-ordered waves, each tagged with the methods that can verify it. All `NOT RUN`. The authority for what must be proven against real Windows. |
+| **`project_realworld_testing.md`** | The Windows program: **33 scenarios** in 7 dependency-ordered waves, each tagged with the methods that can verify it. Mostly `NOT RUN`. The authority for what must be proven against real Windows. |
 | **`project_integration_testing.md`** | The evidence rules, and the A/B/C classification that says what a test is allowed to claim. The authority for honesty. |
 | **`feature_test_matrix.md`** | Which test modules a *kind of feature* needs, and how many. The rule that survives the catalog being renumbered. |
 | **`reporting.md`** | The results ledger. One row per scenario, machine recorded once per batch. |
@@ -80,6 +80,7 @@ the traps in `docs/testing_pattern.md` §3.
 | **Icon audit** | `tool/verify/verify_icons.ps1` | built artifacts | ~33s | The icon in all four places Windows reads it from |
 | **Probe** | `tool/verify/run_scenarios.ps1` | release build | seconds | Hit-testing, drag geometry, focus, the keyboard borrow — everything a Dart test cannot assert |
 | **Manual** | `project_realworld_testing.md` | desktop | minutes | Acrylic, tray, global hotkey, autostart, multi-monitor |
+| **Diagnostics** | `win_notes.exe --diagnose <path>` | release build | ~2s | The startup and autostart state a "nothing happens" report needs; wave 7 |
 
 Run a subset:
 
@@ -88,6 +89,7 @@ flutter test test/notes_controller_test.dart
 flutter test test/architecture/
 pwsh -File tool\verify\verify.ps1 -Action Random
 pwsh -File tool\verify\run_scenarios.ps1 -Wave 2
+build\windows\x64\runner\Release\win_notes.exe --diagnose "$env:TEMP\wn.json"
 ```
 
 `run_scenarios.ps1` drives the Windows catalog and writes its verdicts to
@@ -164,8 +166,8 @@ See the traps in `docs/testing_pattern.md` §3.
 
 ## What no check here can tell you
 
-That the app behaves correctly on real Windows hardware — real compositing, real
-focus, real DPI, real monitors. That is 27 rows in
+That the app behaves correctly on real Windows hardware - real compositing, real
+focus, real DPI, real monitors. That is 33 rows in
 `project_realworld_testing.md`, it is the reason this folder exists, and it is
 **not** closed by a green gate.
 

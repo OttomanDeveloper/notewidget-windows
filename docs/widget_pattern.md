@@ -343,6 +343,92 @@ Two specific refusals, both deliberate:
 Raw HTML is text. `encodeHtml: false` keeps `<b>` and `<script>` as the
 characters they are, so a note cannot try to be markup.
 
+`<br>` is the one exception, and it is a formatting tag rather than markup:
+`a<br>b` is drawn as two lines rather than printing the tag. It is handled in
+the **text** arm, not as an element, because `encodeHtml: false` hands the
+parser's output back as one text node with the tag inside it — so the `br`
+element case in `MarkdownSpans` is unreachable and the split has to happen
+where the text is.
+
+**Blankness is not `textContent.isEmpty`.** `MarkdownNodes.isBlank` is the one
+predicate, and it treats a node holding an `<img>` as non-blank at any depth.
+`alt` is an *attribute*, not a text child, so `textContent` of an image-only
+paragraph is empty and calling it blank discarded it. That was a real loss, not
+a style choice: a paragraph of nothing but `![chart](x.png)` rendered as
+nothing at all. It is the rule above, broken in the one direction the rule
+exists to prevent.
+
+**An HTML comment is invisible.** `<!-- ... -->` is markup for the reader and
+nothing at all for the author, so it is stripped in `MarkdownSpans` rather than
+printed. A paragraph holding only a comment is therefore blank, which is why
+`MarkdownNodes.isBlank` strips the same way — otherwise it would leave a gap.
+
+**A footnote `<section>` is flattened, not listed.** The parser wraps footnote
+definitions in `<section><ol><li><p>`, and rendering that `<ol>` as a list drew
+its number *and* the `<sup>` reference, giving `11.1.` for a single footnote.
+The `<ol>` is skipped and its items rendered as blocks.
+
+**Two things the parser offers and `gitHubFlavored` omits are on.**
+`_ParseCache._extensions` adds `EmojiSyntax` and `AlertBlockSyntax` to the
+parser's own `gitHubFlavored` set. Both are implemented in `package:markdown`
+and both are absent from that set, so `:tada:` and `> [!NOTE]` rendered as
+literal characters until they were named here. The distinction that matters:
+this was never a limitation of the parser, it was a list nobody wrote.
+`markdown_test` pins both, including that an **unrecognised** `:alias:` stays
+literal rather than becoming a gap.
+
+`> [!NOTE]` and its four siblings become `MarkdownAlert`, a callout whose title
+is the parser's own `markdown-alert-title`. A plain `>` is still `MarkdownQuote`;
+the two are distinguished by the class the parser puts on the `<div>`, and a
+raw `<div>` cannot reach the same branch because `encodeHtml: false` makes it
+literal text.
+
+**A list item keeps everything after an inline element.** `MarkdownListItem`
+splits an item's children into a leading line and the blocks that follow. The
+split must treat `strong`/`em`/`del`/`code`/`a`/`img`/`br`/`sup`/`sub` as
+*inline*: the parser gives `- **(core)** is standard Markdown` the children
+`[<strong>, Text]`, so a rule that treats every element as a block ends the
+leading line at the `**` and drops the sentence after it. That is the worst
+failure mode in this file — it is invisible, it is data loss, and it looked
+like correct rendering because the visible words happened to be the part that
+survived.
+
+**What is still literal, and cannot be anything else.** LaTeX and `==highlight==`
+have no syntax in `package:markdown` at all — `ColorSwatchSyntax` is
+`#RRGGBB`, not `==` — so supporting them means a different parser or a
+hand-rolled one, which is a decision rather than a fix. Mermaid is a fenced
+code block and correctly shows its source. Raw HTML stays text per the rule
+above.
+
+### 3.15a A table too wide for the pane scrolls, it is not squeezed
+
+`MarkdownTable` was a `Row` of `Expanded` cells, which divides the pane evenly
+between the columns. That is right for a three-column table and unusable for a
+twelve-column one: at 400px each cell got 23px, so `+91 98765 43210` broke into a
+vertical stack of digits and one cell measured **418px tall**. The table rendered
+2.5x taller than the pane and nothing overflowed, so every content assertion
+passed while the table was unreadable — the failure §3.15 is about, arrived at
+without losing a character.
+
+Two rules, and the threshold between them is `MarkdownTable.minCellWidth`:
+
+- **Fits** (`columns * minCellWidth <= available`): the old grid. Columns share
+  the pane, wrap, and fill it. Unchanged for every table that already worked.
+- **Does not fit**: each cell takes its natural width and the table scrolls
+  sideways. Cells are `ConstrainedBox(minWidth:)`, never `Expanded`, because
+  `Expanded` needs a bounded width and a scroll view hands its child an unbounded
+  one.
+
+`LayoutBuilder`, not `MediaQuery.sizeOf`: in a side-by-side editor the preview is
+half the window, and the screen width would promise room the table does not have.
+
+Two consequences worth naming. The header rule is a `DecoratedBox` border rather
+than a `Divider`, because a `Divider` is unbounded inside a scroll view and
+cannot lay out — and a border hugs the table instead of stretching past it. And
+`IntrinsicWidth` is the textbook answer here and is banned by
+`flutter_rules_guard_test`; the rulebook's own wording is narrower ("in long
+lists") than the guard, which is worth knowing before choosing a workaround.
+
 ### 3.16 A rendered body is clamped by height, not by line count
 
 `maxLines` bounds the lines inside one `Text`. It says nothing about how many
@@ -540,6 +626,44 @@ scrollable, so nothing downstream is eating the signal. But a widget test drivin
 Ctrl+wheel through that pane records no step, and the cause is not yet known. The
 rules with tests are the stored-value rules below; this one is open.
 
+### 3.22 A saved widget position is restored by telling the runner, not by reading it
+
+`widget_state.json` holds the dragged position, and the widget came back in the
+runner's default top-right corner every single boot. The file was never corrupt
+and the save was never wrong - measured on the real profile, saved `1086,366`,
+window at `1548,12`, and `widget.getBounds` answering correctly throughout.
+
+The cause was one-directional. `_saveGeometry` wrote the position faithfully,
+coalesced at 250 ms and all. Nothing ever sent it *back*: the runner places the
+window itself in `CreateShellWindow`, and `build` read that placement back
+through `widget.getBounds` and copied it over the saved `left`/`top`. The runner
+answered truthfully about a position nobody had asked it to change.
+
+**So the fix is to push, not to pull.** If saved `left`/`top` exist,
+`widget.setGeometry` sends them before anything reads bounds back; only a first
+run - null on both - asks where the runner put the window, because then it is the
+only position there is. The method was already in the registry and already handled
+in C++, so nothing was one-sided; the Dart side simply never called it.
+
+**No read-back after the move, deliberately.** `widget.setGeometry` is
+`PostSetBounds`, which queues onto the platform thread's message pump, so the
+`result->Success()` it returns reports having *queued* the message, not having
+moved the window. A `widget.getBounds` issued immediately after can be served
+before the queued `kWmSetBounds` has run, and hands back the very default the call
+was meant to replace - the same bug, one hop earlier. State takes the numbers that
+were asked for instead.
+
+**The runner clamps the restore, because a saved monitor may be gone.** A drag is
+clamped by `EndLoop` when the pointer comes up; a programmatic move had no
+equivalent, so `SetBounds` now calls `ClampToReachableScreen` itself. Without it,
+unplugging the monitor a widget was last on and rebooting would restore a position
+no monitor can show, leaving the widget unreachable rather than merely misplaced.
+
+The clamp means state can hold a `left`/`top` the window did not settle on. That
+costs at most a stale drag anchor; the next drag writes the truth. Size is sent as
+saved but is irrelevant - `SetBounds` enforces `kMinWidgetWidth`/`kMinWidgetHeight`
+itself, and the widget's dimensions belong to the runner.
+
 ---
 
 ## 4. The traps
@@ -625,7 +749,8 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.12 | Hides when nothing has text | `widget_integration_test` → *no note with text means the widget is not shown*, *one note with text is enough to show it* |
 | 3.13 | Sizes clamped in the runner | **manual** - a 900 px haul against the 200×140 floor |
 | 3.14 | One renderer, a budget per surface | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane offers a switch instead of two cramped columns*, *the budget scales with the surface type size* |
-| 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing* |
+| 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing*, *a paragraph holding only an image is not blank*, *an image inside a list item is not blank*, *a br tag breaks the line rather than printing itself*, *a footnote reads once, not numbered twice*, *a list item keeps the text after an inline element*, *a list item keeps the text after a link or code run*, *an HTML comment is invisible*, *a paragraph holding only a comment renders nothing*, *an emoji shortcode becomes the character*, *an alias the table does not have stays literal*, *an alert draws its type as the callout title*, *a plain quote is still a quote, not an alert* |
+| 3.15a | A wide table scrolls rather than being squeezed | `markdown_test` → *a table too wide for the pane scrolls sideways*, *a narrow table still fills the pane instead of scrolling*, *a wide table does not stack a cell into a column of characters* |
 | 3.16 | Clamped by height | `markdown_test` → *a compact card still clamps to its line budget* |
 | 3.17 | The widget yields to the editor | **guard** `widget_guard_test` → *nothing puts the widget above the editor*, *the scanner finds the code it is looking for in the first place*, *the guard bites: an editor with WS_EX_TOPMOST is rejected*, *the guard bites: demoting without raising the editor is rejected*, *the guard bites: an un-guarded SetAlwaysOnTop is rejected*, *the guard bites: no WM_ACTIVATE is rejected*, *the guard bites: a host with no activation handler is rejected*; **manual** - click the editor, then another app, on a release build: the widget's `WS_EX_TOPMOST` clears and returns |
 | 3.18 | The editor has a minimum size | **guard** `widget_guard_test` → *the floor is enforced*, *the floor is a named constant, scaled for DPI*, *the guard bites: no WM_GETMINMAXINFO at all is rejected*, *the guard bites: ptMinSize instead of ptMinTrackSize is rejected*, *the guard bites: an unscaled floor is rejected*, *the guard bites: claiming ptMaxPosition is rejected*; **manual** - drag the editor's corner and each edge past zero on a release build: stops at exactly 520×360, and maximise is untouched |
@@ -637,6 +762,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` * lib/ has no setState calls at all*, *the scanner still finds them, or the rule above is vacuous*, *the two replacements are the only two*, *every ValueNotifier is listened to, or nothing rebuilds*; **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*, *the scanner still matches the names it claims to*, *a value is not a dependency*, *a load result is not an injected dependency*, *callbacks are allowed, and are what the roots pass* |
 | 3.20 | The Markdown switch is labelled, and says what it gets you | `markdown_test` → *the switch says what turning it on gets you*, *the switch keeps the same width in both states*, *a narrow pane offers a switch instead of two cramped columns* |
 | 3.21 | Editor and preview are sized separately; 0 means as designed | `settings_test` → *an unset font size is zero, and a file without one still reads back*, *an unset font size is left out of the file entirely*, *both font sizes round trip, separately*, *a hand-edited font size is bounded to what the slider offers*, *the font sizes participate in equality* |
+| 3.22 | A saved position is pushed to the runner, not read back from it | **guard** `widget_guard_test` *SetBounds clamps to a reachable screen*, *the guard bites: a SetBounds without the clamp is rejected*, *Dart pushes the saved position rather than reading the default back*, *the method is declared on both sides, not just the registry*; `widget_integration_test` *a position written by one launch is the next launch's position*, *the saved position wins over whatever the runner reports*; **manual** - drag the widget, close the app, launch it again on a release build: it comes back where it was left |
 
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,

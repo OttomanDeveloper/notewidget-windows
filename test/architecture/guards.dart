@@ -682,11 +682,14 @@ List<String> unapprovedDependencies(
 
 /// Headings of the numbered rules in a pattern doc.
 ///
+/// The letter suffix is part of the number: `§3.13a` and `§3.13b` are distinct
+/// rules, and dropping it made the duplicate check report them as colliding.
+///
 /// `multiLine: true` rather than an inline `(?m)`: Dart's RegExp is ECMAScript,
 /// which has no inline mode flags, and `RegExp(r'(?m)...')` does not silently
 /// ignore them - it fails to compile.
 List<String> ruleHeadings(String markdown) => RegExp(
-      r'^#{2,4}\s+(3\.\d+)',
+      r'^#{2,4}\s+(3\.\d+[a-z]?)',
       multiLine: true,
     ).allMatches(markdown).map((RegExpMatch m) => m.group(1)!).toList();
 

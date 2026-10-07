@@ -99,6 +99,10 @@ class AppPaths {
   /// file rather than putting it in either surface's owned file.
   String get selectionFile => '$dataDirectory\\selection.json';
 
+  /// Where crashes are appended. Not a data file: nothing reads it back, and
+  /// losing it costs nothing (`docs/storage_pattern.md` §3.13a).
+  String get crashLogFile => '$dataDirectory\\crash.log';
+
   /// `%APPDATA%\WinNotes`. Not [reportedDirectory]: under an override, "back to
   /// the default" means the machine's default, not this run's.
   String get defaultStorageDirectory =>

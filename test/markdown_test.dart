@@ -10,6 +10,10 @@ import 'package:riverpod/src/framework.dart';
 import 'package:win_notes/core/utils/atomic_json_file.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
+import 'package:win_notes/core/widgets/markdown_alert/markdown_alert.dart';
+import 'package:win_notes/core/widgets/markdown_inline_text/markdown_inline_text.dart';
+import 'package:win_notes/core/widgets/markdown_table/markdown_table.dart';
+import 'package:win_notes/core/widgets/markdown_quote/markdown_quote.dart';
 import 'package:win_notes/core/widgets/markdown_text/markdown_text.dart';
 import 'package:win_notes/core/widgets/markdown_density/markdown_density.dart';
 import 'package:win_notes/features/notes/presentation/widgets/note_editor_pane/note_editor_pane.dart';
@@ -326,6 +330,113 @@ void main() {
           reason: 'this app has no network code and must not pretend to');
     });
 
+    // The two tests below were written after the demo file at
+    // docs/verification/markdown_demo_all_features.md found real losses, and
+    // both were run against the unfixed renderer first to prove they went red.
+    // An image-only paragraph vanished: `alt` is an attribute, not a text
+    // child, so `textContent` is empty and the paragraph was called blank.
+    testWidgets('a paragraph holding only an image is not blank', (WidgetTester tester) async {
+      await pumpMarkdown(tester, '![Title test](https://example.com/a.png)');
+
+      expect(find.textContaining('Title test'), findsWidgets,
+          reason: '§3.15: you cannot see a paragraph that vanished');
+    });
+
+    testWidgets('an image inside a list item is not blank', (WidgetTester tester) async {
+      await pumpMarkdown(tester, '- ![in a list](https://example.com/b.png)');
+
+      expect(find.textContaining('in a list'), findsWidgets);
+    });
+
+    // `<br>` is the one raw tag that is honoured, and the reason it is not the
+    // `br` element case is that `encodeHtml: false` hands `a<br>b` back as a
+    // single text node with the tag inside it.
+    testWidgets('a br tag breaks the line rather than printing itself', (WidgetTester tester) async {
+      await pumpMarkdown(tester, 'line one<br>line two');
+
+      expect(find.textContaining('<br>'), findsNothing);
+      expect(find.textContaining('line one'), findsWidgets);
+    });
+
+    // The parser's own `<ol>` numbering plus the `<sup>` reference printed the
+    // number twice, giving "11.1." for a single footnote.
+    testWidgets('a footnote reads once, not numbered twice', (WidgetTester tester) async {
+      await pumpMarkdown(tester, 'Text.[^1]\n\n[^1]: The first footnote.');
+
+      final String all = _allText(tester).join(' ');
+      expect(all, contains('The first footnote.'));
+      expect(all, isNot(contains('11.')),
+          reason: 'the ordered marker and the reference both printed the 1');
+    });
+
+    testWidgets('an emoji shortcode becomes the character', (WidgetTester tester) async {
+      await pumpMarkdown(tester, 'Ship it :tada:');
+
+      expect(find.textContaining('\u{1f389}'), findsWidgets,
+          reason: 'EmojiSyntax is opted into; see _ParseCache._extensions');
+      expect(find.textContaining(':tada:'), findsNothing);
+    });
+
+    testWidgets('an alias the table does not have stays literal',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, 'not :notarealalias: a real one');
+
+      expect(find.textContaining(':notarealalias:'), findsWidgets,
+          reason: 'an unrecognised alias is text, not an empty gap');
+    });
+
+    testWidgets('an alert draws its type as the callout title',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, '> [!WARNING]\n> Careful.');
+
+      expect(find.textContaining('Warning'), findsWidgets);
+      expect(find.textContaining('Careful.'), findsWidgets);
+      expect(find.byType(MarkdownAlert), findsOneWidget);
+      expect(find.textContaining('[!WARNING]'), findsNothing);
+    });
+
+    testWidgets('a plain quote is still a quote, not an alert',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, '> an ordinary quote');
+
+      expect(find.byType(MarkdownAlert), findsNothing);
+      expect(find.byType(MarkdownQuote), findsOneWidget);
+    });
+
+    testWidgets('a list item keeps the text after an inline element',
+        (WidgetTester tester) async {
+      // `- **(core)** is standard Markdown` used to render as `(core)` alone:
+      // `strong` is an element, the item split at it, and the rest was dropped.
+      await pumpMarkdown(tester, '- **(core)** is standard Markdown (CommonMark).');
+
+      expect(find.textContaining('is standard Markdown'), findsWidgets,
+          reason: 'an item must not lose its tail to its own bold');
+    });
+
+    testWidgets('a list item keeps the text after a link or code run',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, '- `code` then plain words\n- **b** and more');
+
+      expect(find.textContaining('then plain words'), findsWidgets);
+      expect(find.textContaining('and more'), findsWidgets);
+    });
+
+    testWidgets('an HTML comment is invisible', (WidgetTester tester) async {
+      await pumpMarkdown(tester, '<!-- a draft note -->\n\nThe line stays.');
+
+      expect(find.textContaining('draft note'), findsNothing,
+          reason: 'a comment is markup for the reader, not content');
+      expect(find.textContaining('The line stays.'), findsWidgets);
+    });
+
+    testWidgets('a paragraph holding only a comment renders nothing',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, 'Real text.\n\n<!-- hidden -->\n\nMore text.');
+
+      expect(_allText(tester).join(' '), isNot(contains('hidden')));
+      expect(find.textContaining('More text.'), findsWidgets);
+    });
+
     testWidgets('raw HTML is text, not markup', (WidgetTester tester) async {
       await pumpMarkdown(tester, '<b>not bold</b> here');
 
@@ -427,6 +538,67 @@ void main() {
         await pumpMarkdown(tester, source);
         expect(tester.takeException(), isNull, reason: 'source: $source');
       }
+    });
+
+    // §7.5 of docs/verification/markdown_demo_all_features.md. A `Row` of
+    // `Expanded` cells divided a 400px pane 12 ways, giving a 23px column and a
+    // 418px-tall cell — `+91 98765 43210` broken into a vertical stack of
+    // digits. Nothing was lost, so §3.15 passed while the table was unusable.
+    testWidgets('a table too wide for the pane scrolls sideways',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, _wideTable);
+
+      expect(
+        find.byWidgetPredicate((Widget w) =>
+            w is SingleChildScrollView && w.scrollDirection == Axis.horizontal),
+        findsOneWidget,
+        reason: '12 columns cannot be shown legibly in one pane',
+      );
+
+      final List<double> widths = <double>[
+        for (final Element e in find.byType(MarkdownInlineText).evaluate())
+          (e.renderObject! as RenderBox).size.width,
+      ];
+      expect(widths.length, 36, reason: '3 rows x 12 columns, none dropped');
+      expect(widths.reduce((double a, double b) => a < b ? a : b),
+          greaterThan(MarkdownTable.minCellWidth - 12),
+          reason: 'a cell may not be squeezed narrower than the floor');
+    });
+
+    testWidgets('a narrow table still fills the pane instead of scrolling',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, '| Name | Language | Stars |\n'
+          '| --- | --- | --- |\n'
+          '| Flutter | Dart | 160k |\n'
+          '| React | JavaScript | 220k |');
+
+      expect(
+        find.byWidgetPredicate((Widget w) =>
+            w is SingleChildScrollView && w.scrollDirection == Axis.horizontal),
+        findsNothing,
+        reason: 'three columns fit, so this is the grid it always was',
+      );
+      final List<double> widths = <double>[
+        for (final Element e in find.byType(MarkdownInlineText).evaluate())
+          (e.renderObject! as RenderBox).size.width,
+      ];
+      expect(widths.reduce((double a, double b) => a < b ? a : b),
+          greaterThan(100),
+          reason: 'the columns share the pane rather than hugging the left');
+    });
+
+    testWidgets('a wide table does not stack a cell into a column of characters',
+        (WidgetTester tester) async {
+      await pumpMarkdown(tester, _wideTable);
+
+      final double tallest = <double>[
+        for (final Element e in find.byType(MarkdownInlineText).evaluate())
+          (e.renderObject! as RenderBox).size.height,
+      ].reduce((double a, double b) => a > b ? a : b);
+
+      // One line at body size. The bug was not overflow and not lost content;
+      // it was a phone number drawn 20 lines tall.
+      expect(tallest, lessThan(40));
     });
 
     testWidgets('a table is real in the editor and readable text in a card',
@@ -997,6 +1169,17 @@ List<({String text, TextStyle style, GestureRecognizer? recognizer})> _runs(
 
 /// Every string on screen, including the plain `Text` widgets the renderer uses
 /// for list markers.
+/// §7.5 of `docs/verification/markdown_demo_all_features.md`, verbatim. Twelve
+/// columns is the widest thing that file contains, and the case that broke.
+const String _wideTable = '| ID | First Name | Last Name | Email | Phone | '
+    'Country | City | Department | Position | Start Date | Salary | Notes |\n'
+    '|----|-----------|-----------|-------|-------|---------|------|------------|'
+    '----------|------------|--------|-------|\n'
+    '| 1 | Aarav | Sharma | aarav@example.com | +91 98765 43210 | India | '
+    'Mumbai | Engineering | Senior Developer | 2022-01-15 | 1,200,000 | Team lead for mobile |\n'
+    '| 2 | Emma | Johnson | emma@example.com | +1 555 0100 | USA | '
+    'Seattle | Design | UI Designer | 2023-03-01 | 95,000 | Works on design system |';
+
 List<String> _allText(WidgetTester tester) {
   final List<String> out = <String>[];
   for (final Text t in tester.widgetList<Text>(find.byType(Text))) {

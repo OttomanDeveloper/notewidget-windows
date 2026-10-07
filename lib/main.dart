@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 
 import 'core/utils/app_paths.dart';
+import 'core/utils/crash_log.dart';
+import 'core/utils/diagnostics.dart';
 import './features/settings/data/storage_location.dart';
 import './core/platform/shell_channel.dart';
 import './core/utils/app_providers.dart';
@@ -16,7 +18,6 @@ import './features/widget/presentation/screens/widget_app/widget_app.dart';
 /// `--surface` picks the surface, so no second entrypoint to keep in sync.
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-
   final ShellChannel shell = ShellChannel();
   final LaunchInfo? launch = await shell.bootstrap();
 
@@ -48,6 +49,27 @@ Future<void> main(List<String> args) async {
   // set they differ, and creating the reported one would touch the real profile
   // the override exists to avoid.
   Directory(paths.dataDirectory).createSync(recursive: true);
+
+  // Installed here because this is the only point both surfaces share, and
+  // before `runApp` because a build failure throws inside `runApp` and a
+  // release build has no console to print it to (`docs/storage_pattern.md` §3.13a).
+  installCrashHandlers(CrashLog(paths.crashLogFile));
+
+  // `win_notes.exe --diagnose <path>`: write one snapshot and exit. Read from
+  // the launch report, not `args` - the runner owns the Dart entrypoint
+  // arguments and the process command line never reaches them.
+  if (launch.diagnosePath.isNotEmpty) {
+    final ProviderContainer container = ProviderContainer(
+      overrides: [
+        shellProvider.overrideWithValue(shell),
+        launchInfoProvider.overrideWithValue(launch),
+        appPathsProvider.overrideWithValue(paths),
+      ],
+    );
+    await container.read(diagnosticsProvider).writeTo(launch.diagnosePath);
+    container.dispose();
+    exit(0);
+  }
 
   // The `ProviderScope` lives here so both roots take no parameters (`AGENTS.md`
   // §0.8). The three overrides are what a container can't discover: channel,

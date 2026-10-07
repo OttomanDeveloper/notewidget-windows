@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:win_notes/core/utils/atomic_json_file.dart';
+import 'package:win_notes/core/platform/shell_channel.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
 import 'package:win_notes/features/settings/domain/settings.dart';
@@ -16,6 +17,7 @@ import 'package:win_notes/features/widget/presentation/widgets/composer_button/c
 import 'package:win_notes/features/widget/presentation/widgets/composer_field/composer_field.dart';
 
 import 'helpers/provider_harness.dart';
+import 'helpers/file_io.dart';
 
 /// Integration tests for the widget surface itself.
 ///
@@ -32,6 +34,169 @@ import 'helpers/provider_harness.dart';
 /// [WidgetSurface] over a real file-backed controller so the whole subtree is
 /// actually laid out.
 void main() {
+  // The bug: `widget_state.json` held the dragged position and the widget still
+  // opened in the runner's default corner every time. Saving worked; restoring
+  // never happened, because nothing told the runner to move — it placed the
+  // window itself and the saved left/top were read back over.
+  testWidgets('a saved widget position is pushed back to the runner',
+      (WidgetTester tester) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      ShellChannel.methodChannel,
+      (MethodCall call) async {
+        calls.add(call);
+        return <String, Object>{'left': 1086, 'top': 366, 'width': 360, 'height': 420};
+      },
+    );
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(ShellChannel.methodChannel, null);
+    });
+
+    await ShellChannel().setWidgetGeometry(
+      const NativeBounds(left: 1086, top: 366, width: 360, height: 420),
+    );
+
+    final MethodCall set =
+        calls.firstWhere((MethodCall c) => c.method == 'widget.setGeometry');
+    expect(set.arguments, <String, Object>{
+      'left': 1086,
+      'top': 366,
+      'width': 360,
+      'height': 420,
+    });
+  });
+
+  group('a saved position survives a restart', () {
+    // The whole point, as one round trip rather than two halves. Saving was
+    // never the problem: `_saveGeometry` coalesced at 250 ms and wrote every
+    // time. Restoring was, because nothing told the runner to move - it read
+    // the runner's default back and believed it. Both halves can pass while the
+    // round trip fails, which is how this shipped.
+
+    // A plain `test`, not `testWidgets`: `_saveGeometry` coalesces on a real
+    // 250 ms Timer, and a widget test's fake clock never advances one. This is
+    // about a file appearing on disk, so it wants real elapsed time — the same
+    // reasoning `first_launch_test` gives for the debounce.
+    test('a position written by one launch is the next launch\'s position', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final TestHarness first = TestHarness.build(isWidgetSurface: true);
+      addTearDown(() => first.disposeKeepingProfile());
+
+      // Launch one: drag the widget, and let the coalesced save land.
+      await first.widgetState();
+      final WidgetNotes one = WidgetNotes(first);
+      await one.onGeometryChanged(
+        const NativeBounds(left: 1086, top: 366, width: 360, height: 420),
+      );
+      await waitForContent(File('${first.path}\\widget_state.json'), '1086');
+      await first.drain;
+
+      // The evidence is on disk, not in a field: a restart re-reads the file.
+      final File state = File('${first.path}\\widget_state.json');
+      expect(state.existsSync(), isTrue,
+          reason: 'precondition: the drag reached the file');
+      expect((state.readAsStringSync()).contains('1086'), isTrue,
+          reason: 'and the position it reached is the one that was dragged');
+
+      // Launch two, same directory. `disposeKeepingProfile` is the whole
+      // reason this is a restart and not a fresh install - `dispose` deletes
+      // the directory, which would silently turn the next half into a first
+      // launch that finds nothing and therefore passes for the wrong reason.
+      await first.disposeKeepingProfile();
+      final TestHarness second =
+          TestHarness.build(isWidgetSurface: true, at: first.path);
+      addTearDown(() => second.dispose());
+
+      final List<MethodCall> calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        ShellChannel.methodChannel,
+        (MethodCall call) async {
+          calls.add(call);
+          // The runner's own default, top-right - what the widget wrongly came
+          // back to before, and what a read-back would hand back here too.
+          return <String, Object>{'left': 1548, 'top': 12, 'width': 360, 'height': 420};
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(ShellChannel.methodChannel, null);
+      });
+
+      await second.widgetState();
+
+      final MethodCall? restore = calls
+          .where((MethodCall c) => c.method == 'widget.setGeometry')
+          .cast<MethodCall?>()
+          .firstWhere((MethodCall? c) => true, orElse: () => null);
+      expect(restore, isNotNull,
+          reason: 'the second launch has a saved position and did not send it');
+      expect((restore!.arguments as Map)['left'], 1086);
+      expect((restore.arguments as Map)['top'], 366);
+    });
+
+    test('the saved position wins over whatever the runner reports', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      // The inverse half, stated directly: asking the runner is allowed, but it
+      // must not be the source of truth when a position was saved. A read-back
+      // returns the default, so believing it is the bug.
+      final TestHarness harness = TestHarness.build(isWidgetSurface: true);
+      addTearDown(() => harness.dispose());
+      File('${harness.path}\\widget_state.json')
+          .writeAsStringSync('{"left": 40, "top": 50, "width": 360, "height": 420}');
+
+      final List<MethodCall> calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        ShellChannel.methodChannel,
+        (MethodCall call) async {
+          calls.add(call);
+          return <String, Object>{'left': 1548, 'top': 12, 'width': 360, 'height': 420};
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(ShellChannel.methodChannel, null);
+      });
+
+      await harness.widgetState();
+      final WidgetNotes state = WidgetNotes(harness);
+
+      expect(state.window.left, 40, reason: 'the saved position, not the default');
+      expect(state.window.top, 50);
+      expect(calls.any((MethodCall c) => c.method == 'widget.getBounds'), isFalse,
+          reason: 'no read-back: widget.setGeometry only queues the move, so a '
+              'read-back issued straight after can be answered before the window '
+              'has moved, handing back the default this replaced');
+    });
+  });
+
+  testWidgets('the runner is asked where the widget is, for a first run',
+      (WidgetTester tester) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      ShellChannel.methodChannel,
+      (MethodCall call) async {
+        calls.add(call);
+        return <String, Object>{'left': 7, 'top': 9, 'width': 360, 'height': 420};
+      },
+    );
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(ShellChannel.methodChannel, null);
+    });
+
+    final NativeBounds? live = await ShellChannel().widgetBounds();
+
+    expect(calls.single.method, 'widget.getBounds');
+    expect(live, isNotNull);
+    expect(live?.left, 7);
+    expect(live?.top, 9);
+  });
+
   /// The container behind the widget surface.
   ///
   /// Built with `isWidgetSurface: true` because the graph that serves the desktop
@@ -729,6 +894,86 @@ void main() {
     // widget notice. That path goes through the directory watcher and a debounce,
     // so a test would be asserting on timing rather than on a rule. It is
     // covered by the reload path in notes_controller_test instead.
+  });
+
+  group('the startup ladder tells the runner to hide, or to show', () {
+    // AGENTS.md §5.1, still open. The rule itself is tested above; what is
+    // untested is the ladder that carries it to the runner. `_applyWindowConfiguration`
+    // returns early when `settings` has no value yet, and the `ref.listen` that
+    // would correct it only fires on a *change* - so if settings were already
+    // resolved before `build` ran, nothing ever sends `visible: false`.
+    //
+    // This asserts the wire, not the state: `widgetVisible` being false in Dart
+    // is not the claim, the runner having been told is.
+
+    /// Records every `widget.configure`, and answers everything else.
+    List<MethodCall> recordConfigure() {
+      final List<MethodCall> calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        ShellChannel.methodChannel,
+        (MethodCall call) async {
+          calls.add(call);
+          return <String, Object>{'left': 0, 'top': 0, 'width': 360, 'height': 420};
+        },
+      );
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(ShellChannel.methodChannel, null);
+      });
+      return calls;
+    }
+
+    bool? configuredVisible(List<MethodCall> calls) {
+      final Iterable<MethodCall> configures =
+          calls.where((MethodCall c) => c.method == 'widget.configure');
+      if (configures.isEmpty) return null;
+      return (configures.last.arguments as Map)['visible'] as bool?;
+    }
+
+    testWidgets('a note with text is announced as visible',
+        (WidgetTester tester) async {
+      final List<MethodCall> calls = recordConfigure();
+      await real(tester, () => makeController(tester, <Note>[
+            note('a', 'Groceries', 'milk'),
+          ]));
+
+      expect(configuredVisible(calls), isTrue,
+          reason: 'one note with text means the widget is shown, and the runner '
+              'has to be told - a state field it cannot read proves nothing');
+    });
+
+    testWidgets('no note with text is announced as hidden',
+        (WidgetTester tester) async {
+      final List<MethodCall> calls = recordConfigure();
+      await real(tester, () => makeController(tester, <Note>[note('a', '', '')]));
+
+      expect(configuredVisible(calls), isFalse,
+          reason: 'this is the §5.1 symptom: the widget painting an empty '
+              'desktop because nobody sent the runner a visibility decision');
+    });
+
+    // OPEN, and deliberately not written as a passing test. `AGENTS.md` §5.1
+    // reports the widget painting on a first launch when it should have hidden,
+    // and the lead is that `_applyWindowConfiguration` returns early when
+    // settings have no value while the surface builds, and the `ref.listen`
+    // that would correct it only fires on a change.
+    //
+    // Driving that ordering here hangs rather than fails: `makeController`
+    // resolves settings before the surface on purpose, and building the surface
+    // first leaves the settings provider unresolved under `runAsync`. A test
+    // that cannot complete teaches nothing, and a test that completes by
+    // arranging the order it was worried about would teach the wrong thing.
+    //
+    // So the rule is pinned from the two sides that do run (above), the
+    // reproduction stays a probe in `docs/testing/reporting.md`, and the fix
+    // has to bring its own evidence.
+    //
+    // skip: 'AGENTS.md §5.1 is unrooted; this ordering does not complete under
+    // the harness. Wave 1 of diagnostics_plan.md records it as open rather than
+    // pinning a pass.'
+    testWidgets('hiding survives settings resolving after the surface',
+        (WidgetTester tester) async {}, skip: true);
   });
 
   group('the add-a-note composer', () {

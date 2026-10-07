@@ -93,6 +93,7 @@ class LaunchInfo {
     required this.autostartEnabled,
     required this.autostartCommand,
     required this.defaultWidgetBounds,
+    this.diagnosePath = '',
   });
 
   /// 'shell' for the widget surface, 'editor' for the editor surface.
@@ -113,6 +114,10 @@ class LaunchInfo {
   final bool autostartEnabled;
   final String autostartCommand;
   final NativeBounds defaultWidgetBounds;
+
+  /// Where `win_notes.exe --diagnose <path>` was told to write. Empty on every
+  /// ordinary launch, which is what keeps a dump from becoming continuous.
+  final String diagnosePath;
 
   /// True when this launch came from the autostart entry, which is the only
   /// case the startup delay applies to.
@@ -160,6 +165,10 @@ class ShellChannel {
         defaultWidgetBounds: NativeBounds.fromMap(
           raw['defaultWidgetBounds'] as Map? ?? const <dynamic, dynamic>{'left': 0, 'top': 0, 'width': 360, 'height': 420},
         ),
+        // Non-empty only for `win_notes.exe --diagnose <path>`. It arrives here
+        // rather than in `main`'s arguments because the runner owns the Dart
+        // entrypoint arguments and the process command line never reaches them.
+        diagnosePath: raw['diagnosePath'] as String? ?? '',
       );
     } on PlatformException {
       return null;

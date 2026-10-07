@@ -66,13 +66,34 @@ void main() {
                 'pin. Either the numbering changed or the rules moved.',
           );
 
+          // Two rules under one number. Added after this happened: adding a rule
+          // took `§3.14` while `§3.14` already existed, and every test above
+          // still passed - one heading, one row, both claims satisfied, and the
+          // Markdown rule silently demoted to a duplicate. `rules` is a list, so
+          // the set is what catches it.
+          final Set<String> seen = <String>{};
+          final List<String> duplicated = rules
+              .where((String r) => !seen.add(r))
+              .toList();
+          expect(
+            duplicated,
+            isEmpty,
+            reason: '$path numbers two different rules the same. A § that names '
+                'two things resolves to neither when someone follows a '
+                'citation.\n\n  duplicated: $duplicated',
+          );
+
           // Each row cites a § number in its first column. Checked by set, not
           // by counting rows: a count would be satisfied by thirteen rows all
           // pointing at §3.1, which is precisely the rot this is meant to catch.
-          final Set<String> pinned = RegExp(r'^\|\s*(\d+\.\d+)\s*\|', multiLine: true)
-              .allMatches(table)
-              .map((RegExpMatch m) => m.group(1)!)
-              .toSet();
+          // The letter suffix matches [ruleHeadings]: `§3.0a` and `§3.13a` were
+          // both invisible here, so those four rows had never been checked for
+          // citing a test that exists.
+          final Set<String> pinned =
+              RegExp(r'^\|\s*(\d+\.\d+[a-z]?)\s*\|', multiLine: true)
+                  .allMatches(table)
+                  .map((RegExpMatch m) => m.group(1)!)
+                  .toSet();
 
           final List<String> unpinned = rules.where((String r) => !pinned.contains(r)).toList();
           expect(

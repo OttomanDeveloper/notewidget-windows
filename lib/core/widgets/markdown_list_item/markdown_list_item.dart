@@ -36,11 +36,18 @@ class MarkdownListItem extends StatelessWidget {
         .where((md.Node child) => !(child is md.Element && child.tag == 'input'))
         .toList();
 
+    // Inline, so a leading line may contain them. Treating every element as a
+    // block split `- **(core)** is standard` at the `**` and dropped the rest.
+    const Set<String> inline = <String>{
+      'strong', 'em', 'del', 'code', 'a', 'img', 'br', 'sup', 'sub', 'input',
+    };
     final List<md.Node> leading = <md.Node>[];
     final List<md.Element> blocks = <md.Element>[];
     for (final md.Node child in children) {
-      if (child is md.Element) {
-        blocks.add(child);
+      final bool isBlock =
+          child is md.Element && !inline.contains(child.tag);
+      if (isBlock) {
+        blocks.add(child as md.Element);
       } else if (blocks.isEmpty) {
         leading.add(child);
       }
