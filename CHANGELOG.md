@@ -1,7 +1,15 @@
 # Changelog
 
+## 1.3.3
+
+### Fixed
+
+- The widget's failure path now starts with a scope, like the normal one.
+- CI pins its Flutter version, so a green local run and a red CI run can no longer be the same commit.
+
 ## 1.3.2
 
+- The widget's failure path now starts with a scope, like the normal one.
 ### Fixed
 
 - The storage guard reads source with either line ending, so a CRLF checkout no longer fails it with a range error.

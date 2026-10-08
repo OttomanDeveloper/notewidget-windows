@@ -357,7 +357,7 @@ void main() {
       await tester.tap(find.byKey(swatchKey('teal')));
       await tester.pumpAndSettle();
 
-      expect(controller.current!.settings.accentPalette, 'teal');
+      expect(controller.current()!.settings.accentPalette, 'teal');
     });
 
     testWidgets('the chosen name is written out, not left to be guessed',

@@ -65,7 +65,7 @@ Future<List<Note>?> importNotes(BuildContext context, WidgetRef ref) async {
   final List<Note>? incoming = await const BackupService().readFrom(path);
   if (incoming == null) return null;
 
-  if (notes.hasReadOnlyFile) {
+  if (notes.hasReadOnlyFile()) {
     // A hand-chosen backup is the one thing allowed to replace a file the app
     // refused to touch on its own.
     notes.unblockForRestore();

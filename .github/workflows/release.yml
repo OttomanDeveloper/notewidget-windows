@@ -25,6 +25,11 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned on purpose. Floating to stable means the analyzer changes
+          # under the repo with nobody deciding: 3.47.6 reports none of the
+          # riverpod_lint findings a newer stable does, so a green local run
+          # and a red CI run were the same commit. Upgrade deliberately.
+          flutter-version: '3.47.6'
           cache: true
 
       - name: Install Inno Setup

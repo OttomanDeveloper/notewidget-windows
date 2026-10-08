@@ -25,7 +25,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Whether a rolling backup of the previous good file exists.
   ///
   /// On the notifier (asks the repository) so notes changes don't re-read disk.
-  bool get hasBackup => _repository.backupPath != null;
+  bool hasBackup() => _repository.backupPath != null;
 
   @override
   Future<NotesState> build() async {
@@ -77,13 +77,13 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
 
   /// Whether the widget's own copy of the notes is usable. Never true on the
   /// editor surface, which does not read notes.json through this provider.
-  bool get hasAnyNoteWithText =>
+  bool hasAnyNoteWithText() =>
       (state.value?.notes ?? const <Note>[])
           .any((Note n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty);
 
   /// Whether notes.json is currently unreadable. The import path needs this:
   /// a hand-chosen backup is the one thing allowed to replace a refused file.
-  bool get hasReadOnlyFile => state.value?.isReadOnly ?? false;
+  bool hasReadOnlyFile() => state.value?.isReadOnly ?? false;
 
   NotesState _require() => state.requireValue;
 

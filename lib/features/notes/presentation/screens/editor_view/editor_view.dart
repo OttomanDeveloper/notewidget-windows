@@ -66,7 +66,7 @@ class _EditorViewState extends ConsumerState<EditorView> {
     final CorruptDataFileError? corrupt = notes.$2;
     if (corrupt != null) {      return CorruptNotesScreen(
         error: corrupt,
-        hasBackup: notifier.hasBackup,
+        hasBackup: notifier.hasBackup(),
         onRestore: widget.importNotes,
         onReveal: () => shell.revealPath(corrupt.path),
         onRestoreBackup: notifier.restoreBackup,

@@ -85,7 +85,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   }
 
   /// The current settings, or null before the first load completes.
-  SettingsState? get current => state.value;
+  SettingsState? current() => state.value;
 
   void _onExternalChange() {
     unawaited(_repository.load().then((WinNotesSettings next) {

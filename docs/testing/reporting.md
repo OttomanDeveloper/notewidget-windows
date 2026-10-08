@@ -371,6 +371,56 @@ than a way to wave a real failure through. **It does not fix the flakiness** - a
 retry is precisely why a flaky test can stay flaky - so a line firing there is
 evidence and belongs in this file.
 
+### Batch 9 - 2026-10-09, the gate was reporting a stale cache
+
+`v1.3.2` failed at `analyzer reported problems` with ten issues - five unique:
+
+```
+warning - lib\main.dart:29:5                          missing_provider_scope
+info    - notes_controller.dart:25,78,84               avoid_public_notifier_properties
+info    - settings_controller.dart:87                   avoid_public_notifier_properties
+```
+
+**Two causes, and the first one invalidates a claim I had been making all
+session.** `dart analyze` reported the five; `flutter analyze` reported "No issues
+found". Both are the same analyzer on the same code. `flutter analyze` was
+serving a **stale cached result** - once the cache was refreshed by running
+`dart analyze`, `flutter analyze` immediately agreed. Every "analyze 0/0/0" in
+this ledger's earlier batches was that cache, not an analysis, and it should not
+be read as evidence that CI would pass.
+
+**The second cause is CI floating its Flutter version.** Neither workflow pinned
+one; mine is 3.47.6 and CI took whatever stable was. Both now pin
+`flutter-version: '3.47.6'`, so a green local run and a red CI run can no longer
+be the same commit.
+
+Three things tried, in order, because two of them did not work:
+
+1. **Inline `// ignore:`** - does not suppress a diagnostic from an analysis
+   *plugin*. Verified rather than assumed: the ignore comment shifted the finding
+   from line 25 to line 26 instead of clearing it. Plugin diagnostics are
+   `AnalysisRule`s, which the core ignore-comment handling never sees.
+2. **`linter: rules:` in `analysis_options.yaml`** - rejected as *"isn't a
+   recognized lint rule"*. The plugin registers its rules unconditionally, with
+   no config read (`registry.registerWarningRule(...)` in `riverpod_lint/lib/main.dart`),
+   so there is no key to disable them with. This attempt made things *worse* -
+   two `undefined_lint` warnings - and was reverted.
+3. **Changing the code**, which is what worked:
+
+| site | change |
+|---|---|
+| `hasBackup`, `hasAnyNoteWithText`, `hasReadOnlyFile` | getters to methods |
+| `SettingsNotifier.current` | getter to method |
+| `main.dart` failure path | given a `ProviderScope`, as the happy path has |
+
+The rule is specifically about *properties and getters*, so a method satisfies it
+without the architecture moving: the notifiers still expose the same API, and
+`hasBackup` still asks the repository rather than duplicating itself into `state`.
+The failure path in `main.dart` was the one genuine gap - it called `runApp` with
+no scope at all - and now has one.
+
+`dart analyze` and `flutter analyze` both report **No issues found**, and the
+gate is green on all seven stages.
 ### The release-build pass over wave 9, and the two bugs it found
 
 Every design was screenshotted on a release build, at the real 360x420 widget

@@ -26,7 +26,7 @@ Future<void> main(List<String> args) async {
   // desktop to put a window on, so a neutral editor keeps the failure visible
   // instead of crashing on a null.
   if (launch == null) {
-    runApp(const ShellMissingApp());
+    runApp(const ProviderScope(child: ShellMissingApp()));
     return;
   }
 

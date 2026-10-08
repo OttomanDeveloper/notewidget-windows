@@ -382,7 +382,7 @@ class Notes {
   CorruptDataFileError? get corrupt => _s.corrupt;
   bool get isReadOnly => _s.isReadOnly;
   PendingUndo? get pendingUndo => _s.pendingUndo;
-  bool get hasBackup => _n.hasBackup;
+  bool get hasBackup => _n.hasBackup();
 
   // --- actions, on the notifier ---
   void addNote({required String title, required String body}) =>

@@ -983,6 +983,28 @@ is real and stated: a code span's contents and a link target are uppercased too.
 Invisible here, because the widget never follows a link (`PROJECT.md`).
 **The edge painter is its own file** because one widget is one file, and it is
 also the only place a paint object is constructed.
+### 3.29 A notifier exposes its API through methods, not getters
+
+`riverpod_lint`'s `avoid_public_notifier_properties` fires on public **getters**
+declared on a notifier. Four of them exist here and are deliberate -
+`hasBackup` asks the *repository* so a notes change does not re-read the disk,
+which `state` cannot hold - and the lint is right that a property is the wrong
+shape for it. They are methods now, and the API is unchanged.
+
+The rule is `avoid_public_notifier_properties`, not "no public members", so a
+method satisfies it. The alternative - routing everything through `state` - would
+mean copying the repository lookup into the state, which is the duplication the
+rule is warning about.
+
+**`// ignore:` does not work on a plugin diagnostic.** Verified: the comment moved
+the finding from line 25 to line 26 rather than clearing it. Plugin rules are
+`AnalysisRule`s and the core ignore handling never sees them, and there is no
+config key to disable them - `riverpod_lint` registers them unconditionally.
+
+`missing_provider_scope` fired on `main()`'s **failure path**, which called
+`runApp` with no scope. That one was a real gap and is now given a scope like
+the happy path has (`reporting.md`, batch 9).
+
 ## 7. Tests
 
 Every numbered rule in §3 appears here, with how it is actually pinned. Three
@@ -1030,6 +1052,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.26 | A skin is the shape of a card, never a colour | `skin_test` *the skin model exposes no colour field*, *a skin does not change the theme*, *every skin in the list has an id that resolves back to it*, *ids are unique, because settings.json stores one*, *empty and null mean no skin, not the first skin*, *an unknown id is null rather than the first skin*, *the built-in look is rounded 10, roomy, an accent bar, gaps*, *the editor separates with a hairline where the widget uses a gap*, *a file written before skins existed resolves to no skin*, *no skin is the built-in look, and no skin in the list is*, *corners differ across the skins*, *density tightens and loosens the built-in padding*, *focus markers differ across the skins*, *separators differ across the skins*, *a chosen skin round trips through the file*, *it is omitted when empty, for the same reason as the palette*, *the palette and the skin are separate keys and can disagree*, *it participates in equality, so no-change writes are skipped*; `skin_picker_test` *every skin is offered, and None comes first*, *tapping a chip reports that skin*, *the first chip clears the skin rather than picking the first one*, *the chosen chip is the one marked selected*, *the label under the row names the choice*, *the chips draw shape, and different skins draw different shapes*, *a chip draws a separator when its skin asks for one*; `skin_applied_test` *the card corners come from the skin*, *the card padding comes from the skin*, *the focus marker is the skin and not always a bar*, *the row corners come from the skin*, *the row padding comes from the skin* |
 | 3.27 | A rebuild that changes nothing the preview draws must re-render nothing | `preview_rebuild_test` *the same source hands back the identical widget*, *a changed source does re-render*, *editing the note alone changes nothing the pane draws*, *the font size*, *the completion state*, *the theme* |
 | 3.28 | A widget design is a whole card, and carries no colour | `widget_design_test` *every design has an id that resolves back to it*, *ids are unique, because settings.json stores one*, *empty and null mean no design, not the first one*, *a file written before designs existed resolves to no design*, *there are five designs and none is the built-in look*, *the designs are distinguishable from one another*, *the designs carry no colour*, *a chosen design round trips through the file*, *it is omitted when empty, for the same reason as the palette*, *the palette and the design are separate keys and can disagree*, *it participates in equality, so no-change writes are skipped*, *no design means no tilt, no shadow and a rounded 10*, *a chosen design resolves to its own numbers* |
+| 3.29 | A notifier exposes its API through methods, not getters | `notes_controller_test` *the previous version restores the notes*, *restoring reports when there is nothing to restore* |
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,
 and a Dart test could only assert the absence of a bug. Everything else in §3 is
