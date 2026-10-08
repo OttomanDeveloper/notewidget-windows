@@ -140,13 +140,13 @@ $all = [ordered]@{
       -Why 'static errors and lints'
   }
   Test = {
-    # `--concurrency=2`, not a default. Six suites compiling at once on twelve
-    # cores intermittently answered `Connection closed before test suite loaded`
-    # - the runner's worker was being starved before the suite started, so the
-    # gate failed on something no test can detect. A slower gate that is right is
-    # worth more than a fast one that is sometimes a lie; see
-    # `docs/testing_pattern.md` on load flakes.
-    Invoke-Stage -Name 'Test' -Command { flutter test --concurrency=2 } `
+    # Serial, not a default. Compiling several suites at once starves the
+    # runner's own workers, and it answers `Connection closed before test suite
+    # loaded` or fails a test that measures real elapsed time - on a machine
+    # that is busy rather than wrong. A slower gate that is right is worth more
+    # than a fast one that is sometimes a lie, and the cost of finding that out
+    # was a release that would not package (`tool\release\package.ps1`).
+    Invoke-Stage -Name 'Test' -Command { flutter test --concurrency=1 } `
       -Why 'the suite, and the architecture guards inside it'
   }
   Random = {
@@ -157,11 +157,9 @@ $all = [ordered]@{
     Invoke-Stage -Name 'Random' -Command {
       $files = Get-ChildItem test -Recurse -Filter *_test.dart |
         Sort-Object { Get-Random }
-      # Serial, where the Test stage gets to use two. Naming every file explicitly
-      # makes the runner compile them in a different pattern and starve its own
-      # workers, and it failed to load a suite on 4 runs out of 5 at concurrency 2 -
-      # where `Test` passed. A slower stage that is right beats a fast one that
-      # reports a failure nobody can reproduce.
+      # Serial, like the Test stage. Naming every file explicitly makes the
+      # runner compile them in a different pattern and it failed to load a suite
+      # on 4 runs out of 5 at concurrency 2, where `Test` passed.
       flutter test --concurrency=1 @($files.FullName)
     } -Why 'the suite in randomised order; hunts order-dependent flakes'
   }

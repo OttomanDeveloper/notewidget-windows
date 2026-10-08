@@ -54,7 +54,14 @@ try {
         Write-Host 'running the test suite'
         # $LASTEXITCODE, not the output: a failing test prints plenty and then
         # still returns 0 in some shells, which is how broken builds ship.
-        flutter test --reporter compact
+        #
+        # Serial, and this has cost a release once already. At default concurrency
+        # the runner compiles several suites at once and starves its own workers;
+        # the tests that assert on real elapsed time - the debounce ceiling, the
+        # write retries - then fail on a machine that is busy rather than wrong.
+        # The first v1.3.0 packaging run died exactly that way, on a test that
+        # passes 12 times out of 12 in isolation. A slower package is a package.
+        flutter test --reporter compact --concurrency=1
         if ($LASTEXITCODE -ne 0) { throw 'tests failed; refusing to package' }
     }
 

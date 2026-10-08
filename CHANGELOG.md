@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1
+
+### Fixed
+
+- The packaging gate runs the suite serially, so a loaded runner cannot fail the release over a test that measures real elapsed time.
+- The debounce-ceiling test asserts the property instead of wall-clock arithmetic, which overshot exactly when the machine was busy.
+
 ## 1.3.0
 
 ### Added

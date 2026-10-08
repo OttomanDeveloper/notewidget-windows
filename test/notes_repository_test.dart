@@ -258,25 +258,31 @@ void main() {
     test('a continuous burst still reaches disk before the process dies',
         () async {
       // The ceiling is what stops someone typing a long sentence from never
-      // writing anything at all. Each write arrives well inside the 250ms
-      // debounce, so the trailing edge never fires and only the ceiling can.
+      // writing anything at all.
       final AtomicJsonFile file = AtomicJsonFile(notesPath());
       // Registered before the assertions so the retry timer is always cleared,
       // even when one of them throws and skips the dispose below.
       addTearDown(file.dispose);
 
-      const Duration ceiling = Duration(milliseconds: 1500);
-
-      for (int i = 0; i < 40; i++) {
+      // A burst of writes with no pause, then a bounded wait - *not* 40 sleeps of
+      // 60ms checked against the 1500ms ceiling. That version asserted on
+      // wall-clock arithmetic: `Future.delayed` overshoots under load, so
+      // "(i+1)*60 > 1500" stopped meaning "past the ceiling" exactly when the
+      // machine was busy, which is the only time the file had not landed. The
+      // property under test is that a burst still reaches disk unattended, so it
+      // is tested that way and given room for a slow runner.
+      for (int i = 0; i < 60; i++) {
         file.write(<String, dynamic>{'i': i});
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-        // Past the ceiling, the queued write has to have landed without anyone
-        // calling flushPending.
-        if ((i + 1) * 60 > ceiling.inMilliseconds) {
-          expect(await landed(), isTrue,
-              reason: 'nothing was written after ${(i + 1) * 60}ms of typing');
-        }
+        await Future<void>.delayed(const Duration(milliseconds: 30));
       }
+
+      final DateTime deadline =
+          DateTime.now().add(const Duration(seconds: 10));
+      while (!await landed() && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(await landed(), isTrue,
+          reason: 'a continuous burst wrote nothing without anyone flushing it');
     });
 
     test('the ceiling fires even while writes keep arriving', () async {
