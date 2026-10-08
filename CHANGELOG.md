@@ -1,7 +1,18 @@
 # Changelog
 
+## 1.3.2
+
+### Fixed
+
+- The storage guard reads source with either line ending, so a CRLF checkout no longer fails it with a range error.
+- The packaging gate re-runs the suite once before refusing, and reports when it does.
+
 ## 1.3.1
 
+- A design that draws an edge at the bottom of the card reserves room for it, so a ticket's perforations and a receipt's torn edge no longer cut through the text.
+- The Stamp widget design sets the whole note in capitals, body included, rather than only the title.
+- The storage guard reads source with either line ending, so a CRLF checkout no longer fails it with a range error.
+- The packaging gate re-runs the suite once before refusing, and reports when it does.
 ### Fixed
 
 - The packaging gate runs the suite serially, so a loaded runner cannot fail the release over a test that measures real elapsed time.
@@ -9,6 +20,8 @@
 
 ## 1.3.0
 
+- Five widget designs - Paper, Stamp, Ticket, Soft, Receipt - chosen in Settings and applying to the whole widget.
+- The focus behaviour when a card is dragged, pinned or auto-hidden is unchanged.
 ### Added
 
 - Frame timings are recorded to a file when `WIN_NOTES_FRAME_LOG` is set, for stalls a widget test cannot see.

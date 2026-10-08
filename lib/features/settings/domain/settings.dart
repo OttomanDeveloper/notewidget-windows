@@ -10,6 +10,7 @@ class WinNotesSettings {
     this.themeMode = ThemeMode.system,
     this.accentPalette = '',
     this.skin = '',
+    this.design = '',
     this.widgetOpacity = 92,
     this.acrylicEnabled = true,
     this.alwaysOnTop = true,
@@ -39,6 +40,11 @@ class WinNotesSettings {
   /// and for the same reason. A skin is a layer over the palette, so both
   /// keys are real and can disagree.
   String skin;
+
+  /// Which widget design, by id. Empty means none chosen, same rule as [skin].
+  /// A design is a whole card rather than a layer over one, so it is a
+  /// separate key rather than a field of [skin].
+  String design;
 
   /// Percentage, 30-100. A widget that is too solid sits on top of the work
   /// rather than beside it.
@@ -97,6 +103,7 @@ class WinNotesSettings {
           other.themeMode == themeMode &&
           other.accentPalette == accentPalette &&
           other.skin == skin &&
+    other.design == design &&
           other.widgetOpacity == widgetOpacity &&
           other.acrylicEnabled == acrylicEnabled &&
           other.alwaysOnTop == alwaysOnTop &&
@@ -115,6 +122,7 @@ class WinNotesSettings {
         themeMode,
         accentPalette,
         skin,
+        design,
         widgetOpacity,
         acrylicEnabled,
         alwaysOnTop,
@@ -133,6 +141,7 @@ class WinNotesSettings {
     ThemeMode? themeMode,
     String? accentPalette,
     String? skin,
+    String? design,
     int? widgetOpacity,
     bool? acrylicEnabled,
     bool? alwaysOnTop,
@@ -150,6 +159,7 @@ class WinNotesSettings {
         themeMode: themeMode ?? this.themeMode,
         accentPalette: accentPalette ?? this.accentPalette,
         skin: skin ?? this.skin,
+      design: design ?? this.design,
         widgetOpacity: widgetOpacity ?? this.widgetOpacity,
         acrylicEnabled: acrylicEnabled ?? this.acrylicEnabled,
         alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
@@ -172,6 +182,7 @@ class WinNotesSettings {
         // byte-identical to one written before the setting existed.
         if (accentPalette.isNotEmpty) 'accentPalette': accentPalette,
         if (skin.isNotEmpty) 'skin': skin,
+    if (design.isNotEmpty) 'design': design,
         'widgetOpacity': widgetOpacity,
         'acrylicEnabled': acrylicEnabled,
         'alwaysOnTop': alwaysOnTop,
@@ -209,6 +220,7 @@ class WinNotesSettings {
       themeMode: theme,
       accentPalette: pick<String>('accentPalette', fallback.accentPalette),
       skin: pick<String>('skin', fallback.skin),
+    design: pick<String>('design', fallback.design),
       // Clamped rather than trusted: a hand-edited file should not be able to
       // produce a fully invisible widget.
       widgetOpacity:

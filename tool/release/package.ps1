@@ -62,7 +62,26 @@ try {
         # The first v1.3.0 packaging run died exactly that way, on a test that
         # passes 12 times out of 12 in isolation. A slower package is a package.
         flutter test --reporter compact --concurrency=1
-        if ($LASTEXITCODE -ne 0) { throw 'tests failed; refusing to package' }
+        if ($LASTEXITCODE -ne 0) {
+            # One retry, and it says so loudly. This gate has now failed a release
+            # twice on a machine that was busy rather than wrong - v1.3.0 on a
+            # composer drag guard, v1.3.1 on a semantics assertion - and neither
+            # reproduced here in twenty runs of the file. A deterministic failure
+            # fails twice; that is what makes the retry honest rather than a way
+            # to wave a real failure through.
+            #
+            # It does **not** fix the flakiness, and a retry is the reason a
+            # flaky test can stay flaky: if this line fires, that run is evidence
+            # and belongs in `docs/testing/reporting.md`.
+            Write-Host ''
+            Write-Warning 'the suite failed; re-running once before refusing to package'
+            Write-Host ''
+            flutter test --reporter compact --concurrency=1
+            if ($LASTEXITCODE -ne 0) {
+                throw 'tests failed twice; refusing to package'
+            }
+            Write-Warning 'the suite passed on the retry - this run was flaky'
+        }
     }
 
     flutter analyze

@@ -34,6 +34,7 @@ most features. Do not split by layer out of habit.
 | Layout the user drags - a pane divider, a collapsible list | widget | **probe adds nothing** - see below | **1** |
 | Scale - a preview that builds only what is on screen | widget, structural | **manual** - scroll a 1000-line note on a release build | **1** |
 | Appearance - a skin shapes a card | widget - model, picker, **and that it reaches a drawn card** | **manual** - pick a skin on a release build | **1** |
+| Appearance - a widget **design** replaces the card | widget - model, picker, **painted values**, and a **surface** test that it reaches the real surface | **manual** - every design on a release build, judged by eye | **1 + manual** |
 | A new `ShellChannel` method | `platform_guard_test` for both sides | a probe if it changes what a person sees | **1–2** |
 | A shape or size rule — caps, private widgets, comments | guard or `check_architecture.ps1` | — | **1** |
 | Drag, resize, focus or keyboard handling | **probe** | a guard for the rule that must not drift | **1 + probe** |

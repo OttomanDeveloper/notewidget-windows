@@ -31,10 +31,10 @@ out of a person's `%APPDATA%\WinNotes`.
 
 | Item | Status |
 |---|---|
-| Gate | **green** — `verify.ps1`, all 7 stages, 473 tests |
+| Gate | **green** - `verify.ps1`, all 7 stages, 637 tests |
 | Release drive | **13/13** — first launch, no widget when empty, a note on disk, the widget window, no orphan, real profile byte-identical |
 | Icon audit | **13/13** — all four places Windows reads an icon from |
-| Row coverage | **24 of 39 closed** - `reporting.md`, batches 1-4. Wave 1 is 5/5; wave 8 closed by the host suite |
+| Row coverage | **26 of 44 closed** - `reporting.md`, batches 1-6. Wave 1 is 5/5; waves 8 and 9 closed by the host suite |
 | Probe | **`tool\verify\run_scenarios.ps1`** drives waves 1–3. Wave 1 ran; wave 2 is written but not exercised; wave 3 is blocked on locating the composer's add-note control |
 | Fixed 2026-10-07 | **`AGENTS.md` §5.1**, the first-launch widget bug. Root cause was the runner's deferred boot-time `Show()`, not the Dart visibility rule; `WN-ENV-004` is green and `widget_guard_test` pins it |
 | Open blocker | **A person** — waves 4 and 5 (acrylic, tray, global hotkey, autostart, single-instance, multi-monitor) have no automated instrument at all |
@@ -195,6 +195,27 @@ stated once, below the table, because it is the same gap in every row.
 | WN-EDIT-003 | W | Double-click restores the even split | the divider dragged off centre | The source returns to half the body, and only the divider moves — the list stays collapsed if it was |
 | WN-EDIT-004 | W | The list collapses and comes back | the toolbar toggle, then the edge handle | The list leaves the tree, a 16px handle remains, and tapping the handle restores it |
 | WN-EDIT-005 | W | The positions are session state | a fresh provider container | A new session starts with the list open and the list at 300px; nothing about the layout is in `settings.json` |
+
+## Wave 9 - Widget designs
+
+A design replaces the card rather than decorating it, so the rows that matter are
+the ones where the replacement could quietly not happen.
+
+| ID | Method | Overview | Required states | Expected behavior | End result | Fix |
+|---|---|---|---|---|---|---|
+| WN-DES-001 | W | A chosen design reaches the surface | a note with text, a design in `settings.json` | The widget draws the design and no card | Design on screen | - |
+| WN-DES-002 | W | None draws the built-in card | no design in `settings.json` | The widget draws the card it always drew | Built-in look | - |
+| WN-DES-003 | M | Every design is legible on a real build | all five chosen in turn | Each is recognisably what it claims to be | Judged by eye | - |
+| WN-DES-004 | M | A design survives a restart | a design chosen, app closed and relaunched | The same design is still chosen | Design persists | - |
+| WN-DES-005 | M | The tick and the tap still work | a design chosen | Ticking finishes without moving focus; tapping focuses | Both affordances live | - |
+
+**WN-DES-003 is the row no module can close, and it is the point of the feature.**
+A design is an aesthetic, and whether Paper reads as paper is a judgement. The
+widget suite can prove the rules behind it are painted - the typeface, the edge,
+the tilt, the shadow - and it does, in `widget_design_applied_test`. It cannot
+say whether the result looks like anything. Same gap as `WN-SCALE`, and stated
+here rather than discovered later.
+
 
 **What no row in this wave can establish, and it is not small.** A widget test
 measures layout from Flutter's own tree. It cannot say whether the divider lands

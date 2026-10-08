@@ -10,10 +10,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'guards.dart';
 
+/// Splits source on either line ending. A CRLF checkout leaves `\r` on every
+/// line, so a guard comparing a line to `'  }'` never matches, walks off the end
+/// and throws a `RangeError` instead of reporting a rule - which is why the
+/// tests failing on CI kept being different ones.
+final RegExp _lineBreak = RegExp(r'\r?\n');
+
 /// Code with line comments stripped, so a rule explained in prose does not read
 /// as code that breaks it.
 String _code(String source) => source
-    .split('\n')
+    .split(_lineBreak)
     .where((String l) => !l.trimLeft().startsWith('//'))
     .join('\n');
 
@@ -227,7 +233,7 @@ Set<String> _filesWritingNotes(SourceTree tree) {
 /// Method names in [source] that write notes without asking the runner.
 Set<String> _methodNamesWritingNotesWithoutAsking(String source) {
   final Set<String> out = <String>{};
-  final List<String> lines = source.split('\n');
+  final List<String> lines = source.split(_lineBreak);
 
   // Same signal as above: the argument, not the receiver.
   final RegExp save = RegExp(r'\.save\([^)]*\bnotes\b', caseSensitive: false);
@@ -245,11 +251,13 @@ Set<String> _methodNamesWritingNotesWithoutAsking(String source) {
     }
     if (start < 0) continue;
 
-    // And forward to its close, at two-space indent.
+    // And forward to its close, at two-space indent. Clamped: an unterminated
+    // method used to make this sublist ask for one line past the end.
     int end = i;
     while (end < lines.length && lines[end] != '  }') {
       end++;
     }
+    if (end >= lines.length) continue;
 
     final String body = lines.sublist(start, end + 1).join('\n');
     if (!asks.hasMatch(body)) {

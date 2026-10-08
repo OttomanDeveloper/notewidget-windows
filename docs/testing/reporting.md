@@ -317,6 +317,99 @@ feature simply did not exist in the layout it was built for. It compiled, it
 analysed clean, and it was only found because a test tried to tap something that
 was not there.
 
+### Batch 7 - 2026-10-08, wave 9, host suite
+
+Wave 9 is five rows about a feature that **replaces** the widget card rather than
+decorating it. Recorded as a host-suite batch for the same reason as batch 4: a row
+closed by a widget test is still a row.
+
+| Row | Result | Evidence |
+|---|---|---|
+| WN-DES-001 | PASS (W) | the real surface draws `DesignedNote` and no `WidgetNoteCard`; with the wiring forced to null it goes red |
+| WN-DES-002 | PASS (W) | no design draws `WidgetNoteCard` and no `DesignedNote` |
+| WN-DES-003 | PARTIAL | **run on a release build** - all five screenshotted. Two objective defects found and fixed; the aesthetic judgement is still the owner's |
+| WN-DES-004 | OPEN | **manual** - a chosen design is in `settings.json`, which the model test round-trips; the relaunch is a person |
+| WN-DES-005 | PASS (W) | the tick is present under every design and a tap on the card reports exactly once |
+
+### Batch 8 - 2026-10-08, the CRLF guard bug, found by reproducing a CI failure
+
+`v1.3.1` also refused to package, on `widget_surface_test` "is announced as one
+actionable thing, not loose text". **That test could not be reproduced** - 20 runs
+of the file, all green, and the file is unchanged since the tag.
+
+Reproducing the *tree* instead of the test found a different bug, one that fails
+every time:
+
+```
+RangeError (end): Invalid value: Not in inclusive range 268..354: 355
+```
+
+`storage_guard_test` splits source on `'\n'` and then compares a line to
+`'  }'`. A **CRLF checkout leaves `\r` on every line**, so that comparison never
+matches, the forward walk runs off the end of the file, and `sublist(start,
+end + 1)` throws a `RangeError` instead of reporting a rule.
+
+Verified, not assumed:
+
+| checkout | before | after |
+|---|---|---|
+| LF (this tree) | 10/10 | 10/10 |
+| **CRLF** (a fresh worktree) | **failed 4 runs in 4** | **10/10** |
+
+**This is the likely reason the CI victim kept changing.** The guards read the
+repository's own source, so their result depends on how the repository was
+checked out. CI and a developer clone can disagree about the same commit, and a
+`RangeError` looks like a flaky failure rather than a bug in the guard - which
+is why it was worth reproducing the tree rather than chasing the test name.
+
+Both `.split('\n')` sites now split on `RegExp(r'\r?\n')`, and the slice is
+clamped so an unterminated method cannot ask for a line past the end.
+
+`package.ps1` now retries the suite once before refusing, and says so loudly. A
+deterministic failure fails twice, which is what makes the retry honest rather
+than a way to wave a real failure through. **It does not fix the flakiness** - a
+retry is precisely why a flaky test can stay flaky - so a line firing there is
+evidence and belongs in this file.
+
+### The release-build pass over wave 9, and the two bugs it found
+
+Every design was screenshotted on a release build, at the real 360x420 widget
+size, with a seeded three-note library. **The widget suite could not have found
+either of these**, because both are about pixels meeting each other rather than
+about a rule being violated:
+
+| design | what the screenshot showed |
+|---|---|
+| Paper | correct - ruled lines, handwriting, shadow, slight tilt |
+| Soft | correct - dot grid is full-bleed, so it never lands on text |
+| **Ticket** | the perforations were drawn **across the last line of the body** |
+| **Receipt** | the torn edge **sliced through the body text** |
+| Stamp | title capitalised, **body not** - found, then fixed by transforming the source |
+
+**The first fix was wrong, and the screenshot said so.** Adding bottom padding
+to the card did nothing, because the painter fills the `Stack` and the padding
+sat *outside* it - the edge was still painted at the bottom of the content. The
+correct change moves the padding *inside* the stack, so the painter overlaps the
+room reserved for it. That is the whole difference between "reserved space" and
+"space beside the thing", and no unit test distinguishes them.
+
+`widget_design_applied_test` now pins the reservation, and pins it on the
+`Padding` that wraps the content rather than on the card - so the assertion fails
+if the padding is moved back outside the painted area.
+**The gap this batch closed was in my own tests, twice.** Breaking the surface so
+it ignored `designProvider` turned **nothing** red: `widget_design_applied_test`
+pumps `DesignedNote` directly, so it never touched the one place the choice
+between the card and the design is made. That is the same hole
+`skin_applied_test` was written for. WN-DES-001 now drives the real surface, and
+the same break turns two tests red.
+
+Three bugs the tests caught in the feature itself, all in the tests rather than
+the app: `Matrix4.storage` is column-major so the sine is at index 1 and the tilt
+probe read index 2; `MarkdownText` renders `RichText` and a `Text`-only font
+probe returns empty for Markdown notes, which would have passed vacuously; and a
+pending settings-write timer made the new surface tests pass alone and hang every
+test after them.
+
 ### Batch 5 — 2026-10-07, the lint pass, and the bug 560 tests could not see
 
 Fifty-three of the 93 `always_specify_types` infos were cleared by hand and five

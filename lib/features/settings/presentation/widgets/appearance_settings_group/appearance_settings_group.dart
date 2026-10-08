@@ -13,6 +13,8 @@ import '../../providers/settings_providers.dart';
 import '../font_size_row/font_size_row.dart';
 import '../palette_picker/palette_picker.dart';
 import '../skin_picker/skin_picker.dart';
+import '../design_picker/design_picker.dart';
+import '../../../../widget/domain/widget_design.dart';
 import '../settings_group/settings_group.dart';
 import '../settings_row/settings_row.dart';
 import '../settings_separator/settings_separator.dart';
@@ -77,6 +79,17 @@ class AppearanceSettingsGroup extends ConsumerWidget {
             accent: paletteById(settings.accentPalette).accent,
             onSelected: (WinNotesSkin? skin) => controller.apply(
               (WinNotesSettings s) => s.copyWith(skin: skin?.id ?? ''),
+            ),
+          ),
+        ),
+        const SettingsSeparator(),
+        SettingsRow(
+          label: 'Widget design',
+          description: 'The whole card: paper, stamp, ticket, soft or receipt.',
+          trailing: DesignPicker(
+            selected: designById(settings.design),
+            onSelected: (WidgetDesign? design) => controller.apply(
+              (WinNotesSettings s) => s.copyWith(design: design?.id ?? ''),
             ),
           ),
         ),

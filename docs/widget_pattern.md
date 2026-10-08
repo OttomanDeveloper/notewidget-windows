@@ -936,6 +936,53 @@ Those came from `lib/core/utils/frame_log.dart`, which records frame timings whe
 a widget test builds a tree under a fake clock and a temp directory: it cannot
 see a stall that lives in real file IO or the platform text-input path.
 
+### 3.28 A widget design is a whole card, and it carries no colour
+
+Five designs - Paper, Stamp, Ticket, Soft, Receipt - chosen in Settings and
+applying to the whole widget. The decision and its reasoning are in
+`PROJECT.md`; what follows is how it is built and why it is shaped this way.
+
+**The surface picks, the card does not branch.** `WidgetNoteCard` is untouched
+and `DesignedNote` is an alternative the widget's `itemBuilder` chooses between.
+Both were tried the other way round first, and the repo's own rules refused it:
+`check_architecture.ps1` rejects a private method pulled out of `build()`, and
+`flutter_rules_guard_test` requires one widget per file. A branch inside the card
+would have needed a method, and the edge painter would have been a second widget
+in the card's file. Keeping the choice at the call site satisfies both - and it
+means the built-in look is literally the committed card, so "no design" cannot
+drift from it.
+
+**Data-driven, not five classes.** What makes a design recognisable is type,
+edge, tilt and shadow, and those are numbers and enums on `WidgetDesign`. Five
+widget classes would put the same eight decisions in five files.
+
+**No colour anywhere**, for the reason `WinNotesSkin` gives: colour is
+`WinNotesPalette`'s job. `widget_design_test` asserts each design differs from
+`DesignLook.builtIn` and that no two designs share a signature.
+
+**Fonts are Windows fonts by name** - Segoe Print, Bahnschrift Condensed,
+Consolas, Segoe UI - with a `fontFamilyFallback` list. Flutter ships only
+Roboto, and no font binary or dependency was added (`AGENTS.md` §0.4). They
+reach the renderer through a `DefaultTextStyle`, because `MarkdownText` takes no
+font family of its own.
+
+**Every `Paint` and `Path` is built in the painter's constructor**, never inside
+`paint()` (`flutter_architecture_pattern.md` §2).
+
+**A design's edge is drawn at the bottom of the card, so the card reserves room for
+it.** Found on a release build: the ticket's perforations and the receipt's torn
+edge were drawn across the last line of the body. The first fix added bottom
+padding to the card and did nothing, because the painter fills the `Stack` and
+that padding sat outside it. The padding now lives **inside** the stack, so the
+painter overlaps the room reserved for it. No unit test distinguishes "reserved
+space" from "space beside the thing" - only looking at the pixels did.
+
+**The stamp sets the whole note in capitals, body included**, transformed on the
+source string because `MarkdownText` takes a string rather than nodes. The cost
+is real and stated: a code span's contents and a link target are uppercased too.
+Invisible here, because the widget never follows a link (`PROJECT.md`).
+**The edge painter is its own file** because one widget is one file, and it is
+also the only place a paint object is constructed.
 ## 7. Tests
 
 Every numbered rule in §3 appears here, with how it is actually pinned. Three
@@ -982,6 +1029,7 @@ not in CI (`docs/testing_pattern.md` §2).
 
 | 3.26 | A skin is the shape of a card, never a colour | `skin_test` *the skin model exposes no colour field*, *a skin does not change the theme*, *every skin in the list has an id that resolves back to it*, *ids are unique, because settings.json stores one*, *empty and null mean no skin, not the first skin*, *an unknown id is null rather than the first skin*, *the built-in look is rounded 10, roomy, an accent bar, gaps*, *the editor separates with a hairline where the widget uses a gap*, *a file written before skins existed resolves to no skin*, *no skin is the built-in look, and no skin in the list is*, *corners differ across the skins*, *density tightens and loosens the built-in padding*, *focus markers differ across the skins*, *separators differ across the skins*, *a chosen skin round trips through the file*, *it is omitted when empty, for the same reason as the palette*, *the palette and the skin are separate keys and can disagree*, *it participates in equality, so no-change writes are skipped*; `skin_picker_test` *every skin is offered, and None comes first*, *tapping a chip reports that skin*, *the first chip clears the skin rather than picking the first one*, *the chosen chip is the one marked selected*, *the label under the row names the choice*, *the chips draw shape, and different skins draw different shapes*, *a chip draws a separator when its skin asks for one*; `skin_applied_test` *the card corners come from the skin*, *the card padding comes from the skin*, *the focus marker is the skin and not always a bar*, *the row corners come from the skin*, *the row padding comes from the skin* |
 | 3.27 | A rebuild that changes nothing the preview draws must re-render nothing | `preview_rebuild_test` *the same source hands back the identical widget*, *a changed source does re-render*, *editing the note alone changes nothing the pane draws*, *the font size*, *the completion state*, *the theme* |
+| 3.28 | A widget design is a whole card, and carries no colour | `widget_design_test` *every design has an id that resolves back to it*, *ids are unique, because settings.json stores one*, *empty and null mean no design, not the first one*, *a file written before designs existed resolves to no design*, *there are five designs and none is the built-in look*, *the designs are distinguishable from one another*, *the designs carry no colour*, *a chosen design round trips through the file*, *it is omitted when empty, for the same reason as the palette*, *the palette and the design are separate keys and can disagree*, *it participates in equality, so no-change writes are skipped*, *no design means no tilt, no shadow and a rounded 10*, *a chosen design resolves to its own numbers* |
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,
 and a Dart test could only assert the absence of a bug. Everything else in §3 is

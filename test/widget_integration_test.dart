@@ -9,9 +9,11 @@ import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
 import 'package:win_notes/features/settings/domain/settings.dart';
 import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
+import 'package:win_notes/features/widget/domain/widget_design.dart';
+import 'package:win_notes/features/widget/presentation/widgets/designed_note/designed_note.dart';
+import 'package:win_notes/features/widget/presentation/widgets/widget_note_card/widget_note_card.dart';
 import 'package:win_notes/core/widgets/completion_toggle/completion_toggle.dart';
 import 'package:win_notes/core/theme/theme.dart';
-import 'package:win_notes/features/widget/presentation/widgets/widget_note_card/widget_note_card.dart';
 import 'package:win_notes/features/widget/presentation/screens/widget_surface/widget_surface.dart';
 import 'package:win_notes/features/widget/presentation/widgets/composer_button/composer_button.dart';
 import 'package:win_notes/features/widget/presentation/widgets/composer_field/composer_field.dart';
@@ -306,6 +308,66 @@ void main() {
     await tester.pump();
   }
 
+  group('a widget design reaches the surface', () {
+    // The gap `widget_design_applied_test` could not close: it pumps
+    // `DesignedNote` directly, so with the surface ignoring `designProvider`
+    // every one of those tests still passed. This drives the real surface, which
+    // is the only place the choice between the card and the design is made.
+    Future<void> pumpWithDesign(
+      WidgetTester tester,
+      WidgetDesign? design,
+    ) async {
+      final TestHarness scoped = harness;
+      await real(tester, () async {
+        await scoped.widgetState();
+        await scoped.container.read(settingsProvider.notifier).apply(
+              (WinNotesSettings s) => s.copyWith(design: design?.id ?? ''),
+            );
+      });
+      await pumpSurface(tester, width: 360, height: 420);
+      await tester.pumpAndSettle();
+      // The apply queued a debounced write of settings.json. Without letting it
+      // run, this test ends with a pending timer and every test after it in
+      // this file reports that it did not complete.
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('a chosen design is what the surface draws',
+        (WidgetTester tester) async {
+      await real(tester,
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'Milk')]),
+      );
+      await pumpWithDesign(tester, designById('paper'));
+
+      expect(find.byType(DesignedNote), findsWidgets,
+          reason: 'the surface must draw the design it was given');
+      expect(find.byType(WidgetNoteCard), findsNothing,
+          reason: 'the card and the design are alternatives, not both');
+    });
+
+    testWidgets('no design draws the built-in card',
+        (WidgetTester tester) async {
+      await real(tester,
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'Milk')]),
+      );
+      await pumpWithDesign(tester, null);
+
+      expect(find.byType(WidgetNoteCard), findsWidgets);
+      expect(find.byType(DesignedNote), findsNothing);
+    });
+
+    testWidgets('every design the picker offers reaches the surface',
+        (WidgetTester tester) async {
+      await real(tester,
+        () => makeController(tester, <Note>[note('a', 'Groceries', 'Milk')]),
+      );
+      for (final WidgetDesign d in widgetDesigns) {
+        await pumpWithDesign(tester, d);
+        expect(find.byType(DesignedNote), findsWidgets,
+            reason: '${d.id} is offered by the picker, so it has to be drawable');
+      }
+    });
+  });
   testWidgets('renders a scrolling list of every note without throwing',
       (WidgetTester tester) async {
     await real(tester,

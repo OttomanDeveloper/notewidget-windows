@@ -21,6 +21,8 @@ import '../../../../../core/theme/palette.dart';
 import '../../../../../core/theme/skin.dart';
 import '../../../../../core/theme/theme.dart';
 import '../../widgets/widget_note_card/widget_note_card.dart';
+import '../../widgets/designed_note/designed_note.dart';
+import '../../../domain/widget_design.dart';
 
 /// The widget surface: a frameless, always-on-top column of notes.
 /// Paints only content on a translucent surface; acrylic, corners and shadow are composited natively.
@@ -409,10 +411,39 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                               },
                               itemBuilder: (BuildContext context, int index) {
                                 final Note note = notes[index];
+                                final bool isFocused = index == 0;
+                                final WidgetDesign? design = ref.watch(designProvider);
+                                // The design replaces the card rather than
+                                // decorating it, so the tap target and the tick are
+                                // rebuilt by it. Only one branch is ever built.
+                                if (design != null) {
+                                  return DesignedNote(
+                                    key: ValueKey<String>('d-${note.id}'),
+                                    note: note,
+                                    design: design,
+                                    accent: accent,
+                                    titleColor: dark
+                                        ? Colors.white.withValues(alpha: 0.92)
+                                        : const Color(0xFF1B1B1B),
+                                    bodyColor: dark
+                                        ? Colors.white.withValues(alpha: 0.74)
+                                        : const Color(0xFF3A3A3A),
+                                    mutedColor: dark
+                                        ? Colors.white.withValues(alpha: 0.55)
+                                        : const Color(0xFF6B6B6B),
+                                    large: isFocused && roomy,
+                                    done: note.isCompleted,
+                                    focused: isFocused,
+                                    onTap: () => controller.focusNote(note.id),
+                                    onToggleCompleted: () => unawaited(
+                                      controller.toggleCompleted(note.id),
+                                    ),
+                                  );
+                                }
                                 return WidgetNoteCard(
                                   key: ValueKey<String>(note.id),
                                   noteId: note.id,
-                                  focused: index == 0,
+                                  focused: isFocused,
                                   dark: dark,
                                   accent: accent,
                                   roomy: roomy,

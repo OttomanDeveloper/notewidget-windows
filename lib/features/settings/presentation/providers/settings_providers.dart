@@ -5,6 +5,7 @@ import 'package:win_notes/core/platform/shell_channel.dart';
 
 import '../../../../../core/theme/palette.dart';
 import 'package:win_notes/core/theme/skin.dart';
+import 'package:win_notes/features/widget/domain/widget_design.dart';
 import '../../../../../core/theme/theme.dart';
 import '../../../../../core/utils/app_providers.dart';
 import '../../../../../core/utils/atomic_json_file.dart';
@@ -65,6 +66,14 @@ final Provider<WinNotesSkin?> skinProvider = Provider<WinNotesSkin?>((Ref ref) {
     settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings.skin),
   );
   return skinById(id);
+});
+/// The widget design on its own, for the widget surface. Null when none is
+/// chosen, and null is a real answer rather than a missing one: the built-in
+/// card is what the widget drew before this setting existed.
+final Provider<WidgetDesign?> designProvider = Provider<WidgetDesign?>((Ref ref) {
+  final String? id =
+      ref.watch(settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings.design));
+  return designById(id);
 });
 
 /// Where notes actually live: derived from the configured directory, so
