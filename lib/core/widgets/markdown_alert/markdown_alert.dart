@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../markdown_block_list/markdown_block_list.dart';
-import '../markdown_nodes/markdown_nodes.dart';
 import '../markdown_style/markdown_style.dart';
 
 /// A GitHub alert: `> [!NOTE]` and its four siblings. Adds to a quote one

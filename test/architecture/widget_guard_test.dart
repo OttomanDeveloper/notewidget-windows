@@ -386,12 +386,138 @@ void main() {
       expect(read, greaterThan(push), reason: 'a read-back must not precede it');
     });
 
+    test('autostart is "enabled" only when the entry names this executable', () {
+      // `WN-SYS-004`. Existence was the test, and existence is not the question:
+      // an entry pointing at an uninstalled build survived, so `syncPlatform`
+      // agreed with the setting and repaired nothing while a login would launch
+      // a path that no longer existed.
+      final String platform = SourceTree().read('windows/runner/win_notes_platform.cpp');
+      final RegExpMatch? enabled = RegExp(
+        r'bool AutostartEnabled\(\) \{(.*?)\n\}',
+        dotAll: true,
+      ).firstMatch(platform);
+      expect(enabled, isNotNull, reason: 'AutostartEnabled should still be there');
+
+      final String body = enabled!.group(1) ?? '';
+      expect(body, contains('AutostartCommand()'),
+          reason: 'the comparison needs the command this build would write');
+      expect(body, contains('== expected'),
+          reason: 'presence alone is not agreement; the string has to match');
+      // And it must not have been "fixed" by simply removing the registry read.
+      expect(body, contains('RegQueryValueExW'),
+          reason: 'precondition: it still reads the stored value');
+    });
+
+    test('the guard bites: an existence-only check is rejected', () {
+      final String platform = SourceTree().read('windows/runner/win_notes_platform.cpp');
+      final String faulty = platform.replaceFirst(
+        RegExp(
+          r'(bool AutostartEnabled\(\) \{.*?)return std::wstring\(buffer\) == expected;',
+          dotAll: true,
+        ),
+        r'$1return r == ERROR_SUCCESS;',
+      );
+      expect(faulty, isNot(equals(platform)), reason: 'the mutation must apply');
+      expect(
+        RegExp(r'bool AutostartEnabled\(\) \{(.*?)\n\}', dotAll: true)
+            .firstMatch(faulty)
+            ?.group(1) ??
+            '',
+        isNot(contains('== expected')),
+        reason: 'otherwise this guard is not looking at anything',
+      );
+    });
+
     test('the method is declared on both sides, not just the registry', () {
       // The registry is checked three ways by `platform_guard_test`; this is the
       // Dart call site, which is the fourth thing that can be missing.
       expect(
         SourceTree().read('lib/core/platform/shell_channel.dart'),
         contains("'widget.setGeometry'"),
+      );
+    });
+  });
+
+  group('the deferred first-frame Show does not undo a hide', () {
+    // `AGENTS.md` §5.1, which was open for weeks. `Window::Create` defers the
+    // boot-time `Show()` to `SetNextFrameCallback`, because showing a window
+    // before the engine can paint leaves a white rectangle on the desktop. That
+    // deferral is what let the bug exist: Dart can decide `visible: false` and
+    // have the runner hide the window *before* that callback runs, and the
+    // callback then showed it again.
+    //
+    // Silent by construction - the widget painted over an empty library, nothing
+    // threw, and every existing check either asserted the Dart-side rule or
+    // could not fail.
+
+    late String source;
+    late String header;
+
+    setUpAll(() {
+      source = SourceTree().read('windows/runner/win_notes_window.cpp');
+      header = SourceTree().read('windows/runner/win_notes_window.h');
+    });
+
+    test('the boot-time Show is skipped when the window was already hidden', () {
+      final RegExpMatch? boot = RegExp(
+        r'SetNextFrameCallback\(\[this\]\(\) \{(.*?)\n  \}\);',
+        dotAll: true,
+      ).firstMatch(source);
+      expect(boot, isNotNull, reason: 'the deferred Show should still be there');
+
+      expect(
+        boot!.group(1),
+        contains('visible_at_start'),
+        reason: 'precondition: this is the boot-time Show, not some other one',
+      );
+      expect(
+        boot.group(1),
+        contains('!hidden_before_first_frame_'),
+        reason: 'a window hidden before its first frame must stay hidden. '
+            'Without this the widget paints over an empty library, which is '
+            'exactly what §5.1 reported',
+      );
+    });
+
+    test('a real hide records that it happened', () {
+      final RegExpMatch? hide =
+          RegExp(r'void Window::Hide\(\) \{(.*?)\n\}', dotAll: true).firstMatch(source);
+      expect(hide, isNotNull);
+      expect(
+        hide!.group(1),
+        contains('hidden_before_first_frame_ = true'),
+        reason: 'the flag has to be set by Hide() itself, or it is never set',
+      );
+      expect(
+        hide.group(1),
+        contains('SW_HIDE'),
+        reason: 'precondition: it is still a hide',
+      );
+    });
+
+    test('the flag is a distinct member, not reused from visible_', () {
+      // `visible_` also starts false, so testing it here would say "nobody has
+      // hidden this" on a window that was just hidden. That mistake was made and
+      // reverted; the flag exists so it cannot be made twice.
+      expect(header, contains('bool hidden_before_first_frame_ = false;'));
+    });
+
+    test('the guard bites: an unguarded boot-time Show is rejected', () {
+      final String faulty = source.replaceFirst(
+        RegExp(r'if \(params_\.visible_at_start && !hidden_before_first_frame_\) Show\(\);'),
+        'if (params_.visible_at_start) Show();',
+      );
+      expect(faulty, isNot(equals(source)), reason: 'the mutation must apply');
+      expect(
+        RegExp(
+          r'SetNextFrameCallback\(\[this\]\(\) \{(.*?)\n  \}\);',
+          dotAll: true,
+        )
+            .firstMatch(faulty)
+            ?.group(1) ??
+            '',
+        isNot(contains('!hidden_before_first_frame_')),
+        reason: 'otherwise this guard is not looking at anything',
       );
     });
   });

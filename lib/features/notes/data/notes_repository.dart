@@ -29,14 +29,14 @@ class NotesRepository implements INotesRepository {
       // A file that is valid JSON but not ours is still a file the app did not
       // write and cannot vouch for, so it is treated the same as unparseable.
       if (json.isEmpty) return const NotesLoaded(<Note>[]);
-      final format = json['format'];
+      final Object? format = json['format'];
       if (format != _formatTag) {
         throw CorruptDataFile(
           path: _file.path,
           reason: 'The file is not a WinNotes document (expected format "$_formatTag").',
         );
       }
-      final rawNotes = json['notes'];
+      final Object? rawNotes = json['notes'];
       if (rawNotes is! List) {
         throw CorruptDataFile(
           path: _file.path,
@@ -44,7 +44,7 @@ class NotesRepository implements INotesRepository {
         );
       }
       final List<Note> notes = <Note>[];
-      for (final entry in rawNotes) {
+      for (final Object? entry in rawNotes) {
         if (entry is! Map) {
           throw CorruptDataFile(
             path: _file.path,
@@ -196,13 +196,13 @@ class NotesRepository implements INotesRepository {
     try {
       final String raw = await file.readAsString();
       if (raw.trim().isEmpty) return const NotesLoaded(<Note>[]);
-      final decoded = jsonDecode(raw);
+      final Object? decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return const NotesLoaded(<Note>[]);
       if (decoded['format'] != _formatTag) return const NotesLoaded(<Note>[]);
-      final rawNotes = decoded['notes'];
+      final Object? rawNotes = decoded['notes'];
       if (rawNotes is! List) return const NotesLoaded(<Note>[]);
       final List<Note> notes = <Note>[];
-      for (final entry in rawNotes) {
+      for (final Object? entry in rawNotes) {
         if (entry is! Map) continue;
         try {
           notes.add(Note.fromJson(Map<String, dynamic>.from(entry)));

@@ -11,6 +11,7 @@ import 'package:win_notes/core/utils/atomic_json_file.dart';
 import 'package:win_notes/features/notes/domain/note.dart';
 import 'package:win_notes/features/notes/data/notes_repository.dart';
 import 'package:win_notes/core/widgets/markdown_alert/markdown_alert.dart';
+import 'package:win_notes/core/widgets/markdown_block/markdown_block.dart';
 import 'package:win_notes/core/widgets/markdown_inline_text/markdown_inline_text.dart';
 import 'package:win_notes/core/widgets/markdown_table/markdown_table.dart';
 import 'package:win_notes/core/widgets/markdown_quote/markdown_quote.dart';
@@ -19,6 +20,9 @@ import 'package:win_notes/core/widgets/markdown_density/markdown_density.dart';
 import 'package:win_notes/features/notes/presentation/widgets/note_editor_pane/note_editor_pane.dart';
 import 'package:win_notes/features/notes/presentation/widgets/markdown_toggle_button/markdown_toggle_button.dart';
 import 'package:win_notes/features/notes/presentation/widgets/note_list_pane/note_list_pane.dart';
+import 'package:win_notes/features/notes/presentation/widgets/pane_divider/pane_divider.dart';
+import 'package:win_notes/features/notes/presentation/widgets/preview_pane/preview_pane.dart';
+import 'package:win_notes/features/notes/presentation/widgets/source_field/source_field.dart';
 import 'package:win_notes/core/theme/theme.dart';
 import 'package:win_notes/features/widget/presentation/providers/widget_providers.dart';
 import 'package:win_notes/features/widget/presentation/widgets/widget_note_card/widget_note_card.dart';
@@ -494,7 +498,7 @@ void main() {
 
     testWidgets('a code block is clamped and says how much was hidden',
         (WidgetTester tester) async {
-      final String long = List.generate(20, (int i) => 'line $i').join('\n');
+      final String long = List<String>.generate(20, (int i) => 'line $i').join('\n');
       await pumpMarkdown(tester, '```\n$long\n```',
           density: MarkdownDensity.widget);
 
@@ -669,7 +673,7 @@ void main() {
       expect(written, contains('"markdown": true'));
       expect(
         Note.fromJson(
-          (jsonDecode(written)['notes'] as List).first as Map<String, dynamic>,
+          (jsonDecode(written)['notes'] as List<dynamic>).first as Map<String, dynamic>,
         ).markdown,
         isTrue,
         reason: 'and it reads back as a Markdown note, not as a plain one',
@@ -750,7 +754,7 @@ void main() {
         (WidgetTester tester) async {
       await pumpCard(
         tester,
-        note('Title', List.generate(20, (int i) => 'line $i').join('\n\n'),
+        note('Title', List<String>.generate(20, (int i) => 'line $i').join('\n\n'),
             markdown: true),
         roomy: false,
       );
@@ -874,7 +878,7 @@ void main() {
       await pumpList(tester, <Note>[
         note(
           'Long',
-          List.generate(30, (int i) => 'line $i').join('\n\n'),
+          List<String>.generate(30, (int i) => 'line $i').join('\n\n'),
           markdown: true,
         ),
       ]);
@@ -989,6 +993,18 @@ void main() {
       await harness.dispose();
     });
 
+
+/// Blocks the preview pane has actually built.
+///
+/// The preview builds one slot per **visible** block rather than a `Column` of
+/// every block, so this answers two questions at once: "is the preview showing",
+/// and "how much of this note is on screen". Scoped to [PreviewPane] because a
+/// [MarkdownBlock] is also what a widget card is made of, and a bare
+/// `find.byType` would be satisfied by a card.
+final Finder previewBlocks = find.descendant(
+  of: find.byType(PreviewPane),
+  matching: find.byType(MarkdownBlock),
+);
     Future<void> pumpPane(WidgetTester tester, double width) async {
       // Real file IO has to happen inside `runAsync`. Under a widget test's fake
       // clock the event loop is never really pumped, so awaiting a disk write here
@@ -1036,22 +1052,104 @@ void main() {
       await pumpPane(tester, 800);
       // Title and body source. A preview is not a third field.
       expect(find.byType(TextField), findsNWidgets(2));
-      expect(find.byType(MarkdownText), findsWidgets,
+      // Inside `PreviewPane` specifically: the preview builds its blocks lazily
+      // and no longer contains a `MarkdownText`, and a bare `MarkdownBlock` would
+      // also be satisfied by a widget card.
+      expect(previewBlocks, findsWidgets,
           reason: 'and the rendered note beside them');
-      expect(find.byType(VerticalDivider), findsWidgets);
+      expect(find.byType(VerticalDivider), findsNothing);
+      expect(find.byType(PaneDivider), findsOneWidget,
+          reason: 'the divider between them is the one you can drag');
     });
 
-    testWidgets('a narrow pane offers a switch instead of two cramped columns',
+    testWidgets('dragging the divider widens the source and narrows the preview',
+        (WidgetTester tester) async {
+      await pumpPane(tester, 800);
+
+      // Measured, not guessed: the body is the pane less its padding and the
+      // divider's grab band, so the even split is a specific number.
+      final double before = tester.getSize(find.byType(SourceField)).width;
+      final double previewBefore = tester.getSize(find.byType(PreviewPane)).width;
+      expect(before, greaterThan(300),
+          reason: 'precondition: both panes start with real room');
+
+      await tester.dragFrom(
+        tester.getCenter(find.byType(PaneDivider)),
+        const Offset(-120, 0),
+      );
+      await tester.pumpAndSettle();
+
+      final double after = tester.getSize(find.byType(SourceField)).width;
+      expect(after, lessThan(before - 60),
+          reason: 'dragging left gives the source less room');
+      expect(tester.getSize(find.byType(PreviewPane)).width,
+          greaterThan(previewBefore + 60));
+    });
+
+    testWidgets('the divider cannot be dragged past either end',
+        (WidgetTester tester) async {
+      await pumpPane(tester, 800);
+
+      // Far past the left edge, in several hops, so the clamp has to hold on the
+      // last one rather than only the first.
+      for (int i = 0; i < 6; i++) {
+        await tester.dragFrom(
+          tester.getCenter(find.byType(PaneDivider)),
+          const Offset(-300, 0),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(tester.getSize(find.byType(SourceField)).width, greaterThan(0),
+          reason: 'a source pane dragged to nothing is a broken editor');
+      expect(tester.takeException(), isNull);
+
+      for (int i = 0; i < 6; i++) {
+        await tester.dragFrom(
+          tester.getCenter(find.byType(PaneDivider)),
+          const Offset(300, 0),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(tester.getSize(find.byType(PreviewPane)).width, greaterThan(0),
+          reason: 'and the same is true of the preview');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('double-clicking the divider puts it back to even',
+        (WidgetTester tester) async {
+      await pumpPane(tester, 800);
+      final double before = tester.getSize(find.byType(SourceField)).width;
+
+      await tester.dragFrom(
+        tester.getCenter(find.byType(PaneDivider)),
+        const Offset(-120, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(SourceField)).width, lessThan(before));
+
+      final Offset grip = tester.getCenter(find.byType(PaneDivider));
+      await tester.tapAt(grip);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tapAt(grip);
+      await tester.pumpAndSettle();
+
+      expect(tester.getSize(find.byType(SourceField)).width, closeTo(before, 1),
+          reason: 'double-click is the one gesture needing no instructions');
+    });
+
+    testWidgets('a narrow pane still offers a switch, not a drag',
         (WidgetTester tester) async {
       await pumpPane(tester, 380);
-      expect(find.byType(MarkdownText), findsNothing,
+      expect(previewBlocks, findsNothing,
           reason: 'no room for both, so it asks rather than guessing');
+      expect(find.byType(PaneDivider), findsNothing,
+          reason: 'there is nothing to divide when one pane is showing');
       expect(find.text('Show preview'), findsOneWidget);
 
       await tester.tap(find.text('Show preview'));
       await tester.pump();
 
-      expect(find.byType(MarkdownText), findsWidgets);
+      expect(previewBlocks, findsWidgets);
       expect(find.text('Edit source'), findsOneWidget);
     });
 

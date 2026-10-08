@@ -31,7 +31,7 @@ ThemeData buildWinNotesTheme({
   required Brightness brightness,
   required bool highContrast,
   WinNotesPalette? palette,
-}) {
+  }) {
   final WinNotesPalette chosen = palette ?? winNotesPalettes.first;
   final bool isDark = brightness == Brightness.dark;
   final WidgetSurfaces surfaces = chosen.surfaces(brightness);

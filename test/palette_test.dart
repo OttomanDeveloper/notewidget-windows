@@ -17,7 +17,7 @@ import 'package:win_notes/core/theme/theme.dart';
 
 /// Keys the picker publishes, so a test aims at a swatch without reverse-
 /// engineering the wrap order.
-Key swatchKey(String id) => ValueKey('settings.palette.$id');
+Key swatchKey(String id) => ValueKey<String>('settings.palette.$id');
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

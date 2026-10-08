@@ -21,6 +21,10 @@ void main() {
   // reaches for it. `ensureInitialized` is idempotent.
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  /// True when a `win_notes` process is running, in which case the autostart
+  /// tests below stand down rather than fight `syncPlatform` over the Run key.
+  late bool appOwnsRunKey;
+
   late Directory temp;
 
   setUp(() {
@@ -113,16 +117,41 @@ void main() {
     // own executable path, so a registry value pointing at a deleted install
     // reads as fine against it. Reading the entry back is the whole behaviour.
     //
-    // The value is restored in `tearDown` whichever test ran, and the previous
-    // one is captured first - a test suite that leaves an autostart entry
-    // pointing at a temp file is worse than no test.
+    // The value is restored in `tearDownAll` whichever test ran, and the
+    // previous one is captured once in `setUpAll` - a test suite that leaves an
+    // autostart entry pointing at a temp file is worse than no test.
+    //
+    // Skipped while the app is running, because `syncPlatform` rewrites that
+    // entry on every launch and the two would fight over it. Observed once, as
+    // an intermittent failure with no other cause.
     String? savedEntry;
 
-    setUp(() => savedEntry = _readRunEntry());
-    tearDown(() => _writeRunEntry(savedEntry));
+    // Captured **once per group**, not once per test. A per-test `setUp` reads
+    // whatever the previous test left behind, so a delete that failed to restore
+    // is read back as the original and written back as `null` by the next
+    // `tearDown` - which turns a transient leak into a permanent one. The value
+    // was observed missing from this machine's Run key after a test run, so the
+    // cementing path is not hypothetical.
+    setUpAll(() {
+      savedEntry = _readRunEntry();
+      // `skip` is per-test, not per-group, so the flag is a plain bool the
+      // individual tests consult. A running app owns that entry and rewrites it
+      // on launch; the two would fight over it, which showed up once as an
+      // intermittent failure with no other cause.
+      appOwnsRunKey = Process.runSync(
+        'tasklist',
+        <String>['/FI', 'IMAGENAME eq win_notes.exe'],
+      ).stdout.toString().contains('win_notes.exe');
+    });
+
+    tearDownAll(() => _writeRunEntry(savedEntry));
 
     test('an entry pointing at nothing is reported as pointing at nothing',
         () async {
+      if (appOwnsRunKey) {
+        markTestSkipped('a win_notes process owns the Run entry');
+        return;
+      }
       _writeRunEntry(r'"C:\nowhere\win_notes.exe" --widget');
 
       final Map<String, dynamic> runner =
@@ -140,6 +169,10 @@ void main() {
     });
 
     test('the app\'s own intent is reported separately from the registry', () async {
+      if (appOwnsRunKey) {
+        markTestSkipped('a win_notes process owns the Run entry');
+        return;
+      }
       _writeRunEntry(r'"C:\nowhere\win_notes.exe" --widget');
 
       final Map<String, dynamic> runner =
@@ -153,6 +186,10 @@ void main() {
     });
 
     test('a real target is recognised through the quotes and the flag', () async {
+      if (appOwnsRunKey) {
+        markTestSkipped('a win_notes process owns the Run entry');
+        return;
+      }
       final File exe = File('${temp.path}\\win_notes.exe')
         ..writeAsBytesSync(<int>[0x4D, 0x5A]);
       _writeRunEntry('"${exe.path}" --widget');
@@ -167,6 +204,10 @@ void main() {
     });
 
     test('no entry at all is not a failure', () async {
+      if (appOwnsRunKey) {
+        markTestSkipped('a win_notes process owns the Run entry');
+        return;
+      }
       _writeRunEntry(null);
 
       final Map<String, dynamic> runner =

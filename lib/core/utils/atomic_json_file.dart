@@ -122,7 +122,7 @@ class AtomicJsonFile {
       return const <String, dynamic>{};
     }
     try {
-      final decoded = jsonDecode(raw);
+      final Object? decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException('The top level of the file is not a JSON object.');
       }

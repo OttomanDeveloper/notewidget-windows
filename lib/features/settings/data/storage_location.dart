@@ -83,9 +83,9 @@ class StorageLocation {
   static String? _readKey(File file) {
     try {
       if (!file.existsSync()) return null;
-      final decoded = jsonDecode(file.readAsStringSync());
+      final Object? decoded = jsonDecode(file.readAsStringSync());
       if (decoded is! Map<String, dynamic>) return null;
-      final value = decoded[storageDirectoryKey];
+      final Object? value = decoded[storageDirectoryKey];
       if (value is! String || value.trim().isEmpty) return null;
       return value.trim();
     } catch (_) {

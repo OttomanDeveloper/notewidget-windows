@@ -54,7 +54,7 @@ void main() {
   String notesDocument({int count = 1}) => jsonEncode(<String, Object>{
         'format': 'winnotes',
         'version': 1,
-        'notes': List.generate(
+        'notes': List<Map<String, String>>.generate(
           count,
           (int i) => <String, String>{
             'id': 'note-$i',

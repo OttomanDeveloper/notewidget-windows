@@ -26,7 +26,8 @@ final Provider<List<Note>> widgetDisplayNotesProvider = Provider<List<Note>>((Re
 });
 
 /// One widget note by id, so a card rebuilds only when its own content changed.
-final widgetNoteByIdProvider = Provider.family<Note?, String>((Ref ref, String id) {
+// ignore: always_specify_types - as above.
+  final widgetNoteByIdProvider = Provider.family<Note?, String>((Ref ref, String id) {
   final List<Note>? notes = ref.watch(widgetProvider.select((AsyncValue<WidgetSurfaceState> v) => v.value?.notes));
   if (notes == null) return null;
   for (final Note note in notes) {

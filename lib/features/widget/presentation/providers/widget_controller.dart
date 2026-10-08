@@ -194,7 +194,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     final bool shouldShow = notes.any(
       (Note n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty,
     );
-    state = AsyncData(current.copyWith(notes: notes, visible: shouldShow));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(notes: notes, visible: shouldShow));
     if (shouldShow != current.visible) {
       await _applyWindowConfiguration();
     }
@@ -205,7 +205,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     final WidgetSurfaceState? current = state.value;
     final String? next = _selectionRepo.cached;
     if (current == null || next == current.selectedId) return;
-    state = AsyncData(current.copyWith(selectedId: next));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(selectedId: next));
   }
 
   /// Tells the runner what the window looks like; [from] exists because `build` configures before `state` exists.
@@ -234,7 +234,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       width: bounds.width,
       height: bounds.height,
     );
-    state = AsyncData(current.copyWith(window: window));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(window: window));
     // Dragging emits a WM_MOVE per pixel; only the last position is worth writing,
     // so persistence is coalesced rather than throttled in the runner.
     _geometrySaveTimer?.cancel();
@@ -247,7 +247,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
     final WidgetSurfaceState current = _require();
     if ((offset - current.window.scrollOffset).abs() < 0.5) return;
     final WidgetWindowState window = current.window.copyWith(scrollOffset: offset);
-    state = AsyncData(current.copyWith(window: window));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(window: window));
     // Writes the whole state including the note selection, so a tap that changes
     // the selection and a scroll that changes the offset can queue on top of each
     // other. The debounced writer collapses them.
@@ -259,7 +259,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   void focusNote(String id) {
     final WidgetSurfaceState current = _require();
     if (current.selectedId == id) return;
-    state = AsyncData(current.copyWith(selectedId: id));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(selectedId: id));
     _selectionRepo.setSelection(id);
   }
 
@@ -282,7 +282,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
         ? note.copyWith(clearCompletedAt: true)
         : note.copyWith(completedAt: DateTime.now());
     final List<Note> notes = <Note>[...current.notes]..[index] = updated;
-    state = AsyncData(current.copyWith(notes: notes));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(notes: notes));
     _notesRepo.save(state.requireValue.notes);
   }
 
@@ -307,7 +307,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       createdAt: now,
       updatedAt: now,
     );
-    state = AsyncData(
+    state = AsyncData<WidgetSurfaceState>(
       current.copyWith(notes: NotesRepository.sorted(<Note>[...current.notes, note])),
     );
     _notesRepo.save(state.requireValue.notes);
@@ -315,14 +315,14 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   }
 
   Future<void> setWidgetVisible({required bool visible}) async {
-    state = AsyncData(_require().copyWith(visible: visible));
+    state = AsyncData<WidgetSurfaceState>(_require().copyWith(visible: visible));
     await _applyWindowConfiguration();
   }
 
   void setWidgetVisibleFromPlatform({required bool visible}) {
     final WidgetSurfaceState current = _require();
     if (visible == current.visible) return;
-    state = AsyncData(current.copyWith(visible: visible));
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(visible: visible));
   }
 
   /// Starts the runner-side move loop; Dart lacks the screen-space cursor to compute it.

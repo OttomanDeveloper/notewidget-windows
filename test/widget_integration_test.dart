@@ -91,7 +91,7 @@ void main() {
         const NativeBounds(left: 1086, top: 366, width: 360, height: 420),
       );
       await waitForContent(File('${first.path}\\widget_state.json'), '1086');
-      await first.drain;
+      await first.drain();
 
       // The evidence is on disk, not in a field: a restart re-reads the file.
       final File state = File('${first.path}\\widget_state.json');
@@ -133,8 +133,8 @@ void main() {
           .firstWhere((MethodCall? c) => true, orElse: () => null);
       expect(restore, isNotNull,
           reason: 'the second launch has a saved position and did not send it');
-      expect((restore!.arguments as Map)['left'], 1086);
-      expect((restore.arguments as Map)['top'], 366);
+      expect((restore!.arguments as Map<Object?, Object?>)['left'], 1086);
+      expect((restore.arguments as Map<Object?, Object?>)['top'], 366);
     });
 
     test('the saved position wins over whatever the runner reports', () async {
@@ -472,7 +472,7 @@ void main() {
 
     expect(calls, isNotEmpty, reason: 'the widget never configured itself');
     expect(
-      (calls.first.arguments as Map)['positionLocked'],
+      (calls.first.arguments as Map<Object?, Object?>)['positionLocked'],
       isFalse,
       reason: 'a fresh install must not ship a widget that cannot be moved',
     );
@@ -490,7 +490,7 @@ void main() {
 
     final List<MethodCall> configures = calls.where((MethodCall c) => c.method == 'widget.configure').toList();
     expect(
-      (configures.last.arguments as Map)['positionLocked'],
+      (configures.last.arguments as Map<Object?, Object?>)['positionLocked'],
       isFalse,
       reason: 'unlocking must be pushed, not merely stored',
     );
@@ -603,7 +603,7 @@ void main() {
     // The anchor travels with it: the runner is told about a drag only after the
     // pointer has already travelled, so anchoring on the cursor at that moment
     // would throw away the whole first hop.
-    final Map<dynamic, dynamic> anchor = moves.single.arguments as Map;
+    final Map<Object?, Object?> anchor = moves.single.arguments as Map<Object?, Object?>;
     expect(anchor['anchorX'], 180.0);
     expect(anchor['anchorY'], 120.0);
   });
@@ -710,7 +710,7 @@ void main() {
 
     final List<MethodCall> resizes = calls.where((MethodCall c) => c.method == 'widget.beginResize').toList();
     expect(resizes, hasLength(1), reason: 'an edge grab is a resize');
-    expect((resizes.single.arguments as Map)['edge'], 4,
+    expect((resizes.single.arguments as Map<Object?, Object?>)['edge'], 4,
         reason: "4 is the runner's code for the bottom edge");
     expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), isEmpty);
   });
@@ -766,7 +766,7 @@ void main() {
 
       expect(requests, hasLength(1),
           reason: 'the toggle must be routed to the writer');
-      expect((requests.single.arguments as Map)['id'], 'a');
+      expect((requests.single.arguments as Map<Object?, Object?>)['id'], 'a');
     });
 
     testWidgets('with no editor, the widget writes the file itself',
@@ -928,7 +928,7 @@ void main() {
       final Iterable<MethodCall> configures =
           calls.where((MethodCall c) => c.method == 'widget.configure');
       if (configures.isEmpty) return null;
-      return (configures.last.arguments as Map)['visible'] as bool?;
+      return (configures.last.arguments as Map<Object?, Object?>)['visible'] as bool?;
     }
 
     testWidgets('a note with text is announced as visible',
@@ -1030,7 +1030,7 @@ void main() {
       expect(find.byKey(addNoteFieldKey), findsOneWidget);
       expect(
         calls.where((MethodCall c) => c.method == 'widget.setComposeMode'
-            && (c.arguments as Map)['active'] == true),
+            && (c.arguments as Map<Object?, Object?>)['active'] == true),
         hasLength(1),
       );
 
@@ -1040,7 +1040,7 @@ void main() {
       expect(find.byKey(addNoteFieldKey), findsNothing);
       expect(
         calls.where((MethodCall c) => c.method == 'widget.setComposeMode'
-            && (c.arguments as Map)['active'] == false),
+            && (c.arguments as Map<Object?, Object?>)['active'] == false),
         hasLength(1),
       );
     });
@@ -1063,7 +1063,7 @@ void main() {
       final List<MethodCall> created =
           calls.where((MethodCall c) => c.method == 'note.create').toList();
       expect(created, hasLength(1));
-      final Map<dynamic, dynamic> args = created.single.arguments as Map;
+      final Map<Object?, Object?> args = created.single.arguments as Map<Object?, Object?>;
       expect(args['title'], 'Call the dentist');
       expect(args['body'], '');
       // Closed before the write, so the keyboard is on its way back to the user's

@@ -4,6 +4,7 @@ import 'package:riverpod/riverpod.dart';
 import 'package:win_notes/core/platform/shell_channel.dart';
 
 import '../../../../../core/theme/palette.dart';
+import 'package:win_notes/core/theme/skin.dart';
 import '../../../../../core/theme/theme.dart';
 import '../../../../../core/utils/app_providers.dart';
 import '../../../../../core/utils/atomic_json_file.dart';
@@ -56,9 +57,20 @@ final Provider<WinNotesPalette> accentPaletteProvider = Provider<WinNotesPalette
   return paletteById(id);
 });
 
+/// The skin on its own, for the widget surface. Null when none is chosen, and
+/// that is every existing install - the rule about a default that must not
+/// move applies to a setting added later exactly as it did to the palette.
+final Provider<WinNotesSkin?> skinProvider = Provider<WinNotesSkin?>((Ref ref) {
+  final String? id = ref.watch(
+    settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings.skin),
+  );
+  return skinById(id);
+});
+
 /// Where notes actually live: derived from the configured directory, so
 /// unrelated settings changes leave this row alone.
-final storageDirectoryProvider =
+// ignore: always_specify_types - as above.
+  final storageDirectoryProvider =
     Provider.family<String, String>((Ref ref, String defaultDirectory) {
   final String configured = ref.watch(
     settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings.storageDirectory.trim() ?? ''),

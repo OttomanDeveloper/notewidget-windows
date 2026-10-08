@@ -5,11 +5,14 @@ import 'package:win_notes/features/notes/domain/repositories.dart';
 
 import '../../../../../core/utils/app_providers.dart';
 import '../../../domain/note.dart';
+import '../../providers/editor_layout_provider.dart';
 import '../../providers/notes_controller.dart';
 import '../../widgets/editor_app_bar/editor_app_bar.dart';
 import '../../widgets/editor_narrow_body/editor_narrow_body.dart';
+import '../../widgets/list_drawer_handle/list_drawer_handle.dart';
 import '../../widgets/note_editor_pane/note_editor_pane.dart';
 import '../../widgets/note_list_pane/note_list_pane.dart';
+import '../../widgets/pane_divider/pane_divider.dart';
 import '../corrupt_notes_screen/corrupt_notes_screen.dart';
 
 /// The editor window. Two panes wide, one at a time narrow; the break is on
@@ -55,10 +58,13 @@ class _EditorViewState extends ConsumerState<EditorView> {
     );
     final ShellChannel shell = ref.read(shellProvider);
     final NotesNotifier notifier = ref.read(notesProvider.notifier);
+    // Session layout: split, list width, collapsed. Not settings, so dragging a
+    // divider cannot mark the settings file dirty.
+    final EditorLayout layout = ref.watch(editorLayoutProvider);
+    final EditorLayoutNotifier layoutNotifier = ref.read(editorLayoutProvider.notifier);
 
     final CorruptDataFileError? corrupt = notes.$2;
-    if (corrupt != null) {
-      return CorruptNotesScreen(
+    if (corrupt != null) {      return CorruptNotesScreen(
         error: corrupt,
         hasBackup: notifier.hasBackup,
         onRestore: widget.importNotes,
@@ -88,7 +94,12 @@ class _EditorViewState extends ConsumerState<EditorView> {
               appBar: EditorAppBar(
                 narrow: narrow,
                 showList: showList,
-                onShowList: () => _showListOnNarrow.value = true,
+                // Wide, the bar collapses the list; narrow, it comes back. One
+                // button either way, because the handle is an extra and not a
+                // replacement.
+                onToggleList: narrow
+                    ? () => _showListOnNarrow.value = true
+                    : () => layoutNotifier.toggleList(),
                 onOpenSettings: widget.onOpenSettings,
                 exportNotes: widget.exportNotes,
                 importNotes: widget.importNotes,
@@ -106,22 +117,33 @@ class _EditorViewState extends ConsumerState<EditorView> {
                     )
                   : Row(
                       children: <Widget>[
-                        SizedBox(
-                          width: 300,
-                          child: NoteListPane(
-                            onOpenNote: () => _showListOnNarrow.value = false,
-                            onNewNote: () {
-                              notifier.createNote();
-                              if (narrow) _showListOnNarrow.value = false;
-                              _focusBody();
-                            },
-                            onCloseList: () {},
+                        // The list collapses to a handle rather than vanishing:
+                        // without something on the edge there is no way back
+                        // while the user is looking at the editor.
+                        if (layout.listCollapsed)
+                          ListDrawerHandle(
+                            onExpand: () => layoutNotifier.setListCollapsed(collapsed: false),
+                          )
+                        else ...<Widget>[
+                          SizedBox(
+                            width: layout.listWidth,
+                            child: NoteListPane(
+                              onOpenNote: () => _showListOnNarrow.value = false,
+                              onNewNote: () {
+                                notifier.createNote();
+                                if (narrow) _showListOnNarrow.value = false;
+                                _focusBody();
+                              },
+                              onCloseList: () {},
+                            ),
                           ),
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          color: Theme.of(context).dividerColor,
-                        ),
+                          PaneDivider(
+                            tooltip: 'Drag to resize the list. Double-click to reset.',
+                            onDrag: (double dx) =>
+                                layoutNotifier.setListWidth(layout.listWidth + dx),
+                            onReset: layoutNotifier.resetSplit,
+                          ),
+                        ],
                         const Expanded(child: NoteEditorPane()),
                       ],
                     ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../../core/theme/skin.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../notes/domain/note.dart';
@@ -19,6 +20,7 @@ class WidgetNoteCard extends ConsumerWidget {
     required this.accent,
     required this.roomy,
     required this.onToggleCompleted,
+    this.skin,
     this.dark = false,
   });
 
@@ -32,6 +34,11 @@ class WidgetNoteCard extends ConsumerWidget {
   final VoidCallback onToggleCompleted;
 
   final Color accent;
+
+  /// The card's shape. A value, not shared state, so it crosses like [accent]
+  /// and [roomy] do. The widget draws under a bare `ThemeData` for its own
+  /// surface colour, so there is no theme extension to read here.
+  final WinNotesSkin? skin;
 
   /// Body height budget (2 compact, 7 large) from [MarkdownText.budgetForLines] so the fade is added once.
   static final double _compactBodyHeight = MarkdownText.budgetForLines(
@@ -50,6 +57,17 @@ class WidgetNoteCard extends ConsumerWidget {
   /// Scroll metrics are unreadable while a sliver lays out, when this builds.
   final bool roomy;
 
+  /// The edge a skin draws around the open note: a bar, a full outline, or
+  /// nothing. A filled skin marks it with colour and needs no edge.
+  Border _focusBorder(SkinLook look, bool marked, Color accent) {
+    if (!marked) return Border.all(color: Colors.transparent);
+    return switch (look.focus) {
+      SkinFocus.bar => Border(left: BorderSide(color: accent, width: 3)),
+      SkinFocus.outline => Border.all(color: accent, width: 1.5),
+      _ => Border.all(color: Colors.transparent),
+    };
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Gone (deleted or never loaded) reads as empty rather than crashing: the
@@ -58,6 +76,7 @@ class WidgetNoteCard extends ConsumerWidget {
     final Note? note = ref.watch(widgetNoteByIdProvider(noteId));
     if (note == null) return const SizedBox.shrink();
 
+    final Color accent = this.accent;
     final Color bodyColor = widgetBodyColor(
       dark ? Brightness.dark : Brightness.light,
     );
@@ -67,6 +86,7 @@ class WidgetNoteCard extends ConsumerWidget {
 
     final bool renderLarge = focused && roomy;
     final bool done = note.isCompleted;
+    final SkinLook look = lookOf(skin);
     final double toggleSize = renderLarge ? 20.0 : 16.0;
 
     // Finished notes recede subtly; the runner already draws the widget at reduced opacity.
@@ -84,27 +104,26 @@ class WidgetNoteCard extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: look.shape,
           child: Container(
             width: double.infinity,
             padding: EdgeInsets.symmetric(
-              horizontal: renderLarge ? 16 : 12,
-              vertical: renderLarge ? 14 : 8,
+              horizontal: look.pad(roomy ? 16 : 12),
+              vertical: look.pad(roomy ? 14 : 8),
             ),
+            // How the open note is picked out is the skin's business: a bar, an
+            // outline, a filled block, or nothing. Only the filled variant uses
+            // the accent tint, so the other three do not colour a row at all.
             decoration: BoxDecoration(
-              // The focused card is the only one with a surface of its own,
-              // which is what makes it obvious which note the editor has open.
-              // A finished card gives it up, so the eye goes to what is left.
-              color: renderLarge && !done
-                  ? accent.withValues(alpha: dark ? 0.16 : 0.09)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              border: Border(
-                left: BorderSide(
-                  color: renderLarge && !done ? accent : Colors.transparent,
-                  width: 3,
-                ),
-              ),
+              color: switch (look.focus) {
+                SkinFocus.fill when focused && !done =>
+                  accent.withValues(alpha: dark ? 0.22 : 0.14),
+                SkinFocus.bar when focused && !done =>
+                  accent.withValues(alpha: dark ? 0.16 : 0.09),
+                _ => Colors.transparent,
+              },
+              borderRadius: look.shape,
+              border: _focusBorder(look, focused && !done, accent),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,

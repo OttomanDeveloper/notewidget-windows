@@ -135,15 +135,8 @@ class Diagnostics {
     return facts;
   }
 
-  /// Whether the path the Run key *holds* exists.
-  ///
-  /// Not `_launch.autostartCommand`: that is what the app **would write**,
-  /// computed from its own executable path. A registry value pointing at a
-  /// deleted install reads as fine against it, which is exactly the case this
-  /// exists to catch - so the entry is read back from the registry.
-  ///
-  /// The executable is the first token, quoted, so arguments follow the closing
-  /// quote and not the end of the string.
+  /// Whether the path the Run key *holds* exists. Not `_launch.autostartCommand`,
+  /// which is what the app would write from its own exe path — WN-DIAG-003.
   bool _autostartTargetExists() {
     try {
       final String? entry = _readRunEntry();
@@ -158,10 +151,8 @@ class Diagnostics {
   /// constant (§3.5).
   static final RegExp _columnGap = RegExp(r'\s{2,}');
 
-  /// The `WinNotes` value under `HKCU\…\Run`, or null when it is absent.
-  ///
-  /// `reg query` rather than a registry package: §0.4 enumerates the
-  /// dependencies and one for a diagnostic would need the owner.
+  /// The `WinNotes` value under `HKCU\…\Run`, or null when absent. `reg query`
+  /// rather than a registry package: §0.4 enumerates the dependencies.
   static String? _readRunEntry() {
     final ProcessResult result = Process.runSync(
       'reg',

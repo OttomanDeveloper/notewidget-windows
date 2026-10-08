@@ -9,6 +9,7 @@ class WinNotesSettings {
   WinNotesSettings({
     this.themeMode = ThemeMode.system,
     this.accentPalette = '',
+    this.skin = '',
     this.widgetOpacity = 92,
     this.acrylicEnabled = true,
     this.alwaysOnTop = true,
@@ -33,6 +34,11 @@ class WinNotesSettings {
     /// default change cannot pin old files; unvalidated here, resolved at the edge
     /// by `paletteById`.
   String accentPalette;
+
+  /// Which skin, by id. Empty means none chosen, same rule as [accentPalette]
+  /// and for the same reason. A skin is a layer over the palette, so both
+  /// keys are real and can disagree.
+  String skin;
 
   /// Percentage, 30-100. A widget that is too solid sits on top of the work
   /// rather than beside it.
@@ -90,6 +96,7 @@ class WinNotesSettings {
       other is WinNotesSettings &&
           other.themeMode == themeMode &&
           other.accentPalette == accentPalette &&
+          other.skin == skin &&
           other.widgetOpacity == widgetOpacity &&
           other.acrylicEnabled == acrylicEnabled &&
           other.alwaysOnTop == alwaysOnTop &&
@@ -107,6 +114,7 @@ class WinNotesSettings {
   int get hashCode => Object.hash(
         themeMode,
         accentPalette,
+        skin,
         widgetOpacity,
         acrylicEnabled,
         alwaysOnTop,
@@ -124,6 +132,7 @@ class WinNotesSettings {
   WinNotesSettings copyWith({
     ThemeMode? themeMode,
     String? accentPalette,
+    String? skin,
     int? widgetOpacity,
     bool? acrylicEnabled,
     bool? alwaysOnTop,
@@ -140,6 +149,7 @@ class WinNotesSettings {
       WinNotesSettings(
         themeMode: themeMode ?? this.themeMode,
         accentPalette: accentPalette ?? this.accentPalette,
+        skin: skin ?? this.skin,
         widgetOpacity: widgetOpacity ?? this.widgetOpacity,
         acrylicEnabled: acrylicEnabled ?? this.acrylicEnabled,
         alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
@@ -161,6 +171,7 @@ class WinNotesSettings {
         // completedAt is: a file that never mentioned the setting stays
         // byte-identical to one written before the setting existed.
         if (accentPalette.isNotEmpty) 'accentPalette': accentPalette,
+        if (skin.isNotEmpty) 'skin': skin,
         'widgetOpacity': widgetOpacity,
         'acrylicEnabled': acrylicEnabled,
         'alwaysOnTop': alwaysOnTop,
@@ -181,22 +192,23 @@ class WinNotesSettings {
   static WinNotesSettings fromJson(Map<String, dynamic> json) {
     final WinNotesSettings fallback = defaults;
     T pick<T>(String key, T fallbackValue) {
-      final value = json[key];
+      final Object? value = json[key];
       return value is T ? value : fallbackValue;
     }
 
-    final themeName = json['themeMode'];
+    final Object? themeName = json['themeMode'];
     final ThemeMode theme = ThemeMode.values.firstWhere(
       (ThemeMode m) => m.name == themeName,
       orElse: () => fallback.themeMode,
     );
 
-    final hotkeyJson = json['editorHotkey'];
+    final Object? hotkeyJson = json['editorHotkey'];
     final int delay = pick<int>('autoStartDelayMs', fallback.autoStartDelayMs);
 
     return WinNotesSettings(
       themeMode: theme,
       accentPalette: pick<String>('accentPalette', fallback.accentPalette),
+      skin: pick<String>('skin', fallback.skin),
       // Clamped rather than trusted: a hand-edited file should not be able to
       // produce a fully invisible widget.
       widgetOpacity:

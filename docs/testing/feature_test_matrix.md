@@ -31,6 +31,9 @@ most features. Do not split by layer out of habit.
 | Screen copy, empty state, error state | widget | — | **1** |
 | Anything touching a file - export, import, storage move, backup | real temp dir | a probe for the file dialog | **1 + probe** |
 | Diagnostics - a crash log, a dump | unit against a temp dir | a **manual** run of the real exe | **1 + manual** |
+| Layout the user drags - a pane divider, a collapsible list | widget | **probe adds nothing** - see below | **1** |
+| Scale - a preview that builds only what is on screen | widget, structural | **manual** - scroll a 1000-line note on a release build | **1** |
+| Appearance - a skin shapes a card | widget - model, picker, **and that it reaches a drawn card** | **manual** - pick a skin on a release build | **1** |
 | A new `ShellChannel` method | `platform_guard_test` for both sides | a probe if it changes what a person sees | **1–2** |
 | A shape or size rule — caps, private widgets, comments | guard or `check_architecture.ps1` | — | **1** |
 | Drag, resize, focus or keyboard handling | **probe** | a guard for the rule that must not drift | **1 + probe** |
@@ -50,6 +53,14 @@ all. The second one had already failed silently once — the runner owns
 `dart_entrypoint_arguments`, so parsing `--diagnose` in `main.dart` compiled,
 analysed clean, and never once ran. Both were verified by running the built exe,
 and a test cannot replace that.
+
+**The layout row is the opposite case, and the row says so.** A draggable divider
+and a collapsible list are gestures *inside* a window: there is no HWND to drive
+and no screen-space arithmetic, so a probe would be measuring the wrong thing and
+a widget test is the whole answer. The thing that cannot be established is
+whether the divider lands under a real pointer and whether the grab band feels
+right — that needs a person, and it is recorded as the limit of the wave rather
+than as five separate caveats.
 
 ## Three worked examples from this repo
 **Markdown rendering → 5 files, all unit.** `markdown_test.dart` plus the

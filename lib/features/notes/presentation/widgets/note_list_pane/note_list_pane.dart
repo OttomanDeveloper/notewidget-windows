@@ -5,6 +5,8 @@ import 'package:win_notes/features/notes/domain/note.dart';
 
 import '../../providers/notes_controller.dart';
 import '../../providers/notes_providers.dart';
+import '../../../../../core/theme/skin.dart';
+import '../../../../settings/presentation/providers/settings_providers.dart';
 import '../note_list_item/note_list_item.dart';
 
 /// The list of notes, with search on top.
@@ -64,6 +66,11 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
     // used to rebuild the whole list; now only a visible-list, query or
     // selection change does.
     final List<Note> notes = ref.watch(visibleNotesProvider);
+    final WinNotesSkin? skin = ref.watch(skinProvider);
+    final SkinLook look = lookOf(skin);
+    // The editor separates with a hairline where the widget uses a gap, so the
+    // built-in look means both rather than one number for both.
+    final SkinSeparator rows = SkinLook.forEditor(look.separator);
     final String query = ref.watch(notesProvider.select((AsyncValue<NotesState> v) => v.value?.query ?? ''));
     final String? selectedId =
         ref.watch(notesProvider.select((AsyncValue<NotesState> v) => v.value?.selectedId));
@@ -166,15 +173,24 @@ class _NoteListPaneState extends ConsumerState<NoteListPane> {
                         ),
                       ),
                     )
-                  : ListView.builder(
+                  : ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: notes.length,
+                      separatorBuilder: (BuildContext context, int index) => switch (rows) {
+                        SkinSeparator.hairline => Divider(
+                            height: 1,
+                            color: Theme.of(context).dividerColor,
+                          ),
+                        SkinSeparator.gap => const SizedBox(height: 2),
+                        SkinSeparator.none => const SizedBox.shrink(),
+                      },
                       itemBuilder: (BuildContext context, int index) {
                         final Note note = notes[index];
                         return NoteListItem(
-                          key: ValueKey(note.id),
+                          key: ValueKey<String>(note.id),
                           note: note,
                           selected: note.id == selectedId,
+                          skin: skin,
                           onTap: () {
                             notifier.select(note.id);
                             widget.onOpenNote();

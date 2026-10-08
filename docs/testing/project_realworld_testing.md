@@ -34,9 +34,9 @@ out of a person's `%APPDATA%\WinNotes`.
 | Gate | **green** — `verify.ps1`, all 7 stages, 473 tests |
 | Release drive | **13/13** — first launch, no widget when empty, a note on disk, the widget window, no orphan, real profile byte-identical |
 | Icon audit | **13/13** — all four places Windows reads an icon from |
-| Row coverage | **8 of 33 closed, and one of the eight is a failure** — `reporting.md`, batches 1–2 |
+| Row coverage | **24 of 39 closed** - `reporting.md`, batches 1-4. Wave 1 is 5/5; wave 8 closed by the host suite |
 | Probe | **`tool\verify\run_scenarios.ps1`** drives waves 1–3. Wave 1 ran; wave 2 is written but not exercised; wave 3 is blocked on locating the composer's add-note control |
-| Open blocker | **`AGENTS.md` §5.1** — the first-launch widget bug, reproduced and measured for the first time. `verify_release.ps1` fails on it, so the gate is red, and it should stay red |
+| Fixed 2026-10-07 | **`AGENTS.md` §5.1**, the first-launch widget bug. Root cause was the runner's deferred boot-time `Show()`, not the Dart visibility rule; `WN-ENV-004` is green and `widget_guard_test` pins it |
 | Open blocker | **A person** — waves 4 and 5 (acrylic, tray, global hotkey, autostart, single-instance, multi-monitor) have no automated instrument at all |
 
 The release drive is the strongest evidence this repository has, and it is worth
@@ -84,8 +84,9 @@ meaningful once every other row has finished.
 | 3 | Keyboard and focus | 5 | wave 2 |
 | 4 | Compositing, tray, and the shell | 5 | wave 1 |
 | 5 | Multi-monitor and DPI | 3 | waves 2–4 |
-| 6 | Scale and responsiveness | 2 | a seeded library |
+| 6 | Scale and responsiveness | 3 | a seeded library |
 | 7 | Diagnostics | 6 | a release build |
+| 8 | Editor layout | 5 | `flutter test` |
 
 Wave 0 has no scenarios of its own. It is the set of rows a host test can close
 outright, and [`project_integration_testing.md`](project_integration_testing.md)
@@ -175,8 +176,41 @@ because they are not obvious and the failure is silent.
 |---|---|---|---|---|---|---|
 | WN-SCALE-001 | W M | A large library stays responsive | 2,000 notes, search as you type | No frame over 16 ms while scrolling; typing stays ahead of the keystroke | NOT RUN | - |
 | WN-SCALE-002 | W M | The widget with a long card list | 200 notes with text | Scrolling stays within budget and memory does not climb per rebuild | NOT RUN | - |
+| WN-SCALE-003 | W | A long note's preview stays cheap | the 1012-line `markdown_demo_all_features.md` | Only the blocks on screen are built, so the cost does not grow with the note; the end of the note is still reachable by scrolling | NOT RUN | - |
 
-## Wave 7 — Diagnostics
+## Wave 8 — Editor layout
+
+Added 2026-10-07 for the draggable source/preview divider and the collapsible
+note list. Every row is `W`, and that is the point rather than a formality: these
+are gestures *inside* a window, so unlike waves 1–3 there is no HWND to drive and
+no screen-space arithmetic to check. A probe would be measuring the wrong thing.
+
+What a widget test can genuinely establish is stated per row. What it cannot is
+stated once, below the table, because it is the same gap in every row.
+
+| ID | Method | Overview | Required states | Expected behavior | End result | Fix |
+|---|---|---|---|---|---|---|
+| WN-EDIT-001 | W | Dragging the divider resizes both panes | a wide pane with a Markdown note | The source pane shrinks as the preview grows, by the dragged distance; neither is left unmeasured |
+| WN-EDIT-002 | W | The divider stops at both ends | repeated drags far past each edge | The source keeps at least 20% and at most 80% of the body; no exception at either limit |
+| WN-EDIT-003 | W | Double-click restores the even split | the divider dragged off centre | The source returns to half the body, and only the divider moves — the list stays collapsed if it was |
+| WN-EDIT-004 | W | The list collapses and comes back | the toolbar toggle, then the edge handle | The list leaves the tree, a 16px handle remains, and tapping the handle restores it |
+| WN-EDIT-005 | W | The positions are session state | a fresh provider container | A new session starts with the list open and the list at 300px; nothing about the layout is in `settings.json` |
+
+**What no row in this wave can establish, and it is not small.** A widget test
+measures layout from Flutter's own tree. It cannot say whether the divider lands
+under the cursor, whether the grab band feels like the window's own edges
+(`docs/widget_pattern.md` §3.12 measures those on a release build), or whether a
+real pointer drag arrives as one gesture rather than a dozen. The honest claim
+for this wave is *the layout responds correctly to the gesture it is given*, and
+nothing more.
+
+**WN-EDIT-004 is the row that would have caught the button that was never
+rendered.** The wide toolbar's collapse toggle was written as
+`if (narrow) if (!showList) A else B`, where Dart binds the `else` to the
+*inner* `if` — so the wide editor had no button at all. Only a test that tried to
+tap it found that.
+
+## Wave 7 - Diagnostics
 
 Added 2026-10-07 for `crash.log` and `--diagnose`. Both are local files, neither
 is uploaded, and the row that matters is the one that says so — the rest is

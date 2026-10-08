@@ -155,15 +155,21 @@ class ShellChannel {
         highContrast: raw['highContrast'] as bool? ?? false,
         acrylicSupported: raw['acrylicSupported'] as bool? ?? false,
         buildNumber: (raw['buildNumber'] as num?)?.toInt() ?? 0,
-        monitors: (raw['monitors'] as List?)
-                ?.whereType<Map>()
+        monitors: (raw['monitors'] as List<dynamic>?)
+                ?.whereType<Map<dynamic, dynamic>>()
                 .map(MonitorInfo.fromMap)
                 .toList() ??
             const <MonitorInfo>[],
         autostartEnabled: raw['autostartEnabled'] as bool? ?? false,
         autostartCommand: raw['autostartCommand'] as String? ?? '',
         defaultWidgetBounds: NativeBounds.fromMap(
-          raw['defaultWidgetBounds'] as Map? ?? const <dynamic, dynamic>{'left': 0, 'top': 0, 'width': 360, 'height': 420},
+          raw['defaultWidgetBounds'] as Map<dynamic, dynamic>? ??
+              const <String, dynamic>{
+                'left': 0,
+                'top': 0,
+                'width': 360,
+                'height': 420,
+              },
         ),
         // Non-empty only for `win_notes.exe --diagnose <path>`. It arrives here
         // rather than in `main`'s arguments because the runner owns the Dart
@@ -459,7 +465,7 @@ enum ShellEventKind {
 /// Convenience accessors over [ShellEvent] arguments.
 extension ShellEventData on ShellEvent {
   bool get isVisible => arguments is Map
-      ? (arguments as Map)['visible'] as bool? ?? true
+      ? (arguments as Map<dynamic, dynamic>)['visible'] as bool? ?? true
       : true;
 
   NativeBounds? get bounds {
@@ -472,7 +478,7 @@ extension ShellEventData on ShellEvent {
   String? get noteId {
     final Object? args = arguments;
     if (args is! Map) return null;
-    final id = args['id'];
+    final Object? id = args['id'];
     return id is String && id.isNotEmpty ? id : null;
   }
 
@@ -480,8 +486,8 @@ extension ShellEventData on ShellEvent {
   ({String title, String body})? get newNote {
     final Object? args = arguments;
     if (args is! Map) return null;
-    final title = args['title'];
-    final body = args['body'];
+    final Object? title = args['title'];
+    final Object? body = args['body'];
     return (
       title: title is String ? title : '',
       body: body is String ? body : '',

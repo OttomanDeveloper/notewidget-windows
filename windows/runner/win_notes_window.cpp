@@ -198,7 +198,13 @@ bool Window::OnCreate() {
   }
 
   controller_->engine()->SetNextFrameCallback([this]() {
-    if (params_.visible_at_start) Show();
+    // `visible_at_start` is a default, not an instruction. Dart can hide this
+    // window while the first frame is still being produced - on an empty
+    // library the widget surface decides `visible: false` and the runner hides
+    // it, all before this callback runs - and showing it here would resurrect a
+    // window that was just hidden. That was `AGENTS.md` §5.1: the widget painted
+    // on a first launch, and nothing had crashed.
+    if (params_.visible_at_start && !hidden_before_first_frame_) Show();
     if (delegate_ != nullptr) delegate_->OnWindowReady(params_.role);
   });
   controller_->ForceRedraw();
@@ -248,6 +254,9 @@ void Window::Hide() {
   if (window_ == nullptr) return;
   ShowWindow(window_, SW_HIDE);
   visible_ = false;
+  // Recorded so the deferred first-frame Show() knows this hide was deliberate
+  // and must not be undone. See the `SetNextFrameCallback` in `Create`.
+  hidden_before_first_frame_ = true;
   if (delegate_ != nullptr) delegate_->OnWindowHidden(params_.role);
 }
 

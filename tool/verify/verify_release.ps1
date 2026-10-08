@@ -197,8 +197,16 @@ try {
   Write-Host '2. An empty library shows no widget'
   Start-Sleep -Seconds 2
   $early = @(Get-Windows)
+  # **Visible**, not existing. The rule hides the widget window rather than
+  # destroying it (`AGENTS.md` §4.4), so a widget created and then hidden is the
+  # correct end state - and counting windows rather than visible ones tested
+  # something the product never promised.
+  #
+  # Both numbers are reported, because "2 windows, 1 visible" and "1 window,
+  # 1 visible" are different facts and only the second is right.
+  $earlyVisible = @($early | ForEach-Object { Get-WindowInfo $_ } | Where-Object { $_.Visible })
   Check 'no widget before a note has text' `
-    ($early.Count -le 1) "$($early.Count) window(s)"
+    ($earlyVisible.Count -le 1) "$($earlyVisible.Count) visible of $($early.Count) window(s)"
 
   # ------------------------------------------------------------ 3. a note exists
   Write-Host ''

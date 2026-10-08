@@ -664,6 +664,66 @@ costs at most a stale drag anchor; the next drag writes the truth. Size is sent 
 saved but is irrelevant - `SetBounds` enforces `kMinWidgetWidth`/`kMinWidgetHeight`
 itself, and the widget's dimensions belong to the runner.
 
+### 3.23 The boot-time `Show()` is a default, not an instruction
+
+`Window::Create` defers the boot-time `Show()` to `SetNextFrameCallback`, so the
+window is never shown before the engine can paint. The deferral is correct and
+stays. What was wrong is that the callback showed the window *unconditionally*.
+
+On a first launch the widget surface builds, decides `visible: false` for an empty
+library, and the runner hides the window - all **before** that callback runs. The
+callback then showed it anyway. `AGENTS.md` §5.1, open for weeks.
+
+**The whole bug is three lines of trace.** Instrumenting `Show()` and `Hide()` and
+launching a release build produced, in order: `Hide(role=0)`, `Show(role=0)`,
+`Show(role=1)`. Dart sent the right value every time; the runner hid the window and
+then un-hid it.
+
+**A default must not override a decision somebody already made.**
+`hidden_before_first_frame_` records that `Hide()` ran, and the callback skips its
+`Show()`. It is a member of its own rather than a reuse of `visible_`, because
+`visible_` also starts `false` and so cannot tell "never decided" from "decided,
+and the answer was hidden" - a mistake made and reverted during the fix.
+
+**No Dart test could have found it.** What is observable from outside is the
+window, which is why `WN-ENV-004` is the row and `flutter test` is not.
+
+### 3.24 The split and the drawer are session state, not settings
+
+Two controls that change how the editor looks: a draggable divider between
+source and preview, and a note list that collapses to an edge handle. Both are
+**session state and nothing else**, and that is a decision rather than an
+omission.
+
+They answer "what am I doing right now". A font size is a preference and lives
+in `settings.json` (§3.21); a split position set while writing a long note is
+the state of that session, and it should not survive it any more than a scroll
+position does. So `editorLayoutProvider` holds them, and a provider container
+lives exactly as long as the session — the right lifetime already existed.
+
+**It is a separate provider from `settingsProvider`, deliberately.** Folding it
+in would mean a drag wrote the settings file, so every frame of a drag would
+queue a debounced settings write, and a palette change would rebuild the layout.
+
+**Both measurements are bounded, and the bounds come from the window.**
+`PROJECT.md` §87 gives the editor a 520px floor for the same reason: a pane
+dragged to nothing is a broken window, not a small one. The source keeps 20–80%
+of the body, and the list 200–420px, so the editor always has somewhere to be.
+
+**A drag reports a delta, never a position.** Turning a pointer position into a
+pane size needs the parent's left edge, and a `LayoutBuilder` cannot read it
+during `build` — its `RenderBox` has no size yet, and `localToGlobal` asserts.
+A delta needs no coordinates and survives the pane rebuilding mid-drag.
+
+**Double-click resets**, because it is the one gesture that needs no
+instructions, and it moves only the divider: it does not also open the list,
+which is a different decision about a different thing.
+
+**The collapsed list leaves a handle, never nothing.** The list is hidden *to
+write*, so at that moment the user is looking at the editor and not at the app
+bar. A 16px strip with a list icon is both the way back and the reason the
+window does not look broken.
+
 ---
 
 ## 4. The traps
@@ -723,6 +783,159 @@ itself, and the widget's dimensions belong to the runner.
 
 ---
 
+### 3.25 The preview is one laid-out document, and that is deliberate
+
+A note long enough to feel slow - the 1012-line `docs/verification/
+`markdown_demo_all_features.md` - was measured at ~261 ms to build and ~20 ms per
+scroll frame, growing with the document.
+
+**The first fix was wrong, and the measurements say so.** Rendering blocks lazily
+(`ListView.builder` over `MarkdownBlockList.slotsOf`) made a keystroke about 7x
+cheaper: 261 ms became 67 ms. It also **broke the preview**. A lazy list of
+unknown-height children has no extent to represent, so the scrollbar could not
+hold a position: measured on the demo, `maxScrollExtent` swung between 2,278px
+and 608,271px across twenty scrolls - a drift of **585,563px** - while a non-lazy
+list sat at 24,997px and never moved.
+
+| | extent drift while scrolling | cost per jump |
+|---|---|---|
+| lazy `ListView.builder` | **585,563 px** | 9-19 ms |
+| **one `SingleChildScrollView`** | **0 px** | 14-21 ms |
+
+The frame cost was the same either way, so laziness bought nothing for scrolling
+and cost the scrollbar outright. **It was reverted.**
+
+So the preview keeps the whole document in the tree, which is what makes the
+extent exact. The cost is a ~261 ms rebuild whenever the 250 ms debounce fires
+while typing - not while scrolling, which is why the editor scrolls smoothly and
+the lag is a typing-time cost rather than a scrolling one.
+
+**What is left on the table, and why it was not taken.** A lazy list *can* have a
+stable extent if every block's height is measured and supplied up front through
+`itemExtentBuilder`. That is a real implementation - a render object reporting
+each child's size into a cache - and it would give both. It was not done here
+because the honest summary is that the visible defect was fixed immediately and
+the remaining gain is speculative.
+
+`test/scale_test.dart` pins the invariant that matters: **the scroll extent does
+not change while scrolling**, plus that the end of the note is reachable and the
+rendered blocks are correct. Structural, not a wall-clock budget - the extent is
+the thing that broke and the thing a user notices.
+### 3.26 A skin is the shape of a card, and a skin has no colour in it
+
+The shape of a card was hardcoded: `borderRadius: 10` in two places, padding of
+16/14 large and 12/8 small, an accent left-bar for the open card, a 2px gap in the
+widget and a 1px divider in the editor. A **skin** owns all four.
+
+**A skin carries no colour, and that is the rule worth stating.** The first
+version gave a skin a plate, an accent and a source font. Skin and Colour then
+did the same job in two controls, which is exactly what was reported: "there is
+no difference between the colours and the skin". Colour belongs to
+`WinNotesPalette` alone. `skin_test` demands every skin leave the whole
+`ColorScheme` identical.
+
+Four things, none of them a colour:
+
+| | |
+|---|---|
+| `cornerRadius` | 0 square, 10 the built-in, 18 soft |
+| `density` | multiplier on a row's padding; 1.0 is what the app always used |
+| `focus` | `bar`, `outline`, `fill`, `none` - how the open note is picked out |
+| `separator` | `gap` (the widget today), `hairline` (the editor today), `none` |
+
+Four rules, each from a way this could break:
+
+1. **No skin is no skin, never the first one.** `skinById(')` and an unknown id
+   are both null, and null means the built-in look. A setting added later must
+   not change what an install looks like (§0.5). **No skin in the list is the
+   built-in look either** - a chip that repaints nothing is worse than none.
+2. **It crosses as a value, like `note` does.** The widget surface draws under a
+   bare `ThemeData` for its own colour, so a `ThemeExtension` would have worked
+   in the editor and silently vanished in the widget.
+3. **The bar cannot be a `Border`.** A `Border` with one coloured side cannot
+   carry a `borderRadius`; Flutter rejects non-uniform colours on a rounded
+   border. A `bar` skin draws its edge as a child over a **uniform** border.
+4. **`separatorBuilder` must use its own `context`** - it is built lazily, so
+   capturing the pane's reaches a deactivated ancestor.
+
+### 3.27 A rebuild that changes nothing the preview draws must re-render nothing
+
+**The report:** *"if I use the demo markdown and try to add something in there,
+the editor and preview both lag to display new changes."*
+
+Measured on the 1012-line demo (`docs/verification/markdown_demo_all_features.md`,
+20 909 chars), one keystroke costs **64-169 ms**. It is not the text field:
+a `TextField` handling a keystroke over the same document is **3 ms**, and a
+`SourceField` rebuilt with an unchanged controller is **6-10 ms**.
+
+The cost was `PreviewPane`, and the reason is worth writing down because it does
+not look like a bug:
+
+* The pane's content sits behind a `ValueListenableBuilder` on the **debounced**
+  source, which reads like it renders only when the text changes.
+* **`build` runs on every parent rebuild whether the listenable fired or not.**
+  The listenable gates *when* the builder is called; it does not gate *whether a
+  rebuild happens*.
+* `NoteEditorPane` watches the whole notes state, so every `updateNote` rebuilds
+  the pane. That meant ~500 blocks re-split and re-rendered **per keystroke**, for
+  text that had not changed - 46-63 ms of the 64-169.
+
+**The rule.** Hand back the *identical* composed widget when nothing that the
+pane draws has changed. Flutter's `updateChild` skips a subtree whose widget is
+the same instance, so identity is the mechanism, not an optimisation trick. The
+inputs the cache keys on are exactly the ones that draw: the debounced source,
+the font size, `note.isCompleted`, and the theme instance. A cache keyed on less
+is a pane that silently ignores a real change, which is worse than the lag.
+
+Measured after: a parent rebuild with an unchanged source is **3-6 ms**, and one
+keystroke through the real pane is **15-44 ms** - from ~5 frames to under 3.
+
+**Two things that are not bugs, and were mistaken for them while measuring this:**
+
+1. **The preview does not follow `note.body`.** It follows the debounced source,
+   by design (§3.25's density budgets assume it). Changing the note alone must
+   therefore render nothing; `preview_rebuild_test` pins that too.
+2. **`AnimatedTheme` hands out the old theme at frame zero of its lerp.** A test
+   that pumps once after a palette change and asserts on identity is asserting
+   nothing. Pump past the duration.
+
+**What was tried and rejected, so it is not tried again blind.** The report that
+"the widget changes appear faster than the markdown preview" is the one that
+locates this: the card has a height budget (2 compact, 7 large lines) and the
+preview has none, so the card is fast because it is *short*, not because it is
+cheap. That ruled out the storage path too — the note reaches the card quickly,
+so the write, the repository and the provider are all fine.
+
+Reusing unchanged blocks was built and measured: hand back the previous widget
+for every block that ends inside a byte-identical source prefix.
+
+| | whole document differs | one character at the end |
+|---|---|---|
+| before | 92–151 ms | 78–144 ms |
+| after reuse | 92–151 ms | 66–85 ms |
+
+A quarter of the problem, for a cache with a real staleness surface — a
+positional heuristic plus a `]:` gate for link reference definitions, which are
+consumed at parse time and so change a link's target with no text change
+anywhere. So it was reverted. The remaining ~66 ms is the **whole-document parse,
+block split and layout**, not building block widgets, which is why per-block
+reuse could never have been the answer. Any real fix has to stop the preview
+processing the whole note, which changes what the preview shows and is the
+owner's call (`AGENTS.md` §0.2), not a rendering tweak.
+
+A first-paint measurement on a **release** build, for comparison with the
+widget-test numbers above:
+
+```
+frame 5:  build 141ms   raster  22ms   total 169ms
+frame 6:  build 229ms   raster  21ms   total 397ms
+```
+
+Those came from `lib/core/utils/frame_log.dart`, which records frame timings when
+`WIN_NOTES_FRAME_LOG` names a file and costs nothing otherwise. It exists because
+a widget test builds a tree under a fake clock and a temp directory: it cannot
+see a stall that lives in real file IO or the platform text-input path.
+
 ## 7. Tests
 
 Every numbered rule in §3 appears here, with how it is actually pinned. Three
@@ -748,7 +961,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | 3.11 | Card sizing and previews | `widget_surface_test` → *is larger than a compact card*, *renders every card compact*, *shows a preview even with no body*, *collapses line breaks so previews stay one paragraph*, *falls back to a placeholder when untitled* |
 | 3.12 | Hides when nothing has text | `widget_integration_test` → *no note with text means the widget is not shown*, *one note with text is enough to show it* |
 | 3.13 | Sizes clamped in the runner | **manual** - a 900 px haul against the 200×140 floor |
-| 3.14 | One renderer, a budget per surface | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane offers a switch instead of two cramped columns*, *the budget scales with the surface type size* |
+| 3.14 | One renderer, a budget per surface | `markdown_test` → *widget density is smaller than editor density*, *only the compact card flattens a heading*, *an explicit heading scale is honoured exactly*, *editor density still gives a heading its size*, *a heading is larger than the body*, *an h6 is still not smaller than the body*, *a code block is clamped and says how much was hidden*, *a table is real in the editor and readable text in a card*, *a wide pane shows the source and the preview together*, *a narrow pane still offers a switch, not a drag*, *the budget scales with the surface type size* |
 | 3.15 | Never less than it says | `markdown_test` → *unrecognised content degrades to text, never to nothing*, *raw HTML is text, not markup*, *links are styled but cannot be tapped*, *a task list draws a box and keeps the words beside it*, *a task marker is not a control*, *an image becomes its alt text, never a fetch*, *malformed syntax does not throw*, *an empty source renders nothing rather than throwing*, *a paragraph holding only an image is not blank*, *an image inside a list item is not blank*, *a br tag breaks the line rather than printing itself*, *a footnote reads once, not numbered twice*, *a list item keeps the text after an inline element*, *a list item keeps the text after a link or code run*, *an HTML comment is invisible*, *a paragraph holding only a comment renders nothing*, *an emoji shortcode becomes the character*, *an alias the table does not have stays literal*, *an alert draws its type as the callout title*, *a plain quote is still a quote, not an alert* |
 | 3.15a | A wide table scrolls rather than being squeezed | `markdown_test` → *a table too wide for the pane scrolls sideways*, *a narrow table still fills the pane instead of scrolling*, *a wide table does not stack a cell into a column of characters* |
 | 3.16 | Clamped by height | `markdown_test` → *a compact card still clamps to its line budget* |
@@ -760,10 +973,15 @@ not in CI (`docs/testing_pattern.md` §2).
 | — | Completion does not reorder | `notes_controller_test` → *finishing a note does not reorder the list* |
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |
 | 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` * lib/ has no setState calls at all*, *the scanner still finds them, or the rule above is vacuous*, *the two replacements are the only two*, *every ValueNotifier is listened to, or nothing rebuilds*; **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*, *the scanner still matches the names it claims to*, *a value is not a dependency*, *a load result is not an injected dependency*, *callbacks are allowed, and are what the roots pass* |
-| 3.20 | The Markdown switch is labelled, and says what it gets you | `markdown_test` → *the switch says what turning it on gets you*, *the switch keeps the same width in both states*, *a narrow pane offers a switch instead of two cramped columns* |
-| 3.21 | Editor and preview are sized separately; 0 means as designed | `settings_test` → *an unset font size is zero, and a file without one still reads back*, *an unset font size is left out of the file entirely*, *both font sizes round trip, separately*, *a hand-edited font size is bounded to what the slider offers*, *the font sizes participate in equality* |
+| 3.20 | The Markdown switch is labelled, and says what it gets you | `markdown_test` → *the switch says what turning it on gets you*, *the switch keeps the same width in both states*, *a narrow pane still offers a switch, not a drag* |
+| 3.21 | Editor and preview are sized separately; 0 means as designed, and a wheel burst is one change | `font_step_test` *pending deltas sum rather than overwrite*, *the settle sits between one frame and one rebuild*, *a burst cannot run past the slider range*; `settings_test` → *an unset font size is zero, and a file without one still reads back*, *an unset font size is left out of the file entirely*, *both font sizes round trip, separately*, *a hand-edited font size is bounded to what the slider offers*, *the font sizes participate in equality* |
 | 3.22 | A saved position is pushed to the runner, not read back from it | **guard** `widget_guard_test` *SetBounds clamps to a reachable screen*, *the guard bites: a SetBounds without the clamp is rejected*, *Dart pushes the saved position rather than reading the default back*, *the method is declared on both sides, not just the registry*; `widget_integration_test` *a position written by one launch is the next launch's position*, *the saved position wins over whatever the runner reports*; **manual** - drag the widget, close the app, launch it again on a release build: it comes back where it was left |
+| 3.23 | The boot-time Show is a default | **guard** `widget_guard_test` *the boot-time Show is skipped when the window was already hidden*, *a real hide records that it happened*, *the flag is a distinct member, not reused from visible_*, *the guard bites: an unguarded boot-time Show is rejected*; **probe** `WN-ENV-004` - no widget window before text exists; one small frameless window after |
+| 3.24 | The split and the drawer are session state | `editor_layout_test` *it starts even, which is what two Expandeds gave before*, *a drag past either end is clamped, not obeyed*, *neither pane can be dragged out of recognition*, *the list width is bounded too*, *setting the same value twice does not produce a new state*, *it toggles*, *reset puts both measurements back without un-collapsing*, *a drag reports a position and double-click resets*, *its hit area is wider than the line it draws*, *the cursor says it can be dragged*, *a null reset does not throw on double-click*; `markdown_test` *a wide pane shows the source and the preview together*, *dragging the divider widens the source and narrows the preview*, *the divider cannot be dragged past either end*, *double-clicking the divider puts it back to even*; `editor_navigation_test` *it opens wide, and the bar button closes it*, *the edge handle opens it again*, *the handle has a hit area, not just an icon*, *the list divider resizes the list*, *collapsing is session state, not a stored preference*; **probe** `WN-EDIT-001..005` |
+| 3.25 | The preview is one laid-out document | `scale_test` *the scroll extent does not change while scrolling*, *scrolling reaches the end of a note far longer than the pane*, *the last paragraph of the demo note is reachable*, *the first blocks of a long note are rendered, not skipped*, *the demo note renders as blocks, not as one blob*, *an empty note says so rather than showing nothing*; `preview_pane_test` *scrolling the preview does not throw*, *the scrollbar and the scroll view share one controller* |
 
+| 3.26 | A skin is the shape of a card, never a colour | `skin_test` *the skin model exposes no colour field*, *a skin does not change the theme*, *every skin in the list has an id that resolves back to it*, *ids are unique, because settings.json stores one*, *empty and null mean no skin, not the first skin*, *an unknown id is null rather than the first skin*, *the built-in look is rounded 10, roomy, an accent bar, gaps*, *the editor separates with a hairline where the widget uses a gap*, *a file written before skins existed resolves to no skin*, *no skin is the built-in look, and no skin in the list is*, *corners differ across the skins*, *density tightens and loosens the built-in padding*, *focus markers differ across the skins*, *separators differ across the skins*, *a chosen skin round trips through the file*, *it is omitted when empty, for the same reason as the palette*, *the palette and the skin are separate keys and can disagree*, *it participates in equality, so no-change writes are skipped*; `skin_picker_test` *every skin is offered, and None comes first*, *tapping a chip reports that skin*, *the first chip clears the skin rather than picking the first one*, *the chosen chip is the one marked selected*, *the label under the row names the choice*, *the chips draw shape, and different skins draw different shapes*, *a chip draws a separator when its skin asks for one*; `skin_applied_test` *the card corners come from the skin*, *the card padding comes from the skin*, *the focus marker is the skin and not always a bar*, *the row corners come from the skin*, *the row padding comes from the skin* |
+| 3.27 | A rebuild that changes nothing the preview draws must re-render nothing | `preview_rebuild_test` *the same source hands back the identical widget*, *a changed source does re-render*, *editing the note alone changes nothing the pane draws*, *the font size*, *the completion state*, *the theme* |
 **§3.13 is the honest gap**, and it is a narrow one: the clamp arithmetic is in
 the runner, its failure mode is a widget too small to read rather than a crash,
 and a Dart test could only assert the absence of a bug. Everything else in §3 is

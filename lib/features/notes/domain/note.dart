@@ -116,7 +116,7 @@ class Note {
       };
 
   static Note fromJson(Map<String, dynamic> json) {
-    final id = json['id'];
+    final Object? id = json['id'];
     if (id is! String || id.isEmpty) {
       throw const FormatException('A note is missing its id.');
     }

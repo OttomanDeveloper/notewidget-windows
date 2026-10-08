@@ -302,12 +302,28 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    `notes.json` holds one note with `title: ""` and `body: ""`. So the widget
    surface is *shown*, not merely created and left alone, with nothing to look at.
 
-   **Still unrooted on the Dart side.** The lead, so nobody starts over:
-   `WidgetController.build` computes `shouldShow = next.hasAnyNoteWithText` — false
-   here — and `_applyWindowConfiguration` sends `visible: false`, but it returns
-   early when `settingsProvider` has no value yet, and the settings listener that
-   would correct it may not fire if settings were already resolved. A lead, not a
-   conclusion.
+   **FIXED 2026-10-07, and the Dart side was never at fault.** The lead above was
+   wrong in a way worth keeping: `_applyWindowConfiguration` sent `visible: false`
+   correctly, every time, and a trace proved it (`TRACE cfg=0` on every launch).
+   The runner hid the window. Then, ~2 s later, the runner showed it again.
+
+   `Window::Create` defers the boot-time `Show()` to `SetNextFrameCallback`, so the
+   window is not shown before the engine can paint. That deferral is what made the
+   bug possible: on a first launch the widget surface builds and hides the window
+   *before that callback runs*, and the callback then showed it anyway. The trace
+   is the whole story in three lines — `Hide(role=0)`, `Show(role=0)`, `Show(role=1)`.
+   `visible_at_start` is a default, and a default must not override a decision
+   somebody already made; `hidden_before_first_frame_` records that decision and
+   `Show()` is skipped. `widget_guard_test` pins it.
+
+   Measured, three cases, each over 10 s on a release build, with and without the
+   fix:
+
+   | notes on disk | before | after |
+   |---|---|---|
+   | one note, empty title and body | **shown** | hidden |
+   | zero notes | **shown** | hidden |
+   | one note with text | shown | shown |
 
    **Why the 2026-10-05 verification got this wrong, which matters more.** It
    concluded from `verify_release.ps1` that the visibility rule "behaves correctly
@@ -315,7 +331,7 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
    counted `MainWindowHandle`, which returns one window *per process* — and the
    editor process owns both the editor and the widget surface. The count was 1
    whichever way the rule behaved, so **the check could not fail.** It now
-   enumerates by window class, and it does fail.
+   enumerates by window class, and `WN-ENV-004` is green.
 
    *A passing check is not a safety property*, and here it was not even a check.
    See `docs/testing_pattern.md` §3.
@@ -334,6 +350,44 @@ Real, current, and not blessed. Each is a thing the code says it does not do.
 
 3. **Nothing else is known broken.** If you find something, add it here before
    fixing it, so the record is honest about the order things were found in.
+
+4. **A launch with no `settings.json` deletes the operator's Windows autostart
+   entry.** Found 2026-10-07, **not fixed** — it is a product decision, so §0.2
+   applies.
+
+   `syncPlatform()` reads `autoStart` from the **profile** and reconciles the
+   **machine-global** Run key against it: *"if the entry was removed by hand, the
+   toggle re-adds it; if autostart is off, the entry is removed"*
+   (`settings_controller.dart` §4). Those are different scopes, and nothing
+   reconciles them. An absent `settings.json` means `autoStart = false`
+   (`settings.dart:16`), so:
+
+   | Launch | Profile `autoStart` | Registry says | Action | Result |
+   |---|---|---|---|---|
+   | normal, entry present | `true` | `true` | none | fine |
+   | normal, entry absent | `true` | `false` | re-add | fine |
+   | **`WIN_NOTES_DATA_DIR` → empty temp dir** | **`false`** | `true` | **remove** | **the operator's entry is gone** |
+
+   **`tool/verify/verify_release.ps1` triggers this on every gate run**, which is
+   how it was found: the Run value was observed missing after a green gate, and
+   `flutter test` never sees it because no host test launches the real exe.
+   Reproduced directly — restore the value, run `verify_release.ps1`, it is gone
+   again.
+
+   Restored by hand to `"…\Release\win_notes.exe" --widget`. `diagnostics_test`
+   was hardened in the same batch (save once in `setUpAll`, restore in
+   `tearDownAll`) because its per-test save could cement a deletion — but it was
+   a *second* culprit, not this one.
+
+   **The question that has to be answered before it is fixed:** should a launch
+   whose data directory has no settings be allowed to manage a machine-global
+   key? Three defensible answers, and they are not the same product: (a) never
+   remove an entry that the current profile did not create — reconciliation
+   becomes create-if-missing only; (b) skip autostart reconciliation entirely
+   when `settings.json` is absent, and treat "no settings" as "no opinion";
+   (c) leave it alone and rely on the isolated directory never being used without
+   settings. (a) is the narrowest and changes nothing for a real profile; (b)
+   changes what a first launch does. **Not chosen here.**
 
 ---
 

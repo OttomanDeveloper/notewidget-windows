@@ -4,6 +4,7 @@ import 'package:win_notes/features/settings/domain/settings.dart';
 
 import '../../../data/settings_repository.dart';
 import '../../../../../core/theme/palette.dart';
+import '../../../../../core/theme/skin.dart';
 import '../../../../notes/domain/note.dart';
 import '../../../../notes/domain/text_sizes.dart';
 import '../../../../notes/presentation/providers/notes_providers.dart';
@@ -11,6 +12,7 @@ import '../../providers/settings_controller.dart';
 import '../../providers/settings_providers.dart';
 import '../font_size_row/font_size_row.dart';
 import '../palette_picker/palette_picker.dart';
+import '../skin_picker/skin_picker.dart';
 import '../settings_group/settings_group.dart';
 import '../settings_row/settings_row.dart';
 import '../settings_separator/settings_separator.dart';
@@ -46,9 +48,9 @@ class AppearanceSettingsGroup extends ConsumerWidget {
             showSelectedIcon: false,
             style: const ButtonStyle(visualDensity: VisualDensity.compact),
             segments: const <ButtonSegment<ThemeMode>>[
-              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
-              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
-              ButtonSegment(value: ThemeMode.system, label: Text('System')),
+              ButtonSegment<ThemeMode>(value: ThemeMode.light, label: Text('Light')),
+              ButtonSegment<ThemeMode>(value: ThemeMode.dark, label: Text('Dark')),
+              ButtonSegment<ThemeMode>(value: ThemeMode.system, label: Text('System')),
             ],
             selected: <ThemeMode>{settings.themeMode},
             onSelectionChanged: (Set<ThemeMode> value) =>
@@ -63,6 +65,18 @@ class AppearanceSettingsGroup extends ConsumerWidget {
             selected: paletteById(settings.accentPalette),
             onSelected: (WinNotesPalette palette) => controller.apply(
               (WinNotesSettings s) => s.copyWith(accentPalette: palette.id),
+            ),
+          ),
+        ),
+        const SettingsSeparator(),
+        SettingsRow(
+          label: 'Skin',
+          description: 'The plate, the accent it spends, and the face it writes in.',
+          trailing: SkinPicker(
+            selected: skinById(settings.skin),
+            accent: paletteById(settings.accentPalette).accent,
+            onSelected: (WinNotesSkin? skin) => controller.apply(
+              (WinNotesSettings s) => s.copyWith(skin: skin?.id ?? ''),
             ),
           ),
         ),

@@ -4,7 +4,7 @@ import '../../../../../core/theme/theme.dart';
 
 /// The key for the add-a-note button: drivable without guessing among same-labelled
 /// semantics nodes. Public because widget tests are consumers of this widget.
-const Key addNoteButtonKey = ValueKey('winnotes.widget.addNote');
+const Key addNoteButtonKey = ValueKey<String>('winnotes.widget.addNote');
 
 /// The collapsed add-a-note circle.
 class ComposerButton extends StatelessWidget {

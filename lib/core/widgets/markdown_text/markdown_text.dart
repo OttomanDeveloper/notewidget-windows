@@ -95,6 +95,11 @@ class MarkdownText extends StatelessWidget {
     );
   }
 
+  /// The parsed document, from the same memo the renderer uses. Public because
+  /// the preview pane does not render through this widget: it builds blocks
+  /// lazily and needs the node count before it builds any of them.
+  static List<md.Node> nodesOf(String source) => _ParseCache.of(source);
+
   @override
   Widget build(BuildContext context) {
     MarkdownMetrics metrics = MarkdownMetrics.of(density);

@@ -158,6 +158,10 @@ class Window {
   HWND window_ = nullptr;
   HWND child_content_ = nullptr;
   bool visible_ = false;
+  // Set by Hide(), and read once by the deferred first-frame Show() in Create.
+  // `visible_` cannot carry it: it also starts false, so it does not distinguish
+  // "never decided" from "decided, and the answer was hidden".
+  bool hidden_before_first_frame_ = false;
   bool dragging_ = false;
   bool rounded_corners_ = false;
   bool position_locked_ = false;  // Draggable until Dart says otherwise.

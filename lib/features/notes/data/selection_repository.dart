@@ -27,7 +27,7 @@ class SelectionRepository implements ISelectionRepository {
     final String? contents = _syncRead(path);
     if (contents == null) return null;
     try {
-      final decoded = jsonDecode(contents);
+      final Object? decoded = jsonDecode(contents);
       if (decoded is Map && decoded['noteId'] is String) {
         final String id = decoded['noteId'] as String;
         return id.isEmpty ? null : id;

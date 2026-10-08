@@ -10,7 +10,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     required this.narrow,
     required this.showList,
-    required this.onShowList,
+    required this.onToggleList,
     required this.onOpenSettings,
     required this.exportNotes,
     required this.importNotes,
@@ -18,7 +18,10 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   final bool narrow;
   final bool showList;
-  final VoidCallback onShowList;
+
+  /// Shown only while the list is hidden. Narrow, that means going back to it;
+  /// wide, that means expanding the collapsed drawer.
+  final VoidCallback onToggleList;
   final VoidCallback onOpenSettings;
   final Future<void> Function() exportNotes;
   final Future<List<Note>?> Function() importNotes;
@@ -54,11 +57,20 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: <Widget>[
+        // Narrow: the button goes back to the list. Wide: it collapses the list.
+        // Two flat branches, not `if (narrow) if (...) A else B` - the `else`
+        // binds to the *inner* if, which left wide with no button at all.
         if (narrow && !showList)
           IconButton(
             icon: const Icon(Icons.list),
             tooltip: 'Show notes',
-            onPressed: onShowList,
+            onPressed: onToggleList,
+          )
+        else if (!narrow)
+          IconButton(
+            icon: const Icon(Icons.menu_open),
+            tooltip: showList ? 'Hide notes' : 'Show notes',
+            onPressed: onToggleList,
           ),
         PopupMenuButton<String>(
           tooltip: 'More',
@@ -74,7 +86,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
             }
           },
           itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
-            PopupMenuItem(
+            PopupMenuItem<String>(
               value: 'settings',
               child: ListTile(
                 dense: true,
@@ -84,7 +96,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
             PopupMenuDivider(),
-            PopupMenuItem(
+            PopupMenuItem<String>(
               value: 'export',
               child: ListTile(
                 dense: true,
@@ -93,7 +105,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
                 title: Text('Export as text'),
               ),
             ),
-            PopupMenuItem(
+            PopupMenuItem<String>(
               value: 'import',
               child: ListTile(
                 dense: true,

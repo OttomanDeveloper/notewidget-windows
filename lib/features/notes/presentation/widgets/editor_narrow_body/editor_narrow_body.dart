@@ -25,14 +25,14 @@ class EditorNarrowBody extends StatelessWidget {
       duration: const Duration(milliseconds: 160),
       child: showList
           ? NoteListPane(
-              key: const ValueKey('list'),
+              key: const ValueKey<String>('list'),
               showCloseButton: false,
               onOpenNote: onOpenNote,
               onNewNote: onNewNote,
               onCloseList: () {},
             )
           : NoteEditorPane(
-              key: const ValueKey('editor'),
+              key: const ValueKey<String>('editor'),
               onBack: onBack,
             ),
     );

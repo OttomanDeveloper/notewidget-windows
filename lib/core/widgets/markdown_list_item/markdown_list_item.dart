@@ -44,13 +44,15 @@ class MarkdownListItem extends StatelessWidget {
     final List<md.Node> leading = <md.Node>[];
     final List<md.Element> blocks = <md.Element>[];
     for (final md.Node child in children) {
-      final bool isBlock =
-          child is md.Element && !inline.contains(child.tag);
-      if (isBlock) {
-        blocks.add(child as md.Element);
-      } else if (blocks.isEmpty) {
-        leading.add(child);
+      if (child is! md.Element) {
+        if (blocks.isEmpty) leading.add(child);
+        continue;
       }
+      if (inline.contains(child.tag)) {
+        if (blocks.isEmpty) leading.add(child);
+        continue;
+      }
+      blocks.add(child);
     }
 
     final List<Widget> parts = <Widget>[];

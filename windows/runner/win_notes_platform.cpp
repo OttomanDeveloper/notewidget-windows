@@ -511,7 +511,19 @@ bool AutostartEnabled() {
   const LSTATUS r = RegQueryValueExW(key, kRunValue, nullptr, &type,
                                      reinterpret_cast<LPBYTE>(buffer), &size);
   RegCloseKey(key);
-  return r == ERROR_SUCCESS && type == REG_SZ && size > 1;
+  if (r != ERROR_SUCCESS || type != REG_SZ || size <= 1) return false;
+
+  // The stored command has to be *this* executable, not merely some string.
+  //
+  // Comparing existence is what made a moved or deleted install unrepairable:
+  // the entry survived, so `syncPlatform` read "enabled and correct", agreed
+  // with the setting, and changed nothing - while a login would launch a path
+  // that no longer existed, and fail silently. Installing over a build tree is
+  // exactly how that state is reached.
+  const std::wstring expected = AutostartCommand();
+  // Cannot say, so do not claim a repair is needed and rewrite a good entry.
+  if (expected.empty()) return true;
+  return std::wstring(buffer) == expected;
 }
 
 bool SetAutostartEnabled(bool enabled) {

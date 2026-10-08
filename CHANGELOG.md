@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 ### Added
 
+- Frame timings are recorded to a file when `WIN_NOTES_FRAME_LOG` is set, for stalls a widget test cannot see.
 - `tool\verify\verify.ps1`: the gate. Seven stages in dependency order, about two minutes, the same command CI runs.
 - `tool\verify\run_scenarios.ps1`: drives the Windows scenarios with synthetic input and records a verdict per row.
 - `docs/testing/`: the Windows test program — 27 scenarios in 6 waves, the A/B/C evidence classes, the feature matrix, and a results ledger.
@@ -64,12 +65,22 @@
 
 - `:tada:`-style emoji shortcodes render as the character, and `> [!NOTE]` and its four siblings render as a labelled callout; both were already in the parser but out of its default set.
 
+- The preview builds only the Markdown blocks on screen, so a long note scrolls as fast as a short one.
+- A Skin setting, beside Colour: it picks a card's corners, row spacing, how the open note is marked, and what separates rows.
+- Four skins ship - Sharp, Soft, Outline, Solid - and the first choice is no skin at all.
+- Ctrl+wheel font resizing is coalesced: a burst of notches resizes once instead of once per notch.
+- The preview pane no longer re-renders the whole document on every keystroke: a keystroke in a long note drops from 64-169 ms to 15-44 ms.
+- Ctrl+wheel font resizing is coalesced: a burst of notches resizes once instead of once per notch.
+- The preview settles after a sentence rather than a fraction of a second, so typing no longer triggers a full document re-render on every pause.
 ### Fixed
 
 - The widget's saved position was written on every drag and never restored; it now comes back where you left it, clamped to a screen that still exists.
+- A first launch showed the widget over an empty library; the runner's deferred boot-time show no longer undoes the decision to hide it.
 - A table with more columns than the pane could show was squeezed into unreadable slivers; it now scrolls sideways and each column keeps a legible width.
 - `crash.log`: uncaught Dart errors and native faults are appended to `%APPDATA%\WinNotes`, because a release build launched at login has nowhere to print.
 - `win_notes.exe --diagnose <path>` writes one snapshot of the profile, monitors, window position and autostart entry, then exits.
+- A draggable divider between the source and the preview, bounded at each end, with double-click to reset.
+- The note list collapses to a handle on the edge, and the toolbar carries the same toggle.
 - `ISSUE_REPORTING.md` now says how to collect that evidence before filing an issue.
 - A list item lost everything after its first bold, italic, link or code run; `- **(x)** words` rendered as `(x)` alone.
 - A paragraph holding only an image rendered as nothing; `alt` is an attribute, so the blank check now looks for the image itself.

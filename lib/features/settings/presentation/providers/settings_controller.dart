@@ -91,7 +91,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     unawaited(_repository.load().then((WinNotesSettings next) {
       final SettingsState? current = state.value;
       if (current == null || next == current.settings) return;
-      state = AsyncData(current.copyWith(settings: next));
+      state = AsyncData<SettingsState>(current.copyWith(settings: next));
     }));
   }
 
@@ -102,7 +102,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     if (current == null) return;
     final WinNotesSettings next = mutate(current.settings);
     if (next == current.settings) return;
-    state = AsyncData(current.copyWith(settings: next));
+    state = AsyncData<SettingsState>(current.copyWith(settings: next));
     _repository.save(next);
 
     if (next.editorHotkey != current.settings.editorHotkey ||
@@ -138,7 +138,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
       await _repository.applyAutoStart(enabled: current.settings.autoStart);
     }
 
-    state = AsyncData(
+    state = AsyncData<SettingsState>(
       current.copyWith(
         hotkeyProblem: problem,
         clearHotkeyProblem: problem == null,
@@ -151,7 +151,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     if (current == null) return;
     final bool ok = await _repository.applyAutoStart(enabled: enabled);
     if (!ok) {
-      state = AsyncData(
+      state = AsyncData<SettingsState>(
         current.copyWith(
           hotkeyProblem: 'Windows would not let the startup entry be changed.',
         ),
@@ -188,7 +188,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     // The pointer goes in only now. `settings.json` in the default folder is how the
     // next launch finds the library, and writing it before the copy would point a
     // future launch at a folder that might not have the notes in it yet.
-    state = AsyncData(current.copyWith(settings: next));
+    state = AsyncData<SettingsState>(current.copyWith(settings: next));
     await _repository.saveNow(next);
     await _writePointer(next);
 

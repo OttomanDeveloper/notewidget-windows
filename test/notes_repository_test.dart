@@ -91,7 +91,7 @@ void main() {
     test('the written file is valid JSON with the format tag', () async {
       final NotesRepository repository = repo();
       await repository.saveNow(<Note>[note('a')]);
-      final decoded = jsonDecode(File(notesPath()).readAsStringSync());
+      final dynamic decoded = jsonDecode(File(notesPath()).readAsStringSync());
       expect(decoded['format'], 'winnotes');
       expect(decoded['version'], 1);
       expect(decoded['notes'], hasLength(1));
@@ -250,7 +250,7 @@ void main() {
       }
       await file.flushPending();
 
-      final decoded = jsonDecode(File(notesPath()).readAsStringSync());
+      final dynamic decoded = jsonDecode(File(notesPath()).readAsStringSync());
       expect(decoded['n'], 49, reason: 'the last write is the one that lands');
       await file.dispose();
     });
@@ -346,7 +346,7 @@ void main() {
       String? partial;
       final Timer reader = Timer.periodic(const Duration(milliseconds: 1), (_) {
         try {
-          final decoded = jsonDecode(File(notesPath()).readAsStringSync());
+          final dynamic decoded = jsonDecode(File(notesPath()).readAsStringSync());
           reads++;
           if (decoded is! Map || decoded['pad'] == null) {
             partial ??= 'read succeeded but the document was not intact';

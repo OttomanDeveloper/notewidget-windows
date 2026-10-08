@@ -95,8 +95,8 @@ class HotkeyBinding {
     HotkeyBinding? fallback,
   }) {
     final HotkeyBinding base = fallback ?? defaultBinding;
-    final mods = json['modifiers'];
-    final key = json['key'];
+    final Object? mods = json['modifiers'];
+    final Object? key = json['key'];
     final HotkeyBinding parsed = HotkeyBinding(
       modifiers:
           mods is List ? mods.whereType<String>().toList() : base.modifiers,

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../../domain/note.dart';
 import '../../../domain/text_sizes.dart';
+import '../../providers/editor_layout_provider.dart';
 import '../../providers/notes_controller.dart';
 import '../../providers/notes_providers.dart';
 import '../../../../settings/data/settings_repository.dart';
@@ -60,17 +61,34 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
   final ValueNotifier<String> _previewSource = ValueNotifier<String>('');
   Timer? _previewDebounce;
 
+  /// How long a Ctrl+wheel burst is allowed to run before the size lands. Long
+  /// enough to swallow a wheel's worth of notches, short enough that the size
+  /// feels like it followed the gesture.
+  static const Duration _fontSettle = Duration(milliseconds: 100);
+
+  Timer? _fontStepDebounce;
+
+  /// Notches waiting to be applied, per pane. A burst of twenty accumulates into
+  /// one change of twenty rather than twenty rebuilds.
+  int _pendingFontSteps = 0;
+  int _pendingPreviewFontSteps = 0;
+
   @override
   void initState() {
     super.initState();
     _body.addListener(_schedulePreview);
   }
 
+  /// How long the preview waits after the last keystroke. A trailing debounce
+  /// that resets per character, so it sets how often a 78-144 ms document
+  /// re-render runs while you type: 250 ms fired on nearly every word (§3.27).
+  static const Duration previewSettle = Duration(milliseconds: 700);
+
   void _schedulePreview() {
     _previewDebounce?.cancel();
     // A cancellable timer, not a bare Future.delayed: a pending delay outlives
     // dispose and fails a widget test outright.
-    _previewDebounce = Timer(const Duration(milliseconds: 250), () {
+    _previewDebounce = Timer(previewSettle, () {
       if (mounted) _previewSource.value = _body.text;
     });
   }
@@ -78,6 +96,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
   @override
   void dispose() {
     _previewDebounce?.cancel();
+    _fontStepDebounce?.cancel();
     _previewSource.dispose();
     _narrowShowsPreview.dispose();
     _title.dispose();
@@ -122,10 +141,31 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
     notifier.updateNote(id, title: _title.text, body: _body.text);
   }
 
-  /// Ctrl+wheel, written straight through to the setting so the gesture and the
-  /// slider cannot disagree and the size survives a restart. The base is the size
-  /// on screen, not the stored 0, so the first notch starts from what is shown.
+  /// Ctrl+wheel, straight through to the setting. **Coalesced**: one notch
+  /// re-renders the whole preview (~187 ms on the 1012-line demo), so a burst
+  /// accumulates into one change, landing ~100 ms after the last notch (§3.21).
   void _stepFontSize({required bool preview, required int delta}) {
+    _fontStepDebounce?.cancel();
+    if (preview) {
+      _pendingPreviewFontSteps += delta;
+    } else {
+      _pendingFontSteps += delta;
+    }
+    _fontStepDebounce = Timer(_fontSettle, () {
+      final int editorSteps = _pendingFontSteps;
+      final int previewSteps = _pendingPreviewFontSteps;
+      _pendingFontSteps = 0;
+      _pendingPreviewFontSteps = 0;
+      if (editorSteps != 0) _applyFontStep(preview: false, delta: editorSteps);
+      if (previewSteps != 0) {
+        _applyFontStep(preview: true, delta: previewSteps);
+      }
+    });
+  }
+
+  /// One step, applied for real. Split from [\_stepFontSize] so a burst of
+  /// notches lands as one change rather than one change per notch.
+  void _applyFontStep({required bool preview, required int delta}) {
     final Note? note = ref.read(selectedNoteProvider);
     final WinNotesSettings settings =
         ref.read(settingsProvider).value?.settings ?? SettingsRepository.defaults;
@@ -191,6 +231,13 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
             ),
           ),
         );
+
+        // The split is session layout rather than a setting, so it is its own
+        // watch: dragging the divider must not rebuild the settings-derived
+        // fields above, and a palette change must not move the divider.
+        final EditorLayout layout = ref.watch(editorLayoutProvider);
+        final EditorLayoutNotifier layoutNotifier =
+            ref.read(editorLayoutProvider.notifier);
 
         if (note == null) {
           return Stack(
@@ -325,6 +372,9 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                                   showsPreview: _narrowShowsPreview,
                                   editorFontSize: sizes.$1,
                                   previewFontSize: sizes.$2,
+                                  sourceFraction: layout.sourceFraction,
+                                  onSplit: layoutNotifier.setSourceFraction,
+                                  onResetSplit: layoutNotifier.resetSplit,
                                   onEditorFontStep: (int delta) =>
                                       _stepFontSize(preview: false, delta: delta),
                                   onPreviewFontStep: (int delta) =>

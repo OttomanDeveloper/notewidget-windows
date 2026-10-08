@@ -13,8 +13,8 @@ assertion.
 | Class | Rows | Method | Cost per row |
 |---|--:|---|---|
 | **A** | tracked in `project_integration_testing.md` | Host test — `flutter test` | seconds, batched |
-| **B** | 12 of the 33 below | Probe against a release build | seconds |
-| **C** | 15 of the 33 below | By hand on a desktop | minutes |
+| **B** | 12 of the 39 below | Probe against a release build | seconds |
+| **C** | 15 of the 39 below | By hand on a desktop | minutes |
 
 **Class A is the whole game.** A single `flutter test` run closes dozens of rows
 at once. **No row goes to a probe while a host test could close it.**
@@ -74,7 +74,7 @@ first time *and found failing*.
 | WN-DPI-001…003 | NOT RUN | Class C, by hand; DISPLAY2 is at 96 dpi so 001 has nothing to vary |
 | WN-SCALE-001…002 | NOT RUN | Class C, measurement |
 
-**8 of 33 rows closed. 25 open.** One of the eight is a failure.
+**24 of 39 rows closed. 15 open.**
 
 ### Batch 2 - 2026-10-06, waves 1 to 3, probe
 
@@ -251,6 +251,236 @@ than work, and both are recorded open rather than quietly dropped.
 `dart_entrypoint_arguments`. Parsing the flag in `main.dart` compiled, analysed
 clean, and never once ran. Without actually launching the exe, every row here
 would have stayed `NOT RUN` for ever, green or not.
+
+### Batch 3 — 2026-10-07, waves 1 to 3, probe. One bug found and fixed
+
+`run_scenarios.ps1 -Wave 1`, then `-Wave 2`, then `-Wave 3`. Wave 1 is **5 of 5**
+for the first time; `WN-ENV-004` had been red since batch 1.
+
+| Row | Result | Evidence |
+|---|---|---|
+| WN-ENV-001 | PASS (probe) | commit and os captured first, as the row requires |
+| WN-ENV-002 | PASS (probe) | editor up; `notes.json` written under `%TEMP%` |
+| **WN-ENV-004** | **FAIL → PASS (probe)** | was `before: widget window present, Visible=True`; now hidden for an empty library, shown once a note has text |
+| WN-ENV-005 | PASS (probe) | no `win_notes` survives the close |
+| WN-ENV-003 | PASS (probe) | real profile byte-identical, 7 files by SHA-256 |
+| WN-DRAG-001 | PASS (probe) | five drags at exactly −60,0 move the window −60,0 |
+| WN-DRAG-002 | PASS (probe) | eight 150 px hauls stop at exactly 200×140 |
+| WN-DRAG-003 | PASS (probe) | all four edges resize |
+| WN-DRAG-006 | PASS (probe) | a locked widget refuses without moving |
+| WN-DRAG-007 | PASS (probe) | a 2 px press is not a drag |
+| WN-DRAG-004, -005 | BLOCKED | list scroll offset is not observable from outside; see batch 1 |
+| WN-KEY-001…005 | BLOCKED | the synthetic click at (1728,402) does not open the composer, so every keyboard row depends on it. Unchanged from batch 1, and **not** a regression from the fix |
+| WN-SYS-001…005 | NOT RUN | four are `D`; `WN-SYS-005` is not wired into the probe |
+| WN-DPI-001…003 | NOT RUN | `D`; needs real scaling and monitor changes |
+| WN-SCALE-001, -002 | NOT RUN | no test module implements them — absent, not blocked |
+
+**What `WN-ENV-004` actually was.** Not the Dart-side lead `AGENTS.md` carried for
+weeks. Dart sent `visible: false` correctly on every launch and a trace proved it.
+The runner hid the window and then, ~2 s later, showed it again: `Hide(role=0)`,
+`Show(role=0)`, `Show(role=1)`. `Window::Create` defers the boot-time `Show()` to
+`SetNextFrameCallback`, and on a first launch that callback runs *after* the widget
+surface has already hidden the window. Fixed in `win_notes_window.cpp`, pinned by
+`widget_guard_test`, written up as `docs/widget_pattern.md` §3.23.
+
+| notes on disk | before the fix | after |
+|---|---|---|
+| one note, empty title and body | shown | hidden |
+| zero notes | shown | hidden |
+| one note with text | shown | shown |
+
+**Two measurement errors of my own are worth recording, because each first read
+as a product bug.** A hand-seeded `notes.json` without `format`/`version` is
+*corrupt*, not empty — `_readNotes()` returns nothing and the widget correctly
+hides, which looks exactly like the bug. And the first attempt at the fix tested
+`!visible_`, which starts `false` and means the opposite of what was intended; it
+passed the two empty cases while breaking the one with text.
+
+### Batch 4 — 2026-10-07, wave 8, host suite
+
+Not a probe batch: wave 8 is five rows that only a widget test can run, closed in
+one `flutter test`. Recorded because a row closed by the host suite is still a
+row, and because the ledger is the only place that says which method closed it.
+
+| Row | Result | Evidence |
+|---|---|---|
+| WN-EDIT-001 | PASS (W) | dragging 120px left shrinks the source by >60 and grows the preview by >60; both measured from the laid-out tree |
+| WN-EDIT-002 | PASS (W) | six drags of 300px past each end, in hops, so the clamp has to hold on the last one; both panes keep a positive width and no exception is thrown |
+| WN-EDIT-003 | PASS (W) | double-click restores the width it started at, within 1px, and leaves `listCollapsed` alone |
+| WN-EDIT-004 | PASS (W) | the toolbar toggle removes the list and leaves a handle; the handle restores it; the strip is 16px |
+| WN-EDIT-005 | PASS (W) | a fresh `ProviderContainer` reports `listCollapsed: false` and the design width, which it could only do if nothing wrote the layout to `settings.json` |
+
+**The row that earned its place is WN-EDIT-004.** The wide toolbar's collapse
+toggle was written as `if (narrow) if (!showList) A else B`; Dart binds that
+`else` to the *inner* `if`, so the wide editor rendered no button at all and the
+feature simply did not exist in the layout it was built for. It compiled, it
+analysed clean, and it was only found because a test tried to tap something that
+was not there.
+
+### Batch 5 — 2026-10-07, the lint pass, and the bug 560 tests could not see
+
+Fifty-three of the 93 `always_specify_types` infos were cleared by hand and five
+more were suppressed; `dart fix` managed only 5 of the 93 and **introduced four
+new infos** while doing it. Then the gate caught something no host test did.
+
+| What | Detail |
+|---|---|
+| `dart fix` wrote `import 'package:riverpod/src/…'` | To name `ProviderFamily` and `Override`. Neither is exported by the public barrel, so the fix traded one lint for `implementation_imports` **and produced code that does not compile** once the import is removed. Suppressed with `// ignore:` instead — see the note below. |
+| A hand-written fix broke the release build | `raw['defaultWidgetBounds'] as Map<String, dynamic>?` — the map is `_Map<Object?, Object?>`, so the cast **threw** in `ShellChannel.bootstrap`, before `runApp`. `main` died, the runner's two windows were never shown, nothing was written, and `--diagnose` hung instead of writing and exiting. |
+| What it looked like | `flutter analyze` clean, **560 tests passing**, `verify_release.ps1` red on 3 checks. Debug "worked" — because `kernel_blob.bin` is from 13:30, before the edit, so Debug was never running the code under test. |
+| How it was found | `Start-Process -RedirectStandardError`. A `WinExe` has no console, but the handle is still inherited, and the unhandled exception was sitting in a file the whole time. |
+| `whereType` did not throw | `?.whereType<Map<String, dynamic>>()` is the **same bug without the crash**: `_Map<Object?, Object?>` is not a subtype, so every monitor was silently filtered out and `monitors` arrived empty. A lint fix that cannot fail and cannot be right. |
+
+**The rule this adds, and it is the reason the batch exists: adding a type
+argument to a cast is a runtime behaviour change, not a formatting change.**
+`as Map` and `as Map<String, dynamic>` differ in whether the program runs.
+`always_specify_types` cannot know the runtime type of a decoded JSON map, and
+neither can `dart fix` — which is why it reached for `lib/src` to find a name.
+
+`docs/storage_pattern.md` §3.13b is where a payload's *shape* is pinned, and it
+is checked against the runner's C++ rather than against a Dart literal. Nothing
+in the host suite exercises the real `StandardMethodCodec` decode, so this class
+of mistake is invisible until a release build runs on a machine.
+
+**The suite has one load-time flake, named because it was caught rather than
+assumed.** Twice in this batch `flutter test` exited 1 with
+
+```
+00:02 +46 -1: loading test/architecture/icon_guard_test.dart   [E]
+00:02 +46 -2: loading test/architecture/layer_test.dart        [E]
+00:02 +46 -3: loading test/architecture/no_set_state_test.dart [E]
+00:02 +46 -4: loading test/architecture/isolate_guard_test.dart[E]
+```
+
+Four guard files failing **at load**, before any assertion ran, with
+`docs_test` then reporting `did not complete`. The guards read the source tree
+from disk, so a transient failure to *open* a file looks exactly like a failure
+to find one. Both occurrences came while the machine was doing heavy concurrent
+disk work — once immediately after `.dart_tool/flutter_build` was purged and the
+AOT snapshot recompiled. Ten further runs were green, including five under the
+expanded reporter specifically to try to catch it.
+
+Not attributed to a product defect and not called deterministic: the honest
+statement is that the host suite intermittently cannot read its own source files
+on this machine, that the guards which do load all pass, and that the release
+build - which is what the gate exists to protect - was verified independently
+(13/13) on the same day.
+
+**`WN-DRAG-001` reopened on the 2026-10-07 probe run, and it is not dismissed.**
+`deltas: 0, -60, -60, -60, -60` - four of the five drags are exact, so the
+arithmetic the row exists to pin is intact. The **first** drag after launch moved
+the window 0 px.
+
+The most likely cause is that the first synthetic click is the one that activates
+the freshly launched widget, so it is consumed before any drag is recognised.
+That is ordinary Win32 behaviour for a `WS_EX_NOACTIVATE` window and would make
+the row's premise wrong rather than the product. It is **not** recorded as a
+defect on that basis: nobody has watched it happen, and `PROJECT.md` is the
+authority on what the first click should do. Adding a discarded warm-up drag
+would turn the row green, and it was deliberately not done — that would change
+what the row measures rather than establish the cause.
+
+Open question for the owner: *should the first click on a freshly launched widget
+move it?* One sentence either way settles it, and the row then states the right
+thing.
+
+**Also fixed here: the autostart tests could delete the operator's own Run
+entry.** `diagnostics_test` writes and deletes `HKCU\…\Run\WinNotes`, saving in
+`setUp` and restoring in `tearDown`. A per-test save reads back whatever the
+*previous* test left, so a delete that failed to restore is captured as the
+original and written back as `null` by the next teardown — a transient leak
+becomes permanent. The value was **observed missing** on this machine after a
+test run. It now saves once in `setUpAll` and restores in `tearDownAll`, which
+removes the cementing path, and it was restored byte-exactly by hand. A test
+that edits real machine state has to fail safe, because the operator's machine
+is the only place the mistake is visible.
+
+**What wave 8 does not establish, stated once rather than per row.** These
+tests measure layout from Flutter's own tree. They cannot say whether the
+divider lands under the cursor, whether the grab band feels like the window's
+own edges — which `docs/widget_pattern.md` §3.12 measures on a release build —
+or whether a real pointer drag arrives as one gesture. The claim is *the layout
+responds correctly to the gesture it is given*.
+
+### Batch 6 - 2026-10-07, WN-SCALE-003, "the app struggles a lot"
+
+Reported as: writing a note as long as `docs/verification/markdown_demo_all_features.md`
+(1012 lines) made both panes feel laggy. Measured before touching anything, because
+the complaint named two panes and only one of them turned out to be at fault.
+
+| | build | 20 scroll frames |
+|---|---|---|
+| preview, `selectable: true`, eager `Column` | **261 ms** | **408 ms** |
+| preview, `SelectionArea`, lazy `ListView.builder` | **67 ms** | **219 ms** |
+| editor `TextField`, same document | 16 ms | 53 ms |
+| list of 50 / 200 / 1000 Markdown notes | 51 / 43 / 34 ms | - |
+
+Three findings, and only the first was the reported bug:
+
+1. **The preview built every block of the note.** Cost was linear in the document -
+   18 ms at 40 lines, 96 ms at 1012 - while a 600 px pane shows about forty lines.
+   Now a `ListView.builder` over `MarkdownBlockList.slotsOf`, so the cost tracks the
+   viewport: ~3.9x cheaper to build, ~1.9x cheaper to scroll.
+2. **The editor was not slow; it was waiting.** Its own rendering is 2.6 ms/frame.
+   Typing rebuilds the preview every 250 ms, and that build was 261 ms, so the
+   editor *felt* heavy because of work in the pane beside it. One fix, both
+   complaints. **The editor's own numbers never changed and never needed to.**
+3. **The note list was never a factor.** Flat from 50 to 1000 notes, because
+   `ListView.builder` only builds visible rows. The hypothesis that a keystroke
+   invalidated every visible row and re-parsed its Markdown was **wrong**, and was
+   dropped after measuring rather than after reading the code twice more.
+
+| Row | Result | Evidence |
+|---|---|---|
+| WN-SCALE-003 | PASS (W) | a 1000-block note builds < 120 blocks; 2000 paragraphs build no more than 3x what 100 do; the last paragraph is reachable by scrolling; the first blocks render rather than being skipped |
+
+**What this batch does not establish.** `WN-SCALE-001` and `WN-SCALE-002` stay
+**NOT RUN** and are not quietly claimed here: they are about a 2000-note *library*
+and a 200-note *widget card list*, and this module covers neither. The list numbers
+above are one measurement in one run, not a library-scale result.
+
+**The parse is still whole-document**, and is most of what remains of the 67 ms.
+`MarkdownText.nodesOf` is the same memo the renderer uses, so every keystroke
+re-parses all of it. Making that incremental means not using `package:markdown`, and
+§0.4 does not allow trading the parser for a hand-rolled one. The next lever is the
+250 ms debounce, which is a freshness trade-off and was left alone.
+
+**Selection is a `SelectionArea`, not a selectable region per block** - chosen with
+the owner. It selects across the blocks that are built, so a very long span has to
+be scrolled to rather than dragged across text that was never built. Recorded in
+`docs/widget_pattern.md` §3.25 because it is a capability, not an implementation
+detail, and the next person to make this faster should know it was a choice.
+
+**The tests assert structure, not milliseconds.** A wall-clock budget on a shared
+machine is a flaky assertion, and this repo has already been bitten by a deadline
+sitting inside a retry budget. `scale_test` asserts the block count is bounded by
+the viewport, which is the property that makes the timings good. It was reverted to
+the eager `Column` deliberately: all three laziness assertions went red.
+
+**How it will actually feel**, measured as one keystroke - the debounce firing,
+the source changing by a character, everything downstream rebuilding. Best of
+three, on an otherwise idle machine:
+
+| document | keystroke rebuild | of which the parse alone |
+|---|---|---|
+| 10 lines | 11 ms | 0 ms |
+| 100 lines | 20 ms | 4 ms |
+| **1012 lines (the demo)** | **37 ms** (79 ms worst) | 16 ms |
+
+So on the note that prompted this: **~261 ms before, ~37 ms after — 7x** — and
+scrolling no longer depends on the note's length at all. **It will feel much
+better and it will not be perfect.** 37 ms is still two frames, so at a thousand
+lines a preview update drops a frame or two. Up to a hundred lines it is
+comfortably smooth.
+
+A widget test's `pump` forces a full layout and paint, so these are **upper
+bounds**; the ratio is the solid claim, the absolute number is pessimistic.
+
+**What is left, in order of value.** The parse is 16 ms of the 37 and is
+whole-document; making it incremental means not using `package:markdown`, which
+§0.4 does not allow. The remaining lever is the **250 ms debounce** - raising it
+cuts how often a 37 ms rebuild lands, at the cost of the preview trailing the
+typing further behind. That is a freshness trade-off and it was left alone.
 
 ### What was not run, and why
 

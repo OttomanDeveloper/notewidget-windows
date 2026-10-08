@@ -29,7 +29,7 @@
 [CmdletBinding()]
 param(
   # The built installer. Omit to check only the source-side facts.
-  [string] $SetupExe = 'dist\WinNotes-1.2.0-setup.exe',
+  [string] $SetupExe = 'dist\WinNotes-1.3.0-setup.exe',
   # An installed copy, if one exists, to check the shortcut and registry entries.
   [string] $InstalledDir,
   [string] $UninstallKey

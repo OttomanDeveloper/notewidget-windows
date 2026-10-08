@@ -7,7 +7,7 @@ and which check answers which question.
 
 | File | What it is |
 |---|---|
-| **`project_realworld_testing.md`** | The Windows program: **33 scenarios** in 7 dependency-ordered waves, each tagged with the methods that can verify it. Mostly `NOT RUN`. The authority for what must be proven against real Windows. |
+| **`project_realworld_testing.md`** | The Windows program: **39 scenarios** in 8 dependency-ordered waves, each tagged with the methods that can verify it. Mostly `NOT RUN`. The authority for what must be proven against real Windows. |
 | **`project_integration_testing.md`** | The evidence rules, and the A/B/C classification that says what a test is allowed to claim. The authority for honesty. |
 | **`feature_test_matrix.md`** | Which test modules a *kind of feature* needs, and how many. The rule that survives the catalog being renumbered. |
 | **`reporting.md`** | The results ledger. One row per scenario, machine recorded once per batch. |
@@ -167,7 +167,7 @@ See the traps in `docs/testing_pattern.md` §3.
 ## What no check here can tell you
 
 That the app behaves correctly on real Windows hardware - real compositing, real
-focus, real DPI, real monitors. That is 33 rows in
+focus, real DPI, real monitors. That is 39 rows in
 `project_realworld_testing.md`, it is the reason this folder exists, and it is
 **not** closed by a green gate.
 

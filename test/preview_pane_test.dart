@@ -77,7 +77,7 @@ void main() {
   ) async {
     await pumpPreview(tester, 'Short note.');
 
-    final Scrollbar scrollbar = tester.widget(find.byType(Scrollbar));
+    final Scrollbar scrollbar = tester.widget(find.byType(Scrollbar).first);
     final SingleChildScrollView view =
         tester.widget(find.byType(SingleChildScrollView));
 

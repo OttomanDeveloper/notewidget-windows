@@ -1,9 +1,8 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../domain/note.dart';
 import '../narrow_preview_button/narrow_preview_button.dart';
+import '../pane_divider/pane_divider.dart';
 import '../preview_pane/preview_pane.dart';
 import '../source_field/source_field.dart';
 import '../text_size_wheel_listener/text_size_wheel_listener.dart';
@@ -22,6 +21,9 @@ class MarkdownBody extends StatelessWidget {
     required this.onChanged,
     this.editorFontSize = 0,
     this.previewFontSize = 0,
+    this.sourceFraction = 0.5,
+    this.onSplit,
+    this.onResetSplit,
     this.onEditorFontStep,
     this.onPreviewFontStep,
   });
@@ -48,6 +50,17 @@ class MarkdownBody extends StatelessWidget {
   /// which is what the widget surface and the list rows want.
   final ValueChanged<int>? onEditorFontStep;
   final ValueChanged<int>? onPreviewFontStep;
+
+  /// Share of this body given to the source, 0 to 1. 0.5 is the even split the
+  /// two `Expanded`s gave before, and stays the default when [onSplit] is null.
+  final double sourceFraction;
+
+  /// Drag on the divider. Null leaves it a plain line, which is what the widget
+  /// surface and the list rows get - they have no two panes to divide.
+  final ValueChanged<double>? onSplit;
+
+  /// Double-click on the divider.
+  final VoidCallback? onResetSplit;
 
   @override
   Widget build(BuildContext context) {
@@ -102,15 +115,22 @@ class MarkdownBody extends StatelessWidget {
           );
         }
 
-        // Two equal panes either side of a 1px divider, so the divider's position
-        // is half the width. Measured from the pointer rather than guessed.
+        // A draggable split rather than two equal halves: the source takes the
+        // fraction, the preview the rest. The drag arrives as a delta and is
+        // folded on - reading the body's left edge instead would need
+        final double grab = onSplit == null ? 1.0 : 10.0;
+        final double usable =
+            (constraints.maxWidth - grab).clamp(1.0, double.infinity);
+        final double sourceWidth = usable * sourceFraction.clamp(0.0, 1.0);
+
         return TextSizeWheelListener(
           onEditorStep: onEditorFontStep,
           onPreviewStep: onPreviewFontStep,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(
+              SizedBox(
+                width: sourceWidth,
                 child: SourceField(
                   field: field,
                   focusNode: focusNode,
@@ -119,13 +139,20 @@ class MarkdownBody extends StatelessWidget {
                   fontSize: editorFontSize,
                 ),
               ),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                indent: 2,
-                endIndent: 2,
-                color: theme.dividerColor,
-              ),
+              if (onSplit == null)
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  indent: 2,
+                  endIndent: 2,
+                  color: theme.dividerColor,
+                )
+              else
+                PaneDivider(
+                  onDrag: (double dx) =>
+                      onSplit!(sourceFraction + dx / usable),
+                  onReset: onResetSplit,
+                ),
               Expanded(
                 child: PreviewPane(
                   note: note,

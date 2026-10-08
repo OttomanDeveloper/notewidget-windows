@@ -61,7 +61,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   /// Re-reads notes.json and replaces the state. Separate from `build`:
   /// invalidating would lose the undo timer and re-run startup per keystroke.
   Future<void> reload() async {
-    state = AsyncData(_apply(await _repository.load()));
+    state = AsyncData<NotesState>(_apply(await _repository.load()));
   }
   /// Where the selection lands after a load or deletion: resolved to the newest
   /// note or null, so the editor never shows nothing at all.
@@ -141,7 +141,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       notes: NotesRepository.sorted(<Note>[blank]),
       selectedId: blank.id,
     );
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(next.notes);
     return (outcome: RecoveryOutcome.startedFresh, keptAt: keptAt);
   }
@@ -149,14 +149,14 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
   void setQuery(String value) {
     final NotesState current = _require();
     if (current.query == value) return;
-    state = AsyncData(current.copyWith(query: value).withVisible());
+    state = AsyncData<NotesState>(current.copyWith(query: value).withVisible());
   }
 
   void select(String? id) {
     final NotesState current = _require();
     if (current.selectedId == id) return;
     // `clearSelectedId`, not `selectedId: null` - see `NotesState.copyWith`.
-    state = AsyncData(
+    state = AsyncData<NotesState>(
       current.copyWith(selectedId: id, clearSelectedId: id == null),
     );
   }
@@ -182,7 +182,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
     final Note note = _blankNote(current.notes);
     NotesState next = _insert(current, note);
     next = next.copyWith(selectedId: note.id);
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(next.notes);
     return note;
   }
@@ -216,7 +216,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       updatedAt: now,
     );
     final NotesState next = _insert(current, note);
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(next.notes);
   }
 
@@ -240,7 +240,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       notes: NotesRepository.sorted(notes),
     );
     // The search filter depends on the text, so it has to be reapplied.
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(next.notes);
   }
 
@@ -258,7 +258,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
     // A new list identity: `AnimatedBuilder` compares by identity, so reusing
     // the same list would rebuild nothing and the strike-through would not appear.
     final List<Note> notes = <Note>[...current.notes]..[index] = updated;
-    state = AsyncData(current.copyWith(notes: notes));
+    state = AsyncData<NotesState>(current.copyWith(notes: notes));
     _repository.save(state.requireValue.notes);
   }
 
@@ -277,7 +277,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
     );
     final List<Note> notes = <Note>[...current.notes]..[index] = updated;
     final NotesState next = current.copyWith(notes: notes);
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(state.requireValue.notes);
   }
 
@@ -307,7 +307,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
         clearSelectedId: replacement == null,
       );
     }
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(state.requireValue.notes);
   }
 
@@ -332,7 +332,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       selectedId: restored.id,
       clearPendingUndo: true,
     );
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(state.requireValue.notes);
     return true;
   }
@@ -342,7 +342,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
     if (current == null || current.pendingUndo == null) return;
     _undoTimer?.cancel();
     _undoTimer = null;
-    state = AsyncData(current.copyWith(clearPendingUndo: true));
+    state = AsyncData<NotesState>(current.copyWith(clearPendingUndo: true));
   }
 
   /// Replaces every note, used by import.
@@ -352,7 +352,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       notes: notes,
       selectedId: notes.isEmpty ? null : notes.first.id,
     );
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(notes);
   }
 
@@ -365,7 +365,7 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
       notes: notes,
       selectedId: incoming.first.id,
     );
-    state = AsyncData(next.withVisible());
+    state = AsyncData<NotesState>(next.withVisible());
     _repository.save(state.requireValue.notes);
   }
 

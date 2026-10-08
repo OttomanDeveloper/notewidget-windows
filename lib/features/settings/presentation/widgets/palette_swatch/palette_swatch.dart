@@ -13,7 +13,7 @@ class PaletteSwatch extends StatelessWidget {
 
   /// Exposed so widget tests aim at a swatch without reverse-engineering the
   /// wrap order — the same reason the composer's controls are keyed.
-  static Key keyFor(String paletteId) => ValueKey('settings.palette.$paletteId');
+  static Key keyFor(String paletteId) => ValueKey<String>('settings.palette.$paletteId');
 
   final WinNotesPalette palette;
   final bool isSelected;

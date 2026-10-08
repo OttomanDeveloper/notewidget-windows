@@ -18,6 +18,7 @@ import '../../widgets/no_notes_chrome/no_notes_chrome.dart';
 import '../../widgets/widget_composer/widget_composer.dart';
 import '../../widgets/widget_gesture/widget_gesture.dart';
 import '../../../../../core/theme/palette.dart';
+import '../../../../../core/theme/skin.dart';
 import '../../../../../core/theme/theme.dart';
 import '../../widgets/widget_note_card/widget_note_card.dart';
 
@@ -324,6 +325,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     // §5.2): the getters above are `read` for handlers, which cannot watch.
     final Brightness brightness = ref.watch(widgetSurfaceThemeProvider).brightness;
     final WinNotesPalette palette = ref.watch(accentPaletteProvider);
+    final WinNotesSkin? skin = ref.watch(skinProvider);
     final bool? acrylicEnabled = ref.watch(
       settingsProvider.select((AsyncValue<SettingsState> v) => v.value?.settings.acrylicEnabled),
     );
@@ -336,6 +338,7 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
     // focused card's bar, the tick and the composer's border cannot disagree
     // with the editor about what the accent is.
     final Color accent = palette.accentFor(brightness);
+    final SkinLook look = lookOf(skin);
 
     // The display list, derived in its provider: geometry, scroll and
     // visibility changes leave the cards alone, and each card watches only
@@ -396,16 +399,24 @@ class _WidgetSurfaceState extends ConsumerState<WidgetSurface> {
                               physics: const ClampingScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
                               itemCount: notes.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 2),
+                              separatorBuilder: (BuildContext context, int index) => switch (look.separator) {
+                                SkinSeparator.hairline => Divider(
+                                    height: 1,
+                                    color: Theme.of(context).dividerColor,
+                                  ),
+                                SkinSeparator.gap => const SizedBox(height: 2),
+                                SkinSeparator.none => const SizedBox.shrink(),
+                              },
                               itemBuilder: (BuildContext context, int index) {
                                 final Note note = notes[index];
                                 return WidgetNoteCard(
-                                  key: ValueKey(note.id),
+                                  key: ValueKey<String>(note.id),
                                   noteId: note.id,
                                   focused: index == 0,
                                   dark: dark,
                                   accent: accent,
                                   roomy: roomy,
+                                  skin: skin,
                                   onTap: () => controller.focusNote(note.id),
                                   onToggleCompleted: () =>
                                       unawaited(controller.toggleCompleted(note.id)),

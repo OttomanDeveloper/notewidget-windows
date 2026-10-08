@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../domain/note.dart';
+import '../../../../../core/theme/skin.dart';
 import '../../../../../core/widgets/completion_toggle/completion_toggle.dart';
 import '../../../../../core/widgets/markdown_density/markdown_density.dart';
 import '../../../../../core/widgets/markdown_text/markdown_text.dart';
@@ -12,6 +13,7 @@ class NoteListItem extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onToggleCompleted,
+    this.skin,
   });
 
   final Note note;
@@ -23,29 +25,48 @@ class NoteListItem extends StatelessWidget {
   /// and having the editor jump to each note in turn makes that unusable.
   final VoidCallback onToggleCompleted;
 
+  /// The row's shape, crossing as a value like `note` does. Null means the
+  /// built-in look, which is what every install without a skin gets.
+  final WinNotesSkin? skin;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme scheme = theme.colorScheme;
     final bool done = note.isCompleted;
+    final SkinLook look = lookOf(skin);
+    // The caret colour marks selection, tying the list to the mark. A finished
+    // note gives it up: it is no longer the one to pick up.
+    final bool marked = selected && !done;
 
     return Material(
-      color: selected ? scheme.primary.withValues(alpha: 0.10) : Colors.transparent,
+      color: switch (look.focus) {
+        SkinFocus.fill when marked => scheme.primary.withValues(alpha: 0.16),
+        SkinFocus.bar when marked => scheme.primary.withValues(alpha: 0.10),
+        _ => Colors.transparent,
+      },
       child: InkWell(
         onTap: onTap,
+        borderRadius: look.shape,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-          decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(
-                // The caret colour marks selection, tying the list to the mark.
-                // A finished note gives it up: it is no longer the one to pick up.
-                color: selected && !done ? scheme.primary : Colors.transparent,
-                width: 3,
-              ),
-            ),
+          padding: EdgeInsets.fromLTRB(
+            look.pad(14),
+            look.pad(10),
+            look.pad(14),
+            look.pad(10),
           ),
-          child: Row(
+          decoration: BoxDecoration(
+            // A `Border` with one coloured side cannot carry a `borderRadius`.
+            // So the edge of a `bar` skin is a child of the Stack below, and
+            // the border here stays uniform.
+            borderRadius: look.shape,
+            border: marked && look.focus == SkinFocus.outline
+                ? Border.all(color: scheme.primary, width: 1.5)
+                : Border.all(color: Colors.transparent),
+          ),
+          child: Stack(
+            children: <Widget>[
+              Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Padding(
@@ -148,6 +169,15 @@ class NoteListItem extends StatelessWidget {
                   ],
                 ),
               ),
+            ],
+              ),
+              if (marked && look.focus == SkinFocus.bar)
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(width: 3, color: scheme.primary),
+                  ),
+                ),
             ],
           ),
         ),

@@ -41,11 +41,14 @@ class SourceField extends StatelessWidget {
       keyboardType: TextInputType.multiline,
       style: theme.textTheme.bodyLarge?.copyWith(
         height: 1.55,
-        // Monospace while Markdown is on, so the syntax being typed is visible.
-        // Source and preview are side by side, and a proportional font makes the
+        // Monospace while Markdown is on, so the syntax being typed is visible. Source
+        // and preview are side by side, and a proportional font makes the
         // asterisks and hashes hard to line up by eye.
         fontFamily: note.markdown ? 'Consolas' : null,
-        fontFamilyFallback: note.markdown ? const <String>['monospace'] : null,
+        // Only alongside a family: a fallback with no family *is* the family,
+        // which would silently make every plain note monospace.
+        fontFamilyFallback:
+            note.markdown ? const <String>['monospace'] : null,
         fontSize: size,
         decoration: note.isCompleted ? TextDecoration.lineThrough : null,
       ),

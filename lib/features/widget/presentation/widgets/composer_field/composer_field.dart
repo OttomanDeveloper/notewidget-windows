@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../../core/theme/theme.dart';
 
 /// The key for the add-a-note field, for the same reason as the button's.
-const Key addNoteFieldKey = ValueKey('winnotes.widget.addNoteField');
+const Key addNoteFieldKey = ValueKey<String>('winnotes.widget.addNoteField');
 
 /// The open add-a-note field.
 class ComposerField extends StatelessWidget {

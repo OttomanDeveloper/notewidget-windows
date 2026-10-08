@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/utils/app_paths.dart';
 import 'core/utils/crash_log.dart';
 import 'core/utils/diagnostics.dart';
+import 'core/utils/frame_log.dart';
 import './features/settings/data/storage_location.dart';
 import './core/platform/shell_channel.dart';
 import './core/utils/app_providers.dart';
@@ -55,19 +56,19 @@ Future<void> main(List<String> args) async {
   // release build has no console to print it to (`docs/storage_pattern.md` §3.13a).
   installCrashHandlers(CrashLog(paths.crashLogFile));
 
+  // Before `runApp`, and off unless `WIN_NOTES_FRAME_LOG` names a file. A widget
+  // test cannot see a stall that lives in real file IO or the platform
+  // text-input path, and two fixes aimed at the wrong place were green all along.
+  FrameLog.attachIfEnabled();
+
   // `win_notes.exe --diagnose <path>`: write one snapshot and exit. Read from
   // the launch report, not `args` - the runner owns the Dart entrypoint
   // arguments and the process command line never reaches them.
   if (launch.diagnosePath.isNotEmpty) {
-    final ProviderContainer container = ProviderContainer(
-      overrides: [
-        shellProvider.overrideWithValue(shell),
-        launchInfoProvider.overrideWithValue(launch),
-        appPathsProvider.overrideWithValue(paths),
-      ],
-    );
-    await container.read(diagnosticsProvider).writeTo(launch.diagnosePath);
-    container.dispose();
+    // Built directly, not through a container: all three values are already
+    // local, and a container built only to dispose would make the Riverpod lint
+    // read `main` as a root that is not a `ProviderScope`.
+    await Diagnostics(shell, paths, launch).writeTo(launch.diagnosePath);
     exit(0);
   }
 
@@ -76,6 +77,7 @@ Future<void> main(List<String> args) async {
   // launch report, and file paths. One scope per isolate (`docs/isolate_pattern.md` §2).
   runApp(
     ProviderScope(
+// ignore: always_specify_types - Override is not public in flutter_riverpod either.
       overrides: [
         shellProvider.overrideWithValue(shell),
         launchInfoProvider.overrideWithValue(launch),

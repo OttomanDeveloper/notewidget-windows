@@ -26,7 +26,8 @@ final Provider<ISelectionRepository> selectionRepositoryProvider = Provider<ISel
 
 /// One note by id, for single-card widgets. A `.family`, so the lookup lives in
 /// one place; value equality rebuilds dependents only on content change.
-final noteByIdProvider = Provider.family<Note?, String>((Ref ref, String id) {
+// ignore: always_specify_types - ProviderFamily is not public in riverpod, so the type cannot be named.
+  final noteByIdProvider = Provider.family<Note?, String>((Ref ref, String id) {
   final List<Note>? notes = ref.watch(notesProvider.select((AsyncValue<NotesState> v) => v.value?.notes));
   if (notes == null) return null;
   for (final Note note in notes) {
@@ -53,7 +54,8 @@ final Provider<List<Note>> visibleNotesProvider = Provider<List<Note>>((Ref ref)
 
 /// What the recovery screen shows about a file, derived so widgets never call
 /// the file system directly (`flutter_architecture_pattern.md` §4).
-final fileDescriptionProvider =
+// ignore: always_specify_types - as above.
+  final fileDescriptionProvider =
     Provider.family<FileDescription?, String>((Ref ref, String path) {
   return NotesRepository.describeFile(path);
 });
