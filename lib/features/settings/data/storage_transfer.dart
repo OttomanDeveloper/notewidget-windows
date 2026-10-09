@@ -24,6 +24,14 @@ enum StorageTransferOutcome {
   /// The same folder that is already in use.
   alreadyThere,
 
+  /// Adopted: the app will read a library already in that folder. Nothing was
+  /// written there and nothing was deleted from anywhere.
+  adopted,
+
+  /// There are no notes in that folder to adopt. Refused rather than created - see
+  /// [StorageTransfer.inspectExistingLibrary].
+  nothingToAdopt,
+
   /// Writing failed part way. Whatever was written is left in place; the source is
   /// untouched either way, so nothing is lost and the next attempt can see what is
   /// there.
@@ -41,6 +49,24 @@ class StorageTransfer {
     'selection.json',
     'settings.json',
   ];
+
+  /// Points the app at a library **already** in [target], copying nothing - the
+  /// mirror of [copyLibrary], which refuses a folder that has notes. Nothing is
+  /// written or deleted, so it is always reversible. See `storage_pattern.md` §3.0c.
+  static StorageTransferOutcome inspectExistingLibrary(String target) {
+    final String trimmed = target.trim();
+    if (!AppPaths.isUsableDirectory(trimmed)) {
+      return StorageTransferOutcome.notUsable;
+    }
+    // Absent or empty is refused rather than created. A folder with no notes is
+    // not a library, and quietly writing one into somebody's folder is exactly
+    // the overwrite this whole path exists to prevent.
+    final File notes = File(_join(trimmed, 'notes.json'));
+    if (!notes.existsSync() || notes.lengthSync() == 0) {
+      return StorageTransferOutcome.nothingToAdopt;
+    }
+    return StorageTransferOutcome.adopted;
+  }
 
     /// Copies the library. The source settings file is not rewritten: only the
     /// caller knows whether the app is restarting, and a moved pointer plus a

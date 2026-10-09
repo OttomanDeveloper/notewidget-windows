@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+
+- A second button in Storage points the app at notes already in a folder of your own, copying and deleting nothing.
+
 ## 1.3.3
 
 ### Fixed

@@ -218,6 +218,25 @@ void main() {
         reason: 'the copy has to land before the pointer that finds it',
       );
     });
+
+    test('the adopt path has no copy and no delete', () {
+      // Adopting exists for somebody whose notes are already where they keep them.
+      // The one thing it must never do is touch that folder - so this is checked as
+      // source, because "nothing is written" is not an assertion a test can make
+      // about a path the code decides to write to later.
+      final String controller =
+          tree.read('lib/features/settings/presentation/providers/settings_controller.dart');
+      final int start = controller.indexOf('Future<StorageTransferOutcome> useExisting');
+      expect(start, greaterThan(0), reason: 'precondition: the method exists');
+      final String body = controller.substring(start, start + 1200);
+
+      expect(
+        RegExp(r'copyLibrary|\.copy\(|writeAsString|\.delete').allMatches(body),
+        isEmpty,
+        reason: 'adopting points the app at a folder; writing to it is §3.0b\'s '
+            'overwrite wearing a smaller hat.\n\n  ...${body.trimRight()}',
+      );
+    });
   });
 
   group('the setting is persisted under one key, read by two readers', () {
@@ -277,6 +296,7 @@ void main() {
         'asking does not create the folder',
         'the original is left alone',
         'already has notes is refused',
+        'adopted, and nothing in it is touched',
       ]) {
         expect(
           tests,

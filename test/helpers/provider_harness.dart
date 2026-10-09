@@ -172,6 +172,12 @@ Future<void> dispose({bool keepProfile = false}) async {
     final AppPaths paths = AppPaths(
       dataDirectory: temp.path,
       executablePath: temp.path,
+      // Named, not left null: `settingsPointerFile` is
+      // `'$reportedDirectory\settings.json'`, so a null here is the *relative*
+      // path `null\settings.json` — and a test that writes the pointer then
+      // drops a settings.json into the repository's working copy. Found by the
+      // adopt test, which is the first to reach `_writePointer` from here.
+      reportedDirectory: temp.path,
     );
     final LaunchInfo resolved = launch ?? launchFor(paths, isWidgetSurface: isWidgetSurface);
 

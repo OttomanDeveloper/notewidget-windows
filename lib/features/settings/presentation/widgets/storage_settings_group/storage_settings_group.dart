@@ -59,6 +59,25 @@ class StorageSettingsGroup extends ConsumerWidget {
                   await _reportTransfer(context, outcome, from: active, to: picked);
                 },
               ),
+              IconButton(
+                icon: const Icon(Icons.folder_special, size: 18),
+                tooltip: 'Use a folder that already has notes',
+                onPressed: () async {
+                  final String? picked =
+                      await ref.read(shellProvider).pickFolder(start: active);
+                  if (picked == null || !context.mounted) return;
+                  // Says plainly that nothing is copied and nothing is deleted,
+                  // because this is the button somebody reaches for when they
+                  // already keep notes somewhere of their own.
+                  final bool? agreed = await _confirmAdopt(context, picked);
+                  if (agreed != true) return;
+
+                  final StorageTransferOutcome outcome =
+                      await controller.useExisting(picked);
+                  if (!context.mounted) return;
+                  await _reportTransfer(context, outcome, from: active, to: picked);
+                },
+              ),
               if (isCustom)
                 IconButton(
                   icon: const Icon(Icons.restart_alt, size: 18),
@@ -92,6 +111,53 @@ class StorageSettingsGroup extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// Asks before adopting a folder that already has notes in it. The wording is
+  /// the decision: no copy, no delete, and a restart - somebody choosing this has
+  /// notes of their own and wants the app to read them, not a second set.
+  Future<bool?> _confirmAdopt(BuildContext context, String destination) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        final ThemeData theme = Theme.of(dialogContext);
+        return AlertDialog(
+          title: const Text('Use the notes already in this folder?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('WinNotes will read:', style: theme.textTheme.bodyMedium),
+              const SizedBox(height: 8),
+              SelectableText(
+                destination,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Nothing is copied and nothing is deleted. The notes now in your '
+                'current folder stay exactly where they are.\n\n'
+                'WinNotes needs restarting before it opens them.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Use these notes'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -144,8 +210,8 @@ Future<bool?> _confirmTransfer(BuildContext context, String destination) {
   );
 }
 
-/// Says what happened, which is not always what was asked for. Six outcomes, six
-/// sentences; declining a non-empty destination is protection, not failure, so it
+/// Says what happened, which is not always what was asked for. One sentence per
+/// outcome; declining a non-empty destination is protection, not failure, so it
 /// reads as a decision with a way out.
 Future<void> _reportTransfer(
   BuildContext context,
@@ -179,6 +245,18 @@ Future<void> _reportTransfer(
         'That folder is not available',
         'It may be on a drive that is not connected, or Windows may not let this '
             'app write there. Nothing was changed.',
+        true,
+      ),
+    StorageTransferOutcome.adopted => (
+        'Using that folder',
+        'WinNotes will read the notes already in $to. Restart to open them. '
+            'Your notes in $from were left exactly as they were.',
+        false,
+      ),
+    StorageTransferOutcome.nothingToAdopt => (
+        'No notes in that folder',
+        'There is no notes.json in $to, so there is nothing to open. Use '
+            '"Choose another folder" to copy your notes into it instead.',
         true,
       ),
     StorageTransferOutcome.alreadyThere => (

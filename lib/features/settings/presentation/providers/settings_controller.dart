@@ -8,6 +8,7 @@ import 'package:win_notes/features/settings/domain/hotkey_binding.dart';
 import '../../../../core/utils/atomic_json_file.dart';
 import '../../domain/settings.dart';
 import '../../data/storage_transfer.dart';
+import '../../data/storage_location.dart';
 import '../../domain/repositories.dart';
 import './settings_providers.dart';
 import '../../../../core/platform/shell_channel.dart';
@@ -193,6 +194,32 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     await _writePointer(next);
 
     return outcome;
+  }
+
+  /// Points the app at a library already in [target], copying nothing. The
+  /// counterpart to [moveTo], for somebody who already keeps notes in a folder
+  /// of their own: nothing is copied and nothing is deleted.
+  Future<StorageTransferOutcome> useExisting(String target) async {
+    final SettingsState? current = state.value;
+    if (current == null) return StorageTransferOutcome.failed;
+
+    final String trimmed = target.trim();
+    final StorageTransferOutcome outcome =
+        StorageTransfer.inspectExistingLibrary(trimmed);
+    if (outcome != StorageTransferOutcome.adopted) return outcome;
+
+    if (StorageLocation.sameDirectory(
+      ref.read(appPathsProvider).dataDirectory,
+      trimmed,
+    )) {
+      return StorageTransferOutcome.alreadyThere;
+    }
+
+    final WinNotesSettings next = current.settings.copyWith(storageDirectory: trimmed);
+    state = AsyncData<SettingsState>(current.copyWith(settings: next));
+    await _repository.saveNow(next);
+    await _writePointer(next);
+    return StorageTransferOutcome.adopted;
   }
 
   /// Returns to `%APPDATA%\WinNotes` by copying, never moving, so chosen-folder notes are kept.

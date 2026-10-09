@@ -14,6 +14,9 @@ import 'package:win_notes/core/utils/app_paths.dart';
 import 'package:win_notes/features/settings/domain/settings.dart';
 import 'package:win_notes/features/settings/data/storage_location.dart';
 import 'package:win_notes/features/settings/data/storage_transfer.dart';
+import 'package:win_notes/features/settings/presentation/providers/settings_controller.dart';
+
+import 'helpers/provider_harness.dart';
 
 void main() {
   late Directory root;
@@ -391,6 +394,102 @@ void main() {
           .where((File f) => f.path.endsWith('.copying'))
           .toList();
       expect(leftovers, isEmpty, reason: 'copies go via a temporary name and rename');
+    });
+  });
+
+  group('adopting a library that is already there', () {
+    test('a folder with notes is adopted, and nothing in it is touched', () {
+      // The mirror of copying: the notes are already where the person keeps them,
+      // so the only honest answer is "read those". Nothing is written into their
+      // folder, which is what makes this reversible - unsetting the folder is the
+      // whole undo.
+      final String theirs = dir('theirs');
+      Directory(theirs).createSync(recursive: true);
+      file(theirs, 'notes.json').writeAsStringSync(notesDocument(count: 7));
+      file(theirs, 'my own reading.txt').writeAsStringSync('not WinNotes');
+      final List<String> before =
+          Directory(theirs).listSync().map((FileSystemEntity e) => e.path).toList()..sort();
+
+      expect(StorageTransfer.inspectExistingLibrary(theirs), StorageTransferOutcome.adopted);
+
+      expect(file(theirs, 'notes.json').readAsStringSync(), notesDocument(count: 7),
+          reason: 'their notes are read, not rewritten');
+      expect(Directory(theirs).listSync().map((FileSystemEntity e) => e.path).toList()..sort(), before,
+          reason: 'and nothing was added to their folder, so the app cannot be blamed '
+              'for what is in it afterwards');
+    });
+
+    test('a folder with no notes is refused rather than created', () {
+      // Quietly writing a library into somebody's folder is the overwrite this
+      // whole path exists to prevent, wearing a smaller hat.
+      final String empty = dir('empty');
+      Directory(empty).createSync(recursive: true);
+      final String blank = dir('blank');
+      Directory(blank).createSync(recursive: true);
+      file(blank, 'notes.json').writeAsStringSync('');
+
+      expect(StorageTransfer.inspectExistingLibrary(empty), StorageTransferOutcome.nothingToAdopt);
+      expect(StorageTransfer.inspectExistingLibrary(blank), StorageTransferOutcome.nothingToAdopt);
+      expect(
+        Directory(empty).listSync(),
+        isEmpty,
+        reason: 'asking must not create the library it did not find',
+      );
+    });
+
+    test('a path that is not usable is refused', () {
+      expect(
+        StorageTransfer.inspectExistingLibrary(r'relative\folder'),
+        StorageTransferOutcome.notUsable,
+      );
+    });
+  });
+
+  group('adopting, through the notifier the Settings screen uses', () {
+    late TestHarness harness;
+
+    setUp(() {
+      harness = TestHarness.build();
+    });
+
+    tearDown(() async {
+      await harness.dispose();
+    });
+
+    test('the next launch opens the adopted folder and copies nothing', () async {
+      final String theirs = Directory.systemTemp.createTempSync('wn_theirs').path;
+      addTearDown(() => Directory(theirs).deleteSync(recursive: true));
+      File('$theirs\\notes.json').writeAsStringSync(notesDocument(count: 4));
+
+      final SettingsNotifier settings = await harness.settings();
+      expect(await settings.useExisting(theirs), StorageTransferOutcome.adopted);
+
+      expect(
+        StorageLocation.resolveDataDirectory(paths(harness.path)),
+        theirs,
+        reason: 'this is the whole point: the pointer has to reach disk, or the '
+            'setting is the placebo §3.0a is about',
+      );
+      expect(
+        File('$theirs\\notes.json').readAsStringSync(),
+        notesDocument(count: 4),
+        reason: 'their notes are read, not rewritten',
+      );
+    });
+
+    test('a folder with no notes is refused, and nothing is written anywhere', () async {
+      final String theirs = Directory.systemTemp.createTempSync('wn_theirs').path;
+      addTearDown(() => Directory(theirs).deleteSync(recursive: true));
+
+      final SettingsNotifier settings = await harness.settings();
+      expect(await settings.useExisting(theirs), StorageTransferOutcome.nothingToAdopt);
+
+      expect(
+        StorageLocation.resolveDataDirectory(paths(harness.path)),
+        harness.path,
+        reason: 'a refused adopt must leave the pointer where it was',
+      );
+      expect(Directory(theirs).listSync(), isEmpty);
     });
   });
 

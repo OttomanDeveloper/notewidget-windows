@@ -142,6 +142,22 @@ folder keep working.
 where it started. Rebuilding every repository under a running editor to avoid a restart
 is not a trade worth making; the honest answer is "restart".
 
+### 3.0c Adopting a library copies nothing at all
+
+`StorageTransfer.inspectExistingLibrary` and `SettingsNotifier.useExisting`, for the
+person who already keeps their notes somewhere of their own — a synced folder, a
+removable drive, a folder they have had for years. Copying into it is refused by
+§3.0b precisely because there are notes in the way, so without this there is no way to
+point the app at notes they already have.
+
+- **Write nothing, delete nothing.** Only the pointer and `settings.json` change. That
+  is what makes it reversible: unsetting the folder is the entire undo.
+- **A folder with no `notes.json` is refused, not created.** Writing a library into
+  somebody's folder is §3.0b's overwrite with a smaller hat, and an absent file is
+  also what a half-finished write looks like.
+
+**A restart is required here too**, and for the same reason as §3.0b.
+
 ### 3.1 One writer per file, decided by the runner
 
 The two surfaces are separate isolates with separate memory. They never talk
@@ -537,6 +553,7 @@ cited test stops existing.
 | 3.0 | The data directory is resolved once, and can be redirected | `app_paths_test` *an absolute path wins over the reported one*, *the real profile is not named anywhere in the result*, *a relative path is refused*, *a path with .. is refused*, *an empty override is ignored rather than resolving to nowhere*; **guard** `isolate_guard_test` *main() never touches the reported directory when an override is set* |
 | 3.0a | The chosen folder is honoured, or the setting is a lie | **guard** `storage_location_guard_test` *the data directory comes from the resolver, not from the runner*, *and it is applied to the paths, not just computed*, *the reported directory is still what settings.json is read from*, *the resolver asks whether the folder is reachable*, *and the reachability check never creates the folder it is asked about*, *main() creates the directory it resolved, which is the only creator*, *the bootstrap reader never throws*; `storage_location_test` *a pointer names the folder, and files go there*, *a chosen folder that has gone is not silently replaced by an empty one*, *the chosen folder's own settings.json wins when the two disagree*, *a corrupt settings file is treated as no choice at all* |
 | 3.0b | Changing the folder copies; it never moves | **guard** `storage_location_guard_test` *the transfer code contains no delete of a source file*, *a destination that already has notes is refused*, *the source is flushed before anything is copied*, *the pointer is written last*; `storage_location_test` *every file arrives, and the original is left alone*, *the destination settings.json names the destination*, *a destination that already has notes is refused, and nothing is touched*, *the same folder is reported rather than copied onto itself* |
+| 3.0c | Adopting a library copies nothing at all | **guard** `storage_location_guard_test` *the adopt path has no copy and no delete*; `storage_location_test` *a folder with notes is adopted, and nothing in it is touched*, *a folder with no notes is refused rather than created*, *a path that is not usable is refused*, *the next launch opens the adopted folder and copies nothing*, *a folder with no notes is refused, and nothing is written anywhere* |
 | 3.1 | One writer per file, decided by the runner | **guard** `storage_guard_test` * only the two notifiers write notes.json*, *every widget-side write asks the runner first*, *the editor notifier is the writer and does not ask itself*; `widget_integration_test` * a jotted line becomes a note, routed to the editor*, *with no editor, the widget writes the note itself* |
 | 3.2 | Writes are atomic | `notes_repository_test` → *a concurrent reader never observes a partially written file*, *no temp file is left behind after a successful write*, *writes replace the file rather than appending to it* |
 | 3.2 | …and the export too | **guard** `storage_guard_test` → *exportTo goes through the atomic writer*, *the backup is taken before the replace, not after*, *the export does not write the destination directly*; `backup_service_test` → *the file appears whole, not in pieces*, *nothing is left half-written beside the target* |
