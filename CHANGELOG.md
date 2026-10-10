@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.2
+
+### Fixed
+
+- Turning off "Lock the widget in place" now lets the widget be dragged, without needing a restart.
+
 ## 1.4.1
 
 ### Fixed

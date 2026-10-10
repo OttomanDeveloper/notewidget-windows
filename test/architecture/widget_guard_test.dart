@@ -226,6 +226,35 @@ void main() {
     });
   });
 
+  group('a lock changed while the surface is alive is republished', () {
+    test('the settings listener updates the surface, not only the runner', () {
+      // Settings are written by the editor and watched here, so the change
+      // arrives as a file event rather than a call. The listener that reacts to
+      // it used to tell the runner and stop: the native window became draggable
+      // and the gesture still refused, because the drag reads this surface's own
+      // copy of the lock, which nothing had refreshed. Reported from a machine
+      // that rebooted into the locked state.
+      final String controller = SourceTree().read(
+        'lib/features/widget/presentation/providers/widget_controller.dart',
+      );
+
+      expect(
+        controller,
+        contains('_publishPositionLocked'),
+        reason: 'the listener has to update the state the gesture reads',
+      );
+      expect(
+        controller,
+        matches(
+          RegExp(r'unawaited\(_applyWindowConfiguration\(\)\);\s*_publishPositionLocked\(\);'),
+        ),
+        reason: 'and it has to be the same listener: telling the runner and '
+            'updating the surface are two halves of one reaction, and doing one '
+            'without the other is the bug',
+      );
+    });
+  });
+
   group('the widget is HTCLIENT everywhere', () {
     test('the runner never answers HTCAPTION', () {
       final List<String> hits = findCaptionHits(tree);

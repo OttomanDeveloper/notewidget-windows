@@ -167,6 +167,24 @@ point the app at notes they already have.
 
 **A restart is required here too**, and for the same reason as §3.0b.
 
+### 3.16 A setting written by one surface is obeyed by the other
+
+`settings.json` is written by the editor and watched by the widget. Both are
+separate processes (`docs/isolate_pattern.md` §2), so a change crosses as a file,
+not as a call — and the widget has to act on it in **both** places it matters.
+
+The lock is the case that broke. `widget.configure` reached the runner, so the
+native window became draggable, and the Dart gesture still refused: the widget
+kept the `positionLocked` it read in `build()` and nothing republished it. The
+symptom is the confusing one — the switch says unlocked, the UI says "locked in
+place" — and it only appears on a *live* change, which is why every test that set
+the lock before building the surface stayed green.
+
+- **A value read at build is republished when the file changes.** Telling the
+  runner is not the same as updating the surface, and the drag reads the surface.
+- **Tests must change the setting *after* the surface exists.** A test that sets it
+  in `build` cannot see this class of bug at all.
+
 ### 3.1 One writer per file, decided by the runner
 
 The two surfaces are separate isolates with separate memory. They never talk
@@ -581,6 +599,7 @@ cited test stops existing.
 | 3.13b | A dump is written on request, never on a schedule | `diagnostics_test` *it says a corrupt notes file is corrupt, not what was in it*, *a dump carries no note text*, *a missing file is reported as missing rather than omitted*, *an entry pointing at nothing is reported as pointing at nothing*, *the app's own intent is reported separately from the registry*, *a real target is recognised through the quotes and the flag*, *no entry at all is not a failure*, *the dump is valid JSON a person can paste*, *an unwritable destination does not raise, and writes nothing*, *it adds no platform method*; **manual** - run `win_notes.exe --diagnose %TEMP%\d.json` on a release build: no window stays up, and the file carries the live widget bounds |
 | 3.14 | `markdown` is presentation only | `markdown_test` → *is omitted from the file when off, so old notes stay untouched*, *absent means off*, *only a literal true turns it on*, *copy carries it, because undo restores a note wholesale*, *the body is never rewritten by turning it on or off*, *the source keeps the syntax while it is being typed* |
 | 3.15 | …but switching it on does reorder | `markdown_test` → *turning it on bumps updatedAt, unlike finishing a task*, *setting it to what it already is does nothing*, *turning it on changes the note and persists*, *a note that is not there is ignored* |
+| 3.16 | A setting written by one surface is obeyed by the other | `widget_integration_test` → *unlocking after launch lets the widget be dragged*, *a locked widget is not handed to the runner*; **guard** `widget_guard_test` → *the settings listener updates the surface, not only the runner* |
 | — | A missing file is a first run | `notes_repository_test` → *a missing file is a first run, not an error*, *a file with only whitespace is treated as empty* |
 | — | Format tag enforced | `notes_repository_test` → *valid JSON that is not a WinNotes document is also refused*, *a notes entry that is not a list is refused*, *a note entry that is not an object is refused*, *a note missing its id is refused rather than skipped* |
 | — | Sort and its tiebreak | `notes_repository_test` → *most recently edited comes first*, *equal timestamps still produce a stable order* |

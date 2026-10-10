@@ -729,6 +729,47 @@ void main() {
     expect(calls.where((MethodCall c) => c.method == 'widget.beginMove'), hasLength(1));
   });
 
+  testWidgets('unlocking after launch lets the widget be dragged',
+    (WidgetTester tester) async {
+    // The reported case: the widget was locked, the person unlocked it in
+    // Settings, and dragging still did nothing while the UI kept saying it was
+    // locked. Settings are written by the *editor*, a different process, so the
+    // surface learns about the change through the file. Every other test here
+    // sets the lock before the surface is built, which is why this one was green
+    // against a bug that only appears on a live change.
+    final List<MethodCall> calls = recordHandOffs();
+    await real(
+      tester,
+      () => makeController(
+        tester,
+        <Note>[note('a', 'Groceries', 'milk')],
+        tweakSettings: (SettingsNotifier s) =>
+            s.apply((WinNotesSettings v) => v.copyWith(widgetPositionLocked: true)),
+      ),
+    );
+
+    await pumpSurface(tester, width: 360, height: 420);
+    await dragBody(tester);
+    expect(calls, isEmpty, reason: 'precondition: locked means no drag');
+
+    // The switch, in the other process.
+    await real(tester, () async {
+      await harness.container
+          .read(settingsProvider.notifier)
+          .apply((WinNotesSettings v) => v.copyWith(widgetPositionLocked: false));
+    });
+    await tester.pumpAndSettle();
+
+    calls.clear();
+    await dragBody(tester);
+    expect(
+      calls.where((MethodCall c) => c.method == 'widget.beginMove'),
+      hasLength(1),
+      reason: 'the surface kept the lock it read at build, so the gesture was '
+          'refused with an explanation while the switch said otherwise',
+    );
+  });
+
   testWidgets('a locked widget is not handed to the runner', (WidgetTester tester) async {
     final List<MethodCall> calls = recordHandOffs();
     await real(tester,

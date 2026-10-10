@@ -165,11 +165,24 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
           v.value?.settings.widgetPositionLocked,
         ),
       ),
-      (_, _) => unawaited(_applyWindowConfiguration()),
+      (_, _) {
+        unawaited(_applyWindowConfiguration());
+        _publishPositionLocked();
+      },
     );
 
     await _applyWindowConfiguration(ready);
     return ready;
+  }
+
+  /// Republishes the lock into [WidgetSurfaceState], which is what the drag reads.
+  /// The listener told the *runner* and stopped there, so the native window became
+  /// draggable while the gesture still refused. `storage_pattern.md` §3.16.
+  void _publishPositionLocked() {
+    final WidgetSurfaceState? current = state.value;
+    final bool locked = _positionLocked;
+    if (current == null || current.positionLocked == locked) return;
+    state = AsyncData<WidgetSurfaceState>(current.copyWith(positionLocked: locked));
   }
 
   bool get _positionLocked =>
