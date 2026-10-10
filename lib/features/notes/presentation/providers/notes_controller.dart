@@ -258,7 +258,9 @@ class NotesNotifier extends AsyncNotifier<NotesState> {
     // A new list identity: `AnimatedBuilder` compares by identity, so reusing
     // the same list would rebuild nothing and the strike-through would not appear.
     final List<Note> notes = <Note>[...current.notes]..[index] = updated;
-    state = AsyncData<NotesState>(current.copyWith(notes: notes));
+    // `withVisible`, like every other mutator: the pane watches the *visible*
+    // list, and `copyWith` carries the old one over untouched. See §3.12.
+    state = AsyncData<NotesState>(current.copyWith(notes: notes).withVisible());
     _repository.save(state.requireValue.notes);
   }
 

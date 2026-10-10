@@ -164,6 +164,32 @@ void main() {
       expect(c.selectedNote!.completedAt, isNull);
     });
 
+    test('the visible list carries the completion, not just the notes list', () async {
+      // The list pane watches `visibleNotesProvider`, not `notes`. `copyWith`
+      // carries the old visible list over untouched, so a mutator that forgets
+      // `withVisible` leaves the pane rendering a note that no longer exists in
+      // that form: the state said finished, the strike-through never appeared.
+      // Every other mutator has called it; this one did not.
+      final Notes c = await controller();
+      await c.load();
+      final Note note = c.createNote()!;
+
+      expect(c.visible.single.isCompleted, isFalse, reason: 'precondition');
+
+      c.toggleCompleted(note.id);
+
+      expect(
+        c.visible.single.isCompleted,
+        isTrue,
+        reason: 'the pane draws from this list',
+      );
+      expect(
+        identical(c.visible.single, c.selectedNote),
+        isTrue,
+        reason: 'and it has to be the same object, not a stale copy',
+      );
+    });
+
     test('finishing a note does not reorder the list', () async {
       // The reason toggleCompleted exists in the shape it does. Notes sort by
       // most recently edited, so bumping the timestamp would send the note to

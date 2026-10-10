@@ -439,6 +439,9 @@ class Notes {
   // --- values, from the state ---
   List<Note> get notes => _s.notes;
   List<Note> get visibleNotes => _s.visible;
+
+  /// The same list under the name the controller tests use for it.
+  List<Note> get visible => _s.visible;
   Note? get selectedNote => _s.selectedNote;
   Note? get focusedNote => _s.focusedNote;
   String? get selectedId => _s.selectedId;

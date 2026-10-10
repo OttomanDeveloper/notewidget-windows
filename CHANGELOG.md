@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.4
+
+### Fixed
+
+- Marking a note as finished now shows as finished in the notes list.
+
 ## 1.4.3
 
 ### Fixed
