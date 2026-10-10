@@ -12,7 +12,7 @@ class TextSizeWheelListener extends StatelessWidget {
     required this.onEditorStep,
     required this.onPreviewStep,
     this.splitFraction = 0.5,
-    this.narrowShowsPreview = false,
+    this.narrowShowsPreview,
   });
 
   final Widget child;
@@ -27,9 +27,10 @@ class TextSizeWheelListener extends StatelessWidget {
   /// the rule is written down once instead of being assumed.
   final double splitFraction;
 
-  /// In the narrow layout there is one pane, not two, so the pointer's x says
-  /// nothing and this flag is the whole answer.
-  final bool narrowShowsPreview;
+  /// In the narrow layout there is one pane, so the pointer's x says nothing and
+  /// this flag is the whole answer. Null means wide - see §3.21 for why that is
+  /// three states and not two.
+  final bool? narrowShowsPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +46,8 @@ class TextSizeWheelListener extends StatelessWidget {
             // Wheel up is negative, and up means bigger, which is what every
             // other application on this machine does with it.
             final int delta = event.scrollDelta.dy < 0 ? 1 : -1;
-            final bool preview = narrowShowsPreview
-                ? narrowShowsPreview
-                : event.localPosition.dx >= split;
+            final bool preview =
+                narrowShowsPreview ?? event.localPosition.dx >= split;
             if (preview) {
               onPreviewStep?.call(delta);
             } else {

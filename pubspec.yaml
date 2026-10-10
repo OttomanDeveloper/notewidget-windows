@@ -1,7 +1,7 @@
 name: win_notes
 description: "Desktop notes widget for Windows 11 Pro. Notes stay on screen and come back on every boot. No account, no server, no network."
 publish_to: 'none'
-version: 1.4.2+1
+version: 1.4.3+1
 
 environment:
   sdk: ^3.13.4

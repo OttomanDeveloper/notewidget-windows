@@ -618,13 +618,33 @@ slider parked at the wrong value is worse than none: with nothing chosen it woul
 sit at the monospace size while a plain note rendered larger, and dragging right
 would *shrink* that note.
 
-**Open: the gesture is not yet verified.** The wiring is in `MarkdownBody` — one
-`Listener` over both panes, choosing the pane by the pointer's x when wide and by
-the flag when narrow. One thing was settled by measurement rather than assumed: an
-ancestor `Listener` *does* receive the wheel, even over a `TextField` and over a
-scrollable, so nothing downstream is eating the signal. But a widget test driving
-Ctrl+wheel through that pane records no step, and the cause is not yet known. The
-rules with tests are the stored-value rules below; this one is open.
+**Which pane the gesture means is nullable, and that was the bug.** `narrowShowsPreview`
+was a `bool` defaulting to false, written as a ternary:
+
+```dart
+final bool preview = narrowShowsPreview
+    ? narrowShowsPreview
+    : event.localPosition.dx >= split;
+```
+
+`false` cannot say "narrow, and the editor is the visible pane" — it says the same
+thing as "not narrow", so the flag was **discarded exactly when the editor was
+showing**. The pointer's x then decided, the pointer was usually right of centre,
+and Ctrl+wheel resized the *preview* while the editor was on screen. The preview
+was not visible, so the gesture looked like it did nothing at all. `bool?` with
+null meaning wide is what the three states actually are: wide, narrow-editor,
+narrow-preview.
+
+**The listener wraps both branches of the note body, not just the Markdown one.**
+It lived inside `MarkdownBody`, so a note with Markdown off rendered a plain
+`TextField` with no Ctrl+wheel at all. That branch has one pane and it is the
+editor, so it passes `narrowShowsPreview: false` and no preview step.
+
+**The gesture is verified by driving it.** `font_step_test` pins the coalescing
+rule and said plainly that the wiring was untested; `font_wheel_narrow_test` now
+drives the real widget for all three states and for the no-Ctrl case. The rule
+about an ancestor `Listener` receiving the wheel — over a `TextField`, over a
+scrollable — was settled by measurement, and it holds.
 
 ### 3.22 A saved widget position is restored by telling the runner, not by reading it
 
@@ -1043,7 +1063,7 @@ not in CI (`docs/testing_pattern.md` §2).
 | — | `ui/` reaches the runner one way | **guard** `layer_test` → *only platform/ constructs a MethodChannel* |
 | 3.19 | Widgets render state, they do not hold it | **guard** `no_set_state_test` * lib/ has no setState calls at all*, *the scanner still finds them, or the rule above is vacuous*, *the two replacements are the only two*, *every ValueNotifier is listened to, or nothing rebuilds*; **guard** `provider_guard_test` * no widget holds shared state by constructor parameter*, *the scanner still matches the names it claims to*, *a value is not a dependency*, *a load result is not an injected dependency*, *callbacks are allowed, and are what the roots pass* |
 | 3.20 | The Markdown switch is labelled, and says what it gets you | `markdown_test` → *the switch says what turning it on gets you*, *the switch keeps the same width in both states*, *a narrow pane still offers a switch, not a drag* |
-| 3.21 | Editor and preview are sized separately; 0 means as designed, and a wheel burst is one change | `font_step_test` *pending deltas sum rather than overwrite*, *the settle sits between one frame and one rebuild*, *a burst cannot run past the slider range*; `settings_test` → *an unset font size is zero, and a file without one still reads back*, *an unset font size is left out of the file entirely*, *both font sizes round trip, separately*, *a hand-edited font size is bounded to what the slider offers*, *the font sizes participate in equality* |
+| 3.21 | Editor and preview are sized separately; 0 means as designed, and a wheel burst is one change | `font_step_test` *pending deltas sum rather than overwrite*, *the settle sits between one frame and one rebuild*, *a burst cannot run past the slider range*; `settings_test` → *an unset font size is zero, and a file without one still reads back*, *an unset font size is left out of the file entirely*, *both font sizes round trip, separately*, *a hand-edited font size is bounded to what the slider offers*, *the font sizes participate in equality*; `font_wheel_narrow_test` *ctrl+wheel over the editor pane resizes the editor*, *ctrl+wheel over the preview pane resizes the preview*, *wheel up is larger, matching every other application*, *left of the split is the editor*, *right of the split is the preview*, *without ctrl the wheel is left alone* |
 | 3.22 | A saved position is pushed to the runner, not read back from it | **guard** `widget_guard_test` *SetBounds clamps to a reachable screen*, *the guard bites: a SetBounds without the clamp is rejected*, *Dart pushes the saved position rather than reading the default back*, *the method is declared on both sides, not just the registry*; `widget_integration_test` *a position written by one launch is the next launch's position*, *the saved position wins over whatever the runner reports*; **manual** - drag the widget, close the app, launch it again on a release build: it comes back where it was left |
 | 3.23 | The boot-time Show is a default | **guard** `widget_guard_test` *the boot-time Show is skipped when the window was already hidden*, *a real hide records that it happened*, *the flag is a distinct member, not reused from visible_*, *the guard bites: an unguarded boot-time Show is rejected*; **probe** `WN-ENV-004` - no widget window before text exists; one small frameless window after |
 | 3.24 | The split and the drawer are session state | `editor_layout_test` *it starts even, which is what two Expandeds gave before*, *a drag past either end is clamped, not obeyed*, *neither pane can be dragged out of recognition*, *the list width is bounded too*, *setting the same value twice does not produce a new state*, *it toggles*, *reset puts both measurements back without un-collapsing*, *a drag reports a position and double-click resets*, *its hit area is wider than the line it draws*, *the cursor says it can be dragged*, *a null reset does not throw on double-click*; `markdown_test` *a wide pane shows the source and the preview together*, *dragging the divider widens the source and narrows the preview*, *the divider cannot be dragged past either end*, *double-clicking the divider puts it back to even*; `editor_navigation_test` *it opens wide, and the bar button closes it*, *the edge handle opens it again*, *the handle has a hit area, not just an icon*, *the list divider resizes the list*, *collapsing is session state, not a stored preference*; **probe** `WN-EDIT-001..005` |

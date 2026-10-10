@@ -21,6 +21,7 @@ import '../empty_state/empty_state.dart';
 import '../editor_status_bar/editor_status_bar.dart';
 import '../markdown_body/markdown_body.dart';
 import '../markdown_toggle_button/markdown_toggle_button.dart';
+import '../text_size_wheel_listener/text_size_wheel_listener.dart';
 
 /// Title and body of the selected note, with no toolbar and no save button.
 ///
@@ -363,7 +364,18 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                         ),
                         const SizedBox(height: 8),
                         Expanded(
-                          child: note.markdown
+                          // Wraps both branches: it used to live inside MarkdownBody, so a note
+                          // with Markdown off had no Ctrl+wheel. One pane, and it
+                          // is the editor, so x decides nothing. §3.21.
+                          child: TextSizeWheelListener(
+                            narrowShowsPreview: false,
+                            onEditorStep: (int delta) =>
+                                _stepFontSize(preview: false, delta: delta),
+                            // Null rather than omitted: MarkdownBody puts its own
+                            // listener inside the wide layout, and this one only
+                            // owns the plain TextField. See the class doc.
+                            onPreviewStep: null,
+                            child: note.markdown
                               ? MarkdownBody(
                                   note: note,
                                   field: _body,
@@ -403,6 +415,7 @@ class _NoteEditorPaneState extends ConsumerState<NoteEditorPane> {
                                     contentPadding: EdgeInsets.zero,
                                   ),
                                 ),
+                          ),
                         ),
                       ],
                     ),

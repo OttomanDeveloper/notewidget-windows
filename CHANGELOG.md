@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3
+
+### Fixed
+
+- Ctrl+wheel now changes the font size in the narrow editor, where it did nothing.
+
 ## 1.4.2
 
 ### Fixed
