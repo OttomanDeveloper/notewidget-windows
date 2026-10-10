@@ -6,6 +6,7 @@ class AppPaths {
     required this.dataDirectory,
     required this.executablePath,
     this.reportedDirectory,
+    this.unreachableDirectory,
   });
 
   /// Overrides the data directory for one run. Tooling only: it changes where
@@ -75,6 +76,11 @@ class AppPaths {
   /// looked for: that file is the pointer to everything else (`§3.0a`).
   final String? reportedDirectory;
 
+  /// A folder chosen in Settings that could not be reached at launch, or null.
+  /// Carried, not acted on: [dataDirectory] is still the fallback, so a missing
+  /// drive is never recreated. `storage_pattern.md` §3.0a.
+  final String? unreachableDirectory;
+
   /// Where files actually are: [reportedDirectory], a chosen folder, or the
   /// run's [overrideVariable].
   final String dataDirectory;
@@ -110,9 +116,10 @@ class AppPaths {
 
   /// The same paths with a different data directory. Used once, in `main()`,
   /// to turn the runner's answer into the chosen folder.
-  AppPaths copyWith({String? dataDirectory, String? executablePath}) => AppPaths(
+  AppPaths copyWith({String? dataDirectory, String? executablePath, String? unreachableDirectory}) => AppPaths(
         dataDirectory: dataDirectory ?? this.dataDirectory,
         executablePath: executablePath ?? this.executablePath,
         reportedDirectory: reportedDirectory,
+        unreachableDirectory: unreachableDirectory ?? this.unreachableDirectory,
       );
 }

@@ -54,6 +54,64 @@ class TestHarness {
   /// tests that used it began awaiting `flush()` and timing out.
   void cancelPendingWrites() => _notesJson.cancelPendingWrites();
 
+  /// A second container over the same profile with a chosen folder that is not
+  /// there, which is how a surface is launched after a reboot with the drive
+  /// unplugged. Separate from [build] because only one container can hold the
+  /// profile's file handles.
+  static TestHarness unreachableStorage({
+    required String chosen,
+    required String at,
+    bool isWidgetSurface = false,
+  }) {
+    final Directory temp = Directory(at);
+    final AppPaths paths = AppPaths(
+      dataDirectory: temp.path,
+      executablePath: temp.path,
+      reportedDirectory: temp.path,
+      unreachableDirectory: chosen,
+    );
+
+    return TestHarness._(
+      temp,
+      ProviderContainer(
+        overrides: <Override>[
+          shellProvider.overrideWithValue(ShellChannel()),
+          launchInfoProvider.overrideWithValue(
+            launchFor(paths, isWidgetSurface: isWidgetSurface),
+          ),
+          appPathsProvider.overrideWithValue(paths),
+          notesRepositoryProvider.overrideWithValue(
+            NotesRepository(AtomicJsonFile(paths.notesFile)),
+          ),
+        ],
+      ),
+      AtomicJsonFile(paths.notesFile),
+    );
+  }
+
+  /// [unreachableStorage] over the widget surface's graph, which is the one that
+  /// writes `notes.json` when no editor is running.
+  static TestHarness unreachableWidget({required String chosen, required String at}) =>
+      TestHarness.unreachableStorage(chosen: chosen, at: at, isWidgetSurface: true);
+
+  /// The widget surface's actions, read through the notifier.
+  Future<bool> addNote({required String title, required String body}) async {
+    _used.add(_Kind.widget);
+    await container.read(widgetProvider.future);
+    return container
+        .read(widgetProvider.notifier)
+        .addNote(title: title, body: body);
+  }
+
+  Future<void> onGeometryChanged(NativeBounds bounds) async {
+    _used.add(_Kind.widget);
+    await container.read(widgetProvider.future);
+    container.read(widgetProvider.notifier).onGeometryChanged(bounds);
+  }
+
+  /// The notes facade, for asserting on the file the surface writes.
+  Notes notesFacade() => Notes(this);
+
   /// The temp directory backing this container.
   ///
   /// Exposed because a good number of tests do not go through the notifier at all:

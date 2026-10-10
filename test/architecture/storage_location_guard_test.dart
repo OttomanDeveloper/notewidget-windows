@@ -219,6 +219,23 @@ void main() {
       );
     });
 
+    test('main() carries the unreachable folder onto the paths', () {
+      // The silence is the bug. The resolver falls back to the default folder when
+      // a chosen drive is missing - correct for reading, and it means the editor
+      // would write there - so the fact has to survive resolution. Checked in
+      // `main()` rather than in `resolveDataDirectory`, because carrying it is a
+      // wiring decision: computing it and not attaching it is §3.0a's exact
+      // failure wearing a hat, which is the first check in this file.
+      final String main_ = tree.read('lib/main.dart');
+      expect(
+        main_,
+        contains('unreachableDirectory: StorageLocation.unreachableChoice('),
+        reason: 'a chosen folder that could not be reached must reach AppPaths. '
+            'Otherwise the editor opens on the default folder and every keystroke '
+            'lands in a place nobody chose, with nothing said.',
+      );
+    });
+
     test('the adopt path has no copy and no delete', () {
       // Adopting exists for somebody whose notes are already where they keep them.
       // The one thing it must never do is touch that folder - so this is checked as

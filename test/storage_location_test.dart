@@ -183,6 +183,47 @@ void main() {
       );
     });
 
+    test('an unreachable chosen folder is reported, not only fallen back from', () {
+      // The regression, in one test. The fallback above is correct for a read and
+      // silently wrong for a write: the resolver answers with the default folder,
+      // the repositories follow, and every keystroke lands somewhere nobody chose.
+      // It happened - the chosen drive was slow at boot and the notes were simply
+      // gone from the app's point of view. So the fact survives the resolution.
+      final String reported = dir('default');
+      final String chosen = dir('unplugged');
+      writeJson(reported, 'settings.json', <String, dynamic>{
+        'format': 'winnotes',
+        'version': 1,
+        'storageDirectory': chosen,
+      });
+
+      expect(StorageLocation.unreachableChoice(paths(reported)), chosen);
+    });
+
+    test('a reachable chosen folder is not reported as missing', () {
+      final String reported = dir('default');
+      final String chosen = dir('here');
+      Directory(chosen).createSync(recursive: true);
+      writeJson(reported, 'settings.json', <String, dynamic>{
+        'format': 'winnotes',
+        'version': 1,
+        'storageDirectory': chosen,
+      });
+
+      expect(
+        StorageLocation.unreachableChoice(paths(reported)),
+        isNull,
+        reason: 'precondition: the normal case must not raise a screen',
+      );
+    });
+
+    test('no chosen folder is not reported as missing', () {
+      // The first launch, before anybody has chosen anything.
+      final String reported = dir('default');
+      Directory(reported).createSync(recursive: true);
+      expect(StorageLocation.unreachableChoice(paths(reported)), isNull);
+    });
+
     test('a corrupt settings file is treated as no choice at all', () {
       final String reported = dir('default');
       Directory(reported).createSync(recursive: true);

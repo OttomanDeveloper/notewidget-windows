@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1
+
+### Fixed
+
+- Notes are no longer written to the default folder when the folder you chose cannot be reached; the editor says where they are instead.
+
 ## 1.4.0
 
 ### Added

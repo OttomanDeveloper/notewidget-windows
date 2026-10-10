@@ -13,6 +13,7 @@ import '../../widgets/list_drawer_handle/list_drawer_handle.dart';
 import '../../widgets/note_editor_pane/note_editor_pane.dart';
 import '../../widgets/note_list_pane/note_list_pane.dart';
 import '../../widgets/pane_divider/pane_divider.dart';
+import '../../widgets/storage_missing_screen/storage_missing_screen.dart';
 import '../corrupt_notes_screen/corrupt_notes_screen.dart';
 
 /// The editor window. Two panes wide, one at a time narrow; the break is on
@@ -62,6 +63,17 @@ class _EditorViewState extends ConsumerState<EditorView> {
     // divider cannot mark the settings file dirty.
     final EditorLayout layout = ref.watch(editorLayoutProvider);
     final EditorLayoutNotifier layoutNotifier = ref.read(editorLayoutProvider.notifier);
+
+    // Ahead of the notes: a folder that cannot be reached means the notes are
+    // somewhere else, and this editor would be writing them here. Resolved in
+    // `main()`; asking the filesystem from a build would flap. §3.0a.
+    final String? missing = ref.watch(appPathsProvider).unreachableDirectory;
+    if (missing != null) {
+      return StorageMissingScreen(
+        directory: missing,
+        onOpenSettings: widget.onOpenSettings,
+      );
+    }
 
     final CorruptDataFileError? corrupt = notes.$2;
     if (corrupt != null) {      return CorruptNotesScreen(

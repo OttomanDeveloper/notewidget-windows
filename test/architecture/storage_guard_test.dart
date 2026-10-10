@@ -153,6 +153,28 @@ void main() {
     // proves the *current* call sites cooperate, and says nothing about a new one
     // added tomorrow in a third file. The rule is about where writes may live at all,
     // which is a source property.
+    test('an unreachable folder stops the widget surface writing', () {
+      // The widget is the writer when no editor is running, so it is the half that
+      // would actually put notes in the default folder. Checked in the notifier
+      // because the guard is not about a screen: `addNote` can be reached from a
+      // tap, and `onGeometryChanged` from a drag, with no screen involved at all.
+      final String controller =
+          tree.read('lib/features/widget/presentation/providers/widget_controller.dart');
+      expect(
+        controller,
+        contains('unreachableDirectory != null'),
+        reason: 'the widget surface has to notice an unreachable chosen folder, or '
+            'it reads and writes the default one',
+      );
+      expect(
+        controller,
+        contains('if (_storageMissing) return'),
+        reason: 'and every writer path has to ask. One guard in build() is not '
+            'enough: the timer, the drag and the composer all reach the repository '
+            'afterwards.',
+      );
+    });
+
     test('only the two notifiers write notes.json', () {
       final Set<String> writers = _filesWritingNotes(tree);
 

@@ -44,6 +44,10 @@ Future<void> main(List<String> args) async {
 
   final AppPaths paths = reported.copyWith(
     dataDirectory: StorageLocation.resolveDataDirectory(reported),
+    // Kept rather than resolved away: an unreachable chosen folder makes the
+    // resolver fall back to the default - right for reading, wrong for writing.
+    // Carried so the editor says where the notes are (`storage_pattern.md` §3.0a).
+    unreachableDirectory: StorageLocation.unreachableChoice(reported),
   );
 
   // `paths.dataDirectory`, not `launch.dataDirectory`: with `WIN_NOTES_DATA_DIR`

@@ -48,6 +48,15 @@ class StorageLocation {
     );
   }
 
+  /// The folder the person chose, when it cannot be reached; null otherwise.
+  /// `storage_pattern.md` §3.0a: [followPointer] answers with the default
+  /// folder, which is right for a read and wrong for a write.
+  static String? unreachableChoice(AppPaths paths) {
+    final String? pointer = readPointer(paths);
+    if (pointer == null || pointer.trim().isEmpty) return null;
+    return isReachable(pointer) ? null : pointer;
+  }
+
     /// Whether a path exists and accepts writes (not merely well-shaped).
     /// Never creates anything: answering "no" must not first make it "yes".
     /// See `docs/storage_pattern.md` §3.0 for why this prevents total loss.

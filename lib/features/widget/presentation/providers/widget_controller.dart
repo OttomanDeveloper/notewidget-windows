@@ -77,6 +77,11 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   final NoteIdFactory _ids = NoteIdFactory();
   Timer? _geometrySaveTimer;
 
+  /// Set in [build] when the chosen folder could not be reached. Every note write
+  /// checks it, because this surface is the writer when no editor is running and
+  /// would otherwise put notes in the default folder.
+  bool _storageMissing = false;
+
   @override
   Future<WidgetSurfaceState> build() async {
     _shell = ref.watch(shellProvider);
@@ -93,6 +98,23 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
 
     final WidgetWindowState window = await _widgetRepo.load();
     final String? selectedId = _selectionRepo.readSelection();
+
+    // A chosen folder that could not be reached: this surface would read and
+    // write the default folder. It shows nothing rather than the wrong library,
+    // and the editor is where the folder is reported (`storage_pattern.md` §3.0a).
+    if (ref.read(appPathsProvider).unreachableDirectory != null) {
+      _storageMissing = true;
+      final WidgetSurfaceState hidden = WidgetSurfaceState(
+        notes: const <Note>[],
+        selectedId: null,
+        window: window,
+        visible: false,
+        positionLocked: _positionLocked,
+      );
+      await _applyWindowConfiguration(hidden);
+      return hidden;
+    }
+
     final List<Note> notes = await _readNotes();
 
     WidgetSurfaceState next = WidgetSurfaceState(
@@ -227,6 +249,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
 
   /// Called when the native side reports the widget was moved or resized.
   void onGeometryChanged(NativeBounds bounds) {
+    if (_storageMissing) return;
     final WidgetSurfaceState current = _require();
     final WidgetWindowState window = current.window.copyWith(
       left: bounds.left,
@@ -244,6 +267,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   }
 
   void rememberScroll(double offset) {
+    if (_storageMissing) return;
     final WidgetSurfaceState current = _require();
     if ((offset - current.window.scrollOffset).abs() < 0.5) return;
     final WidgetWindowState window = current.window.copyWith(scrollOffset: offset);
@@ -258,7 +282,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   /// the change up through the same file.
   void focusNote(String id) {
     final WidgetSurfaceState current = _require();
-    if (current.selectedId == id) return;
+    if (current.selectedId == id || _storageMissing) return;
     state = AsyncData<WidgetSurfaceState>(current.copyWith(selectedId: id));
     _selectionRepo.setSelection(id);
   }
@@ -272,6 +296,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
       return;
     }
 
+    if (_storageMissing) return;
     final WidgetSurfaceState current = _require();
     final int index = current.notes.indexWhere((Note n) => n.id == id);
     if (index < 0) return;
@@ -289,6 +314,7 @@ class WidgetNotifier extends AsyncNotifier<WidgetSurfaceState> {
   /// Adds a composer note; same writer rule as [toggleCompleted], without stealing editor selection.
   Future<bool> addNote({required String title, required String body}) async {
     if (title.trim().isEmpty && body.trim().isEmpty) return false;
+    if (_storageMissing) return false;
 
     if (await _shell.isEditorRunning()) {
       await _shell.requestCreateNote(title: title, body: body);
